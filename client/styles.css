@@ -1,0 +1,264 @@
+/* 基本样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+/* 容器样式 */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* 标题样式 */
+header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+h1 {
+    color: #4a6ee0;
+    font-size: 1.8rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: #495057;
+}
+
+/* 主内容区 */
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* 聊天区域 */
+.chat-section {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    flex: 1;
+}
+
+.chat-container {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    max-height: 50vh;
+    min-height: 300px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.input-container {
+    display: flex;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    gap: 0.5rem;
+}
+
+textarea {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    resize: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+
+.primary-button {
+    background-color: #4a6ee0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0 1.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.2s;
+}
+
+.primary-button:hover {
+    background-color: #3a5dce;
+}
+
+/* 消息样式 */
+.message {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    max-width: 85%;
+}
+
+.user-message {
+    background-color: #e9f2ff;
+    margin-left: auto;
+    text-align: right;
+}
+
+.cursor-message {
+    background-color: #f1f3f5;
+}
+
+.message-time {
+    font-size: 0.7rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* 操作按钮区 */
+.actions-section {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+}
+
+.action-button {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.action-button:hover {
+    background-color: #e9ecef;
+}
+
+/* 状态指示区 */
+.status-section {
+    margin-top: auto;
+    text-align: center;
+}
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: #fff;
+    border-radius: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #dc3545; /* 红色表示未连接 */
+}
+
+.status-dot.connected {
+    background-color: #28a745; /* 绿色表示已连接 */
+}
+
+/* 页脚样式 */
+footer {
+    margin-top: 2rem;
+    text-align: center;
+    padding: 1rem 0;
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+footer a {
+    color: #4a6ee0;
+    text-decoration: none;
+}
+
+/* 模态对话框 */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.visible {
+    display: flex;
+}
+
+.modal-content {
+    background-color: #fff;
+    padding: 2rem;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close-button {
+    position: absolute;
+    top: 1rem;
+    right: 1.5rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-family: inherit;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+    
+    .chat-container {
+        min-height: 200px;
+    }
+} 

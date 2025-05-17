@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursor远程控制</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Cursor远程控制</h1>
+        </header>
+        
+        <main>
+            <section class="chat-section">
+                <div class="chat-container" id="chatContainer">
+                    <!-- 聊天内容将在这里动态添加 -->
+                </div>
+                
+                <div class="input-container">
+                    <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." rows="3"></textarea>
+                    <button id="sendButton" class="primary-button">发送</button>
+                </div>
+            </section>
+            
+            <section class="actions-section">
+                <h2>快捷操作</h2>
+                <div class="action-buttons">
+                    <button class="action-button" data-action="new_chat">新建聊天</button>
+                    <button class="action-button" data-action="clear_chat">清除聊天</button>
+                    <button class="action-button" data-action="save_code">保存代码</button>
+                    <button class="action-button" data-action="run_code">运行代码</button>
+                </div>
+            </section>
+            
+            <section class="status-section">
+                <div class="status-indicator">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span id="statusText">未连接</span>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>© 2023 Cursor远程控制 | <a href="#" id="settingsButton">设置</a></p>
+        </footer>
+        
+        <!-- 设置对话框 -->
+        <div class="modal" id="settingsModal">
+            <div class="modal-content">
+                <span class="close-button" id="closeModal">&times;</span>
+                <h2>连接设置</h2>
+                <form id="settingsForm">
+                    <div class="form-group">
+                        <label for="redisHost">Redis主机:</label>
+                        <input type="text" id="redisHost" name="redisHost" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="redisPort">Redis端口:</label>
+                        <input type="number" id="redisPort" name="redisPort" value="6379" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="redisPassword">Redis密码 (如有):</label>
+                        <input type="password" id="redisPassword" name="redisPassword">
+                    </div>
+                    <div class="form-group">
+                        <label for="commandChannel">命令频道:</label>
+                        <input type="text" id="commandChannel" name="commandChannel" value="cursor:commands" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="resultChannel">结果频道:</label>
+                        <input type="text" id="resultChannel" name="resultChannel" value="cursor:results" required>
+                    </div>
+                    <button type="submit" class="primary-button">保存设置</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html> 
