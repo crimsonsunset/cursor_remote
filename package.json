@@ -1,0 +1,8 @@
+{
+  "name": "cursor-remote-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"This is a placeholder build script. Actual build is handled by vercel.json.\""
+  }
+} 

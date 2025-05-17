@@ -3,10 +3,10 @@
   "name": "cursor-remote-client",
   "builds": [
     {
-      "src": "client/package.json",
+      "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "buildCommand": "sh -c 'mkdir -p ../public && cp -R ./* ../public/ && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > ../public/env-config.js && echo \"Build step complete. All files in public directory.\"'",
+        "buildCommand": "sh -c 'mkdir -p public && cp -R client/* public/ && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > public/env-config.js && echo \"Build step complete. Client files and env-config.js in public directory.\"'",
         "distDir": "public"
       }
     }
