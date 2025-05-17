@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo \"This is a placeholder build script. Actual build is handled by vercel.json.\""
+    "build": "mkdir -p public && cp -R client/* public/ && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > public/env-config.js && echo \"Build complete. Output in ./public directory.\""
   }
 } 
