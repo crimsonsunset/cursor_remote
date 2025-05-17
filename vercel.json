@@ -3,24 +3,12 @@
   "name": "cursor-remote-client",
   "builds": [
     {
-      "src": "client/**/*",
-      "use": "@vercel/static",
-      "config": { "distDir": "client" }
+      "src": "client/index.html",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "client",
+        "buildCommand": "sh -c 'cd client && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > env-config.js && echo \"Build step complete. env-config.js created in client directory.\"' "
+      }
     }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "client/$1" }
-  ],
-  "env": {
-    "SUPABASE_URL": "@supabase_url",
-    "SUPABASE_ANON_KEY": "@supabase_anon_key"
-  },
-  "build": {
-    "env": {
-      "SUPABASE_URL": "@supabase_url",
-      "SUPABASE_ANON_KEY": "@supabase_anon_key"
-    },
-    "command": "sh -c 'echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > client/env-config.js && echo \"Build step complete. env-config.js created.\"' ",
-    "outputDirectory": "client"
-  }
+  ]
 } 
