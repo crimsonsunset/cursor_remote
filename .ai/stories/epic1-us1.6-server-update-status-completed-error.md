@@ -7,7 +7,7 @@ Server - Update Command Status to Completed/Error
 
 ## Status
 
-Draft
+Completed
 
 ## Context
 
@@ -24,12 +24,12 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ## Tasks
 
 {
-1. - [ ] After successfully inserting a record into the `results` table (from US1.5), get the `command_id` and the success/error status (`is_error` and `error_message` from the result).
-2. - [ ] Determine the final `status` for the `commands` table: 'completed' if `is_error` is false, 'error' if `is_error` is true.
-3. - [ ] If an error occurred, prepare the `error_message` to be stored in `commands.last_error`.
-4. - [ ] Implement a Supabase SDK call to `UPDATE` the corresponding record in the `commands` table, setting its `status` and, if applicable, `last_error`.
-5. - [ ] Add error handling for this update operation.
-6. - [ ] Log the final status update of the command.
+1. - [x] After successfully inserting a record into the `results` table (from US1.5), get the `command_id` and the success/error status (`is_error` and `error_message` from the result).
+2. - [x] Determine the final `status` for the `commands` table: 'completed' if `is_error` is false, 'error' if `is_error` is true.
+3. - [x] If an error occurred, prepare the `error_message` to be stored in `commands.last_error`.
+4. - [x] Implement a Supabase SDK call to `UPDATE` the corresponding record in the `commands` table, setting its `status` and, if applicable, `last_error`.
+5. - [x] Add error handling for this update operation.
+6. - [x] Log the final status update of the command.
 }
 
 ## Constraints
@@ -50,11 +50,15 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ```mermaid
 sequenceDiagram
     participant ServerApp as Node.js Server
-    participant SupabaseDB_Results as Supabase (results table)
+    participant SupabaseDB_Results as Supabase (results table) # Renamed for clarity if AI wrote to it
+    participant CursorAI as Cursor AI (with MCP Tools) # If AI is writing to results
     participant SupabaseDB_Commands as Supabase (commands table)
 
-    ServerApp->>SupabaseDB_Results: INSERT result (US1.5)
-    SupabaseDB_Results-->>ServerApp: Acknowledgement
+    # Assuming AI writes to results table as per US1.5 implementation note
+    ServerApp->>CursorAI: (via AppleScript) Execute Augmented Command with dbWriteInstructions
+    CursorAI->>SupabaseDB_Results: INSERT result (US1.5)
+    SupabaseDB_Results-->>CursorAI: Acknowledgement
+    ServerApp->>SupabaseDB_Results: (Listens via subscription) Receives new result for command_id
     ServerApp->>SupabaseDB_Commands: UPDATE commands SET status='completed/error', last_error=...
     SupabaseDB_Commands-->>ServerApp: Acknowledgement
 ```

@@ -7,7 +7,7 @@ Server - Store Execution Result
 
 ## Status
 
-Draft
+Completed
 
 ## Context
 
@@ -24,13 +24,13 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ## Tasks
 
 {
-1. - [ ] After AppleScript execution, determine if it was successful or an error occurred.
-2. - [ ] Collect `result_text` if successful, or `error_message` if an error occurred.
-3. - [ ] Set the `is_error` boolean flag accordingly.
-4. - [ ] Retrieve the original `command_id` for the processed command.
-5. - [ ] Implement a Supabase SDK call to `INSERT` a new record into the `results` table with `command_id`, `result_text` (or `error_message`), `is_error`, and potentially `raw_result`.
-6. - [ ] Add error handling for the insert operation (e.g., Supabase errors, constraint violations).
-7. - [ ] Log the storing of the result.
+1. - [x] After AppleScript execution, determine if it was successful or an error occurred.
+2. - [x] Collect `result_text` if successful, or `error_message` if an error occurred.
+3. - [x] Set the `is_error` boolean flag accordingly.
+4. - [x] Retrieve the original `command_id` for the processed command.
+5. - [x] Implement a Supabase SDK call to `INSERT` a new record into the `results` table with `command_id`, `result_text` (or `error_message`), `is_error`, and potentially `raw_result`. (Note: Implemented by delegating the INSERT to Cursor AI via augmented command instructions, which then uses MCP tools.)
+6. - [x] Add error handling for the insert operation (e.g., Supabase errors, constraint violations). (Note: Indirectly handled by AI reporting errors into the results table, or server-side errors if AppleScript/Subscription fails.)
+7. - [x] Log the storing of the result.
 }
 
 ## Constraints
@@ -53,18 +53,21 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 sequenceDiagram
     participant ServerApp as Node.js Server
     participant AppleScriptEngine as AppleScript Engine
+    participant CursorAI as Cursor AI (with MCP Tools)
     participant SupabaseDB as Supabase (results table)
 
-    ServerApp->>AppleScriptEngine: Execute Command(commandDetails)
-    AppleScriptEngine-->>ServerApp: Return executionOutcome (result/error)
-    ServerApp->>SupabaseDB: INSERT INTO results (command_id, result_text, is_error, ...)
-    SupabaseDB-->>ServerApp: Acknowledgement
+    ServerApp->>AppleScriptEngine: Execute Augmented Command(commandDetails, dbWriteInstructions)
+    AppleScriptEngine-->>CursorAI: Deliver Augmented Command
+    CursorAI->>SupabaseDB: INSERT INTO results (command_id, result_text, is_error, ...)
+    SupabaseDB-->>CursorAI: Acknowledgement
+    ServerApp->>SupabaseDB: (Listens via subscription) Receives new result for command_id
 ```
 
 ## Dev Notes
 
 - The `raw_result` field in the `results` table can be useful for storing the exact, unparsed output from AppleScript/Cursor, especially since PRD states `result_text` format is not fixed.
 - Ensure proper mapping of AppleScript success/failure to `is_error` and the respective text fields.
+- **Implementation Note**: The actual INSERT into the `results` table is performed by the Cursor AI using its Supabase MCP tools, as instructed by an augmented command from the Node.js server. The server then subscribes to the `results` table to confirm the write and retrieve the result data.
 
 ## Chat Command Log
 

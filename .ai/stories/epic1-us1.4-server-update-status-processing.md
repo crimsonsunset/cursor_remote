@@ -7,7 +7,7 @@ Server - Update Command Status to Processing
 
 ## Status
 
-Draft
+Completed
 
 ## Context
 
@@ -24,10 +24,10 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ## Tasks
 
 {
-1. - [ ] In the callback function handling new commands (from US1.3), extract the command ID.
-2. - [ ] Implement a Supabase SDK call to update the `status` of the specific command record to 'processing'.
-3. - [ ] Add error handling for the update operation (e.g., if the record is not found, or Supabase error).
-4. - [ ] Log the status update.
+1. - [x] In the callback function handling new commands (from US1.3), extract the command ID.
+2. - [x] Implement a Supabase SDK call to update the `status` of the specific command record to 'processing'.
+3. - [x] Add error handling for the update operation (e.g., if the record is not found, or Supabase error).
+4. - [x] Log the status update.
 }
 
 ## Constraints

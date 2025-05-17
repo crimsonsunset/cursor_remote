@@ -1,12 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import runAppleScript from '../appleScriptRunner.js';
+import { processCommand } from '../controllers/commandController.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config({ path: '.env' }); // Assumes .env is in the server/ directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-const supabaseProjectId = process.env.SUPABASE_PROJECT_ID;
 
 if (!supabaseUrl) {
   console.error('Error: SUPABASE_URL must be defined in your .env file');
@@ -14,81 +18,140 @@ if (!supabaseUrl) {
 if (!supabaseServiceKey) {
   console.error('Error: SUPABASE_SERVICE_KEY must be defined in your .env file');
 }
-if (!supabaseProjectId) {
-  console.error('Error: SUPABASE_PROJECT_ID must be defined in your .env file');
-}
 
 let supabase = null;
 
-const handleNewCommand = async (payload) => {
-  const newCommand = payload.new;
-  console.log('[Server] New command received:', newCommand);
-
-  if (!newCommand || !newCommand.id || !newCommand.command_text) {
-    console.error('[Server] Received invalid command data, missing ID, or missing command_text.');
-    return;
+// Function to initialize Supabase client if not already initialized
+const initializeSupabase = () => {
+  if (!supabase && supabaseUrl && supabaseServiceKey) {
+    try {
+      supabase = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: false,
+          detectSessionInUrl: false
+        },
+      });
+      console.log('[SupabaseService] Supabase client initialized successfully.');
+    } catch (error) {
+      console.error('[SupabaseService] Error initializing Supabase client:', error.message);
+      supabase = null; // Ensure supabase is null if initialization fails
+    }
+  } else if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('[SupabaseService] Supabase client not initialized due to missing SUPABASE_URL or SUPABASE_SERVICE_KEY.');
   }
+  return supabase;
+};
 
-  const commandId = newCommand.id;
-  const originalCommandText = newCommand.command_text;
-  const chatMode = newCommand.raw_command?.chatMode || "agent";
+// Ensure Supabase is initialized on module load
+initializeSupabase();
 
-  console.log(`[Server] Updating command ${commandId} status to 'processing'...`);
+// NEW: Function to update command status
+export const updateCommandStatus = async (commandId, status, errorMessage = null) => {
+  if (!supabase) {
+    console.error('[SupabaseService] Supabase client not initialized. Cannot update command status.');
+    return { data: null, error: new Error('Supabase client not initialized.') };
+  }
   try {
-    const { data: updateData, error: updateError } = await supabase
+    // Removed 'updated_at' from the update object as it's not in the 'commands' table schema
+    const updatePayload = { status: status, last_error: errorMessage };
+    if (status === 'completed' || status === 'error') {
+        // Optionally, one could add a 'completed_at' or 'finished_at' timestamp here if the schema supports it
+        // For now, just status and last_error as per current schema and issue.
+    }
+
+    const { data, error } = await supabase
       .from('commands')
-      .update({ status: 'processing' })
+      .update(updatePayload)
       .eq('id', commandId)
       .select();
 
-    if (updateError) {
-      console.error(`[Server] Error updating command ${commandId} to 'processing':`, updateError);
-      return;
-    }
-    if (!updateData || updateData.length === 0) {
-      console.warn(`[Server] Command ${commandId} not found when trying to update status to 'processing'.`);
-      return;
-    }
-    console.log(`[Server] Command ${commandId} status updated to 'processing'.`);
-
-    const commandIdToReport = commandId;
-    // outputFilePath is removed as Cursor will write directly to Supabase.
-    // const outputFilePath = `/tmp/cursor_response_${commandIdToReport}.md`; 
-
-    const instructionForCursor = `\n\nIMPORTANT INSTRUCTION FOR AI MODEL (Using Supabase MCP Tools):\nMy original query to you is: "${originalCommandText}".\nThe unique ID for this command instance is: "${commandId}".\nThe Supabase Project ID for your MCP tool to use is: "${supabaseProjectId}".\n\nPlease perform the following steps:\n1. Formulate your complete answer ("your_answer_text") to my original query ("${originalCommandText}").\n2. After you have "your_answer_text", you MUST use your Supabase MCP tool \`mcp_supabase_execute_sql\`.\n3. For this tool call, use project_id: "${supabaseProjectId}".\n4. The SQL query you need to execute is an INSERT statement into the "results" table.\n5. Construct your SQL query. Take your complete answer ("your_answer_text") and prepare it for inclusion in the SQL string literal (let\'s call this '{your_answer_text_for_sql}'). To do this:\n     a. Replace every single quote character (') in "your_answer_text" with two single quote characters ('').\n     b. Actual newline characters in "your_answer_text" should be preserved as they are. Do NOT convert newlines into the literal string \'\\\\n\' or any other escaped sequence.\n   Then, form the SQL query: \`INSERT INTO results (command_id, result_text, is_error) VALUES ('${commandId}', '{your_answer_text_for_sql}', FALSE);\`\n6. Execute this SQL query using your \`mcp_supabase_execute_sql\` tool. This is a critical step to log your response.\n\nAfter completing these steps, you can then present "your_answer_text" to me as your primary response in our chat.\nPlease confirm you understand and will execute these steps, particularly the database logging part.`;
-        
-    const augmentedCommandText = originalCommandText + instructionForCursor;
-
-    console.log(`[Server] Sending to AppleScriptRunner. Original text: "${originalCommandText}"`);
-    // Updated log message, removed reference to outputFilePath
-    console.log(`[Server] Full augmented command for Cursor (instructing Supabase DB write):\n--- START OF AUGMENTED COMMAND ---\n${augmentedCommandText}\n--- END OF AUGMENTED COMMAND ---`);
-    
-    const appleScriptSendConfirmation = await runAppleScript(augmentedCommandText, chatMode);
-
-    if (appleScriptSendConfirmation.success) {
-      // Updated log messages
-      console.log(`[Server] Command ${commandId} (augmented with Supabase DB write instruction) successfully sent to Cursor via AppleScript.`);
-      console.log(`[Server] Instructed Cursor to write its response directly to the Supabase 'results' table for command ID ${commandId}.`);
+    if (error) {
+      console.error(`[SupabaseService] Error updating command ${commandId} to '${status}':`, error);
     } else {
-      console.error(`[Server] Failed to send command ${commandId} to Cursor via AppleScript: ${appleScriptSendConfirmation.error}`);
-      console.log(`[Server] Placeholder: Would record AppleScript send failure for ${commandId}, set status to error.`);
-      // TODO: Implement US1.5 & US1.6 for this specific AppleScript failure path
+      console.log(`[SupabaseService] Command ${commandId} status successfully updated to '${status}'. Data:`, data);
     }
-
+    if ((!data || data.length === 0) && !error) {
+      console.warn(`[SupabaseService] Command ${commandId} not found or no change when trying to update status to '${status}', but no explicit error from Supabase.`);
+    }
+    return { data, error };
   } catch (e) {
-    console.error(`[Server] An unexpected error occurred in handleNewCommand for command ${commandId}:`, e);
-    // TODO: Potentially update command status to 'error' here too
+    console.error(`[SupabaseService] Unexpected error in updateCommandStatus for command ${commandId}:`, e);
+    return { data: null, error: e };
   }
 };
 
-const subscribeToCommands = () => {
+// MODIFIED: handleNewCommand now calls the controller
+const handleNewCommand = async (payload) => {
+  const newCommand = payload.new;
+  console.log('[SupabaseService] New command received via subscription:', newCommand.id);
+
+  if (!newCommand || !newCommand.id || !newCommand.command_text) {
+    console.error('[SupabaseService] Received invalid command data from subscription, missing ID or command_text.');
+    return;
+  }
+  // Delegate to CommandController
+  processCommand(newCommand).catch(controllerError => {
+      console.error(`[SupabaseService] Error from processCommand for command ${newCommand.id}:`, controllerError);
+      // Attempt to mark the command as error in Supabase if controller failed catastrophically
+      updateCommandStatus(newCommand.id, 'error', `Controller processing failed: ${controllerError.message}`);
+  });
+};
+
+// NEW: Function to subscribe to results for a specific command_id
+export const subscribeToResultForCommand = (commandId, callback) => {
   if (!supabase) {
-    console.error('[Server] Supabase client not initialized. Cannot subscribe to commands.');
+    console.error('[SupabaseService] Supabase client not initialized. Cannot subscribe to results.');
+    return null;
+  }
+  try {
+    const channelName = `result_for_command_${commandId}`.replace(/-/g, '_'); // Sanitize for channel name
+    const subscription = supabase
+      .channel(channelName) // Unique channel per command for result
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'results', filter: `command_id=eq.${commandId}` },
+        callback
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[SupabaseService] Successfully subscribed to results for command ${commandId} on channel ${channelName}.`);
+        } else if (err) {
+          console.error(`[SupabaseService] Error subscribing to results for command ${commandId} on channel ${channelName}:`, err);
+        } else {
+          console.log(`[SupabaseService] Result subscription status for command ${commandId} on channel ${channelName}: ${status}`);
+        }
+      });
+    return subscription;
+  } catch (e) {
+    console.error(`[SupabaseService] Exception when trying to subscribe to results for command ${commandId}:`, e);
+    return null;
+  }
+};
+
+// NEW: Function to clear/unsubscribe from a Supabase channel subscription
+export const clearResultSubscription = async (subscription) => {
+  if (subscription && typeof subscription.unsubscribe === 'function') {
+    try {
+      await supabase.removeChannel(subscription);
+      console.log(`[SupabaseService] Successfully unsubscribed and removed channel: ${subscription.channelName}`);
+    } catch (error) {
+      console.error("[SupabaseService] Error unsubscribing/removing channel:", error, "Channel:", subscription.channelName);
+    }
+  } else {
+    console.warn("[SupabaseService] Attempted to clear an invalid or already cleared subscription.");
+  }
+};
+
+// Main subscription to new commands
+const subscribeToCommands = () => {
+  if (!initializeSupabase()) { // Ensure client is initialized before subscribing
+    console.error('[SupabaseService] Supabase client not initialized. Cannot subscribe to commands.');
     return null;
   }
 
   const commandsSubscription = supabase
-    .channel('public:commands')
+    .channel('public_commands_insert') // Changed channel name for clarity
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
@@ -98,35 +161,20 @@ const subscribeToCommands = () => {
     )
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
-        console.log('[Server] Successfully subscribed to new commands!');
+        console.log('[SupabaseService] Successfully subscribed to new commands!');
       } else if (status === 'TIMED_OUT') {
-        console.error('[Server] Subscription to commands timed out.');
+        console.error('[SupabaseService] Subscription to commands timed out.');
       } else if (status === 'CHANNEL_ERROR') {
-        console.error('[Server] Subscription to commands failed due to a channel error:', err);
+        console.error('[SupabaseService] Subscription to commands failed due to a channel error:', err);
       } else if (err) {
-        console.error('[Server] Error subscribing to commands:', err);
+        console.error('[SupabaseService] Error subscribing to commands:', err);
       }
     });
 
   return commandsSubscription;
 };
 
-if (supabaseUrl && supabaseServiceKey && supabaseProjectId) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: false,
-        detectSessionInUrl: false
-      },
-    });
-    console.log('[Server] Supabase client initialized successfully. Ready to connect.');
-    subscribeToCommands();
-  } catch (error) {
-    console.error('[Server] Error initializing Supabase client:', error.message);
-  } 
-} else {
-  console.warn('[Server] Supabase client not initialized due to missing SUPABASE_URL, SUPABASE_SERVICE_KEY, or SUPABASE_PROJECT_ID.');
-}
+// Start the main command subscription when the service is loaded
+subscribeToCommands();
 
-export default supabase;
+export default supabase; // Exporting the client itself might be useful for direct use elsewhere if needed but primarily controller uses exported functions.

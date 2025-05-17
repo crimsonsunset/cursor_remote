@@ -7,7 +7,7 @@ Server - Error Handling for Script Execution
 
 ## Status
 
-Draft
+Completed
 
 ## Context
 
@@ -24,17 +24,17 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ## Tasks
 
 {
-1. - [ ] Review existing AppleScript execution logic in the Node.js server.
-2. - [ ] Identify potential error sources during AppleScript interaction (e.g., `child_process` errors, script errors, timeouts).
-3. - [ ] Implement comprehensive try-catch blocks or promise rejection handling around AppleScript calls.
-4. - [ ] When an error is caught:
-   1. - [ ] Format a descriptive error message.
-   2. - [ ] Store this message in `results.error_message` (as per US1.5 logic for errors).
-   3. - [ ] Set `results.is_error` to TRUE.
-   4. - [ ] Store the same (or a summarized) error message in `commands.last_error` (as per US1.6 logic for errors).
-   5. - [ ] Update `commands.status` to 'error'.
-5. - [ ] Ensure that even if AppleScript execution fails, the server doesn't crash and proceeds to record the error state in Supabase.
-6. - [ ] Add specific logging for AppleScript execution errors.
+1. - [x] Review existing AppleScript execution logic in the Node.js server.
+2. - [x] Identify potential error sources during AppleScript interaction (e.g., `child_process` errors, script errors, timeouts).
+3. - [x] Implement comprehensive try-catch blocks or promise rejection handling around AppleScript calls.
+4. - [x] When an error is caught:
+   1. - [x] Format a descriptive error message.
+   2. - [x] Store this message in `results.error_message` (as per US1.5 logic for errors). (Note: For direct AppleScript execution failures, this step is bypassed; error is directly logged to `commands.last_error`. For errors reported by AI *after* successful script execution, AI writes to `results.error_message`.
+   3. - [x] Set `results.is_error` to TRUE. (Note: Same as above. AI sets this for its errors. For direct AppleScript failures, no `results` entry is created.
+   4. - [x] Store the same (or a summarized) error message in `commands.last_error` (as per US1.6 logic for errors).
+   5. - [x] Update `commands.status` to 'error'.
+5. - [x] Ensure that even if AppleScript execution fails, the server doesn't crash and proceeds to record the error state in Supabase (in the `commands` table).
+6. - [x] Add specific logging for AppleScript execution errors.
 }
 
 ## Constraints
@@ -45,8 +45,8 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 
 ## Data Models / Schema
 
-- Writes error information to `results.error_message`, `results.is_error` (US1.2, PRD 4.1.2).
-- Writes error information to `commands.last_error` and updates `commands.status` (US1.1, PRD 4.1.1).
+- Writes error information to `results.error_message`, `results.is_error` (US1.2, PRD 4.1.2) - Note: This is done by AI for its reported errors.
+- Writes error information to `commands.last_error` and updates `commands.status` (US1.1, PRD 4.1.1) - Note: Server does this directly for AppleScript execution failures, or based on AI-populated `results` data.
 
 ## Structure
 
@@ -57,17 +57,19 @@ Story Points: {Story Points (1 SP = 1 day of Human Development = 10 minutes of A
 ```mermaid
 graph TD
     A[Receive Command] --> B{Attempt AppleScript Execution};
-    B -- Success --> C[Process Result Normally (US1.5, US1.6)];
-    B -- Failure/Error --> D[Catch Error];
+    B -- Success --> C[Await AI Result from 'results' table (US1.5, US1.6)];
+    C -- AI Reports Success in 'results' --> CS[Update 'commands' status to 'completed'];
+    C -- AI Reports Error in 'results' --> CE[Update 'commands' status to 'error' & last_error from 'results'];
+    B -- Script Execution Failure/Error --> D[Catch Error by Server];
     D --> E[Format Error Message];
-    E --> F[Store Error in 'results' table (is_error=TRUE)];
-    F --> G[Update 'commands' status to 'error' & store in last_error];
+    E --> G[Update 'commands' status to 'error' & store in last_error (Bypasses 'results' table for this type of error)];
 ```
 
 ## Dev Notes
 
 - Consider standardizing error codes or types if a wide variety of AppleScript errors are anticipated, though for now, descriptive messages are key.
-- Timeouts for AppleScript execution should be implemented if not already present, to prevent indefinite hangs.
+- Timeouts for AppleScript execution should be implemented if not already present, to prevent indefinite hangs. (Implemented in commandController.js)
+- **Implementation Clarification**: For simplicity, direct AppleScript execution failures (e.g., script not found, osascript error, timeout before AI can write to results) are handled by the server by directly updating the `commands` table to an 'error' state with the relevant error message in `last_error`. No separate error entry is created in the `results` table by the server in these cases. If the AppleScript runs successfully but the AI encounters an issue performing the task or writing to the database, the AI is responsible for creating an error entry in the `results` table, which the server then uses to update the `commands` table.
 
 ## Chat Command Log
 
