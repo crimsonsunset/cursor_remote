@@ -137,3 +137,4 @@ dist
 .cursor/mcp.json
 
 server/.env
+client/env-config.js

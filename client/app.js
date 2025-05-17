@@ -6,6 +6,27 @@
  * 因为浏览器不能直接连接Redis服务器。
  */
 
+// const SUPABASE_URL = 'https://rzsupavqzxhyrgcexrpx.supabase.co'; // To be replaced by env var
+// const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6c3VwYXZxenhoeXJnY2V4cnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc0NzI4MTMsImV4cCI6MjA2MzA0ODgxM30.6S5s7ruZA6x3JRc6d9Oq8USOBxoDlJCXOXTOaJKimPA'; // To be replaced by env var
+
+let supabaseClient;
+
+// Supabase SDK and config are expected to be loaded via CDN and env-config.js respectively
+if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
+    typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY &&
+    typeof supabase !== 'undefined' && supabase.createClient) {
+    try {
+        supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+        console.log('Supabase client initialized with credentials from window object:', supabaseClient);
+    } catch (error) {
+        console.error('Error initializing Supabase client with provided credentials:', error);
+        supabaseClient = null; // Ensure client is null if initialization fails
+    }
+} else {
+    console.error('Supabase URL/Anon Key not found on window object, or Supabase SDK not loaded. Supabase client NOT initialized.');
+    // UI update for this error is handled in initApp
+}
+
 // 应用状态
 const appState = {
     connected: false,
@@ -46,6 +67,14 @@ function initApp() {
     
     // 设置事件监听器
     setupEventListeners();
+
+    // 检查Supabase客户端是否已初始化
+    if (!supabaseClient) {
+        updateConnectionStatus(false, 'Supabase配置错误');
+        // 可以选择显示设置模态框或特定错误消息
+        // showSettingsModal(); // 或者其他UI提示
+        return; // 阻止进一步执行，因为Supabase未初始化
+    }
     
     // 尝试连接到服务器
     if (appState.settings.redisHost) {
@@ -83,7 +112,7 @@ function saveSettings(formData) {
     // 更新状态
     appState.settings = {
         redisHost: formData.get('redisHost'),
-        redisPort: parseInt(formData.get('redisPort')),
+        redisPort: Number.parseInt(formData.get('redisPort')),
         redisPassword: formData.get('redisPassword'),
         commandChannel: formData.get('commandChannel'),
         resultChannel: formData.get('resultChannel')
@@ -139,14 +168,14 @@ function setupEventListeners() {
     });
     
     // 动作按钮点击
-    elements.actionButtons.forEach(button => {
+    for (const button of elements.actionButtons) {
         button.addEventListener('click', () => {
             const action = button.dataset.action;
             if (action) {
                 performAction(action);
             }
         });
-    });
+    }
 }
 
 // 显示设置对话框
@@ -367,7 +396,7 @@ function handleResponse(response) {
     } 
     // 处理动作响应
     else if (command.type === 'action') {
-        const success = response.result && response.result.success;
+        const success = response.result?.success;
         const message = success
             ? response.result.result
             : `操作失败: ${response.result?.error || '未知错误'}`;
@@ -417,9 +446,9 @@ function renderMessageHistory() {
             appState.messageHistory = JSON.parse(savedHistory);
             
             // 渲染每条消息
-            appState.messageHistory.forEach(message => {
+            for (const message of appState.messageHistory) {
                 renderMessage(message);
-            });
+            }
             
             // 滚动到底部
             scrollChatToBottom();

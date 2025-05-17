@@ -2,6 +2,17 @@
 
 通过Redis实现手机远程控制Cursor的解决方案。
 
+## 一键部署到 Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fterryso%2Fcursor_remote&env=SUPABASE_URL,SUPABASE_ANON_KEY&envDescription=SUPABASE_URL%20is%20your%20Supabase%20project%20URL.%20SUPABASE_ANON_KEY%20is%20your%20Supabase%20project%20anon%20key.&project-name=cursor-remote-client&repository-name=cursor-remote-client)
+
+点击上面的按钮将此项目部署到 Vercel。您需要提供以下环境变量：
+
+- `SUPABASE_URL`: 您的 Supabase 项目 URL。
+- `SUPABASE_ANON_KEY`: 您的 Supabase 项目匿名 (anon) 密钥。
+
+这些密钥用于连接到您的 Supabase 后端。匿名密钥是公开安全的，但应特定于您的项目。
+
 ## 项目结构
 
 - `server/`: 服务器端代码，包含Redis客户端和AppleScript控制脚本

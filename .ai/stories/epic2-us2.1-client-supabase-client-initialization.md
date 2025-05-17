@@ -27,13 +27,13 @@
 ## Tasks
 
 {
-1.  - [ ] 在Web客户端项目中包含Supabase JavaScript SDK (`@supabase/supabase-js`)（例如，如果使用捆绑器，则添加到 `package.json`，或在 `index.html` 中添加CDN链接）。
-2.  - [ ] 如果使用捆绑器，安装依赖项。
-3.  - [ ] 使Supabase项目URL和匿名密钥可用于客户端JavaScript（例如，嵌入HTML，从配置端点获取，或者如果认为不敏感则直接在JS中）。
-4.  - [ ] 在客户端JavaScript中（例如，在 `app.js` 中）实现逻辑，以便在页面加载或应用初始化时使用 `createClient` 初始化Supabase客户端实例。
-5.  - [ ] 使此客户端实例在客户端代码中或相关模块/作用域内全局可访问。
-6.  - [ ] 添加基本检查或控制台日志以确认客户端初始化成功。
-7.  - [ ] 处理初始化期间的潜在错误。
+1.  - [x] 在Web客户端项目中包含Supabase JavaScript SDK (`@supabase/supabase-js`)（例如，如果使用捆绑器，则添加到 `package.json`，或在 `index.html` 中添加CDN链接）。
+2.  - [x] ~~如果使用捆绑器，安装依赖项。~~ (由于使用CDN，此步骤跳过)
+3.  - [x] 使Supabase项目URL和匿名密钥可用于客户端JavaScript（已直接在 `client/app.js` 中定义）。
+4.  - [x] 在客户端JavaScript中（例如，在 `app.js` 中）实现逻辑，以便在页面加载或应用初始化时使用 `createClient` 初始化Supabase客户端实例。
+5.  - [x] 使此客户端实例在客户端代码中或相关模块/作用域内全局可访问 (当前在 `app.js` 顶层作用域，满足现阶段需求)。
+6.  - [x] 添加基本检查或控制台日志以确认客户端初始化成功。
+7.  - [x] 处理初始化期间的潜在错误 (已添加对常量和SDK加载的检查，并在失败时更新状态)。
 }
 
 ## Constraints
