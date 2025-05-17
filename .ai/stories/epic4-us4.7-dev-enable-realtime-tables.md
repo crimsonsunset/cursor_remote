@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+完成
 
 ## Context
 
@@ -26,18 +26,18 @@
 ## Tasks
 
 {
-1. - [ ] 导航到Supabase仪表盘，选择对应项目。
-2. - [ ] 进入 "Database" -> "Replication" 部分。
-3. - [ ] 在 "Source" 下查看当前的复制设置，通常会看到一个名为 `supabase_realtime` 的publication。
-4. - [ ] 点击 `supabase_realtime` publication右侧的数字（表示发布的表数量）或编辑按钮，查看哪些表被包含。
-5. - [ ] 确认 `public.commands` 表（以及根据需要，`public.results` 表）是否在列表中。
-6. - [ ] 如果`commands`表（或`results`表）未被发布：
-   1. - [ ] 勾选 `public.commands` (和 `public.results`) 使其能被发布 (all tables / specific tables)。
-   2.  或者通过SQL `ALTER PUBLICATION supabase_realtime ADD TABLE commands, results;` (确保使用正确的schema，通常是`public`)
-7. - [ ] 保存更改（如果通过UI操作）。
-8. - [ ] 验证：
-   1. - [ ] 服务器端能否成功建立对`commands`表的实时订阅 (US1.3)。
-   2. - [ ] 客户端能否成功建立对`commands`表（或其记录）的实时订阅 (US2.3)。
+1. - [x] 导航到Supabase仪表盘，选择对应项目。
+2. - [x] 进入 "Database" -> "Replication" 部分。
+3. - [x] 在 "Source" 下查看当前的复制设置，通常会看到一个名为 `supabase_realtime` 的publication。
+4. - [x] 点击 `supabase_realtime` publication右侧的数字（表示发布的表数量）或编辑按钮，查看哪些表被包含。
+5. - [x] 确认 `public.commands` 表（以及根据需要，`public.results` 表）是否在列表中。
+6. - [x] 如果`commands`表（或`results`表）未被发布：
+   1. - [x] 勾选 `public.commands` (和 `public.results`) 使其能被发布 (all tables / specific tables)。
+   2.  - [x] 或者通过SQL `ALTER PUBLICATION supabase_realtime ADD TABLE commands, results;` (确保使用正确的schema，通常是`public`)
+7. - [x] 保存更改（如果通过UI操作）。
+8. - [x] 验证：
+   1. - [x] 服务器端能否成功建立对`commands`表的实时订阅 (US1.3)。
+   2. - [x] 客户端能否成功建立对`commands`表（或其记录）的实时订阅 (US2.3)。
 }
 
 ## Constraints

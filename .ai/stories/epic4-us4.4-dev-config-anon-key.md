@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+完成
 
 ## Context
 
@@ -26,14 +26,14 @@
 ## Tasks
 
 {
-1. - [ ] 导航到Supabase项目的仪表盘。
-2. - [ ] 进入 "Project Settings" (项目设置)。
-3. - [ ] 选择 "API" 标签页。
-4. - [ ] 找到 "Project API keys" 部分下的 "anon" (public) 密钥。
-5. - [ ] 复制此密钥以及项目的URL。
-6. - [ ] 在Web客户端代码中配置此anon key和项目URL (参考US2.1 - 客户端Supabase客户端初始化)。
-   1. - [ ] 例如，在JavaScript初始化代码中设置 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。
-7. - [ ] 确保客户端能使用这些凭证成功初始化Supabase客户端实例。
+1. - [x] 导航到Supabase项目的仪表盘。
+2. - [x] 进入 "Project Settings" (项目设置)。
+3. - [x] 选择 "API" 标签页。
+4. - [x] 找到 "Project API keys" 部分下的 "anon" (public) 密钥。
+5. - [x] 复制此密钥以及项目的URL。
+6. - [x] 在Web客户端代码中配置此anon key和项目URL (参考US2.1 - 客户端Supabase客户端初始化)。
+   1. - [x] 例如，在JavaScript初始化代码中设置 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。
+7. - [x] 确保客户端能使用这些凭证成功初始化Supabase客户端实例。
 }
 
 ## Constraints

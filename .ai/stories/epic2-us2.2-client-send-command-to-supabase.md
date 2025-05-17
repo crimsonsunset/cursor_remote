@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+进行中
 
 ## Context
 
@@ -25,11 +25,11 @@
 ## Tasks
 
 {
-1. - [ ] 实现指令输入的UI界面 (如果尚未存在)。
-2. - [ ] 开发函数以构建指令对象 (需符合`commands`表结构)。
-   1. - [ ] 确保包含`user_id` (即使是匿名ID)、`command_text`和初始`status` ('pending')。
-3. - [ ] 实现Supabase客户端调用，将新指令插入到`commands`表。
-4. - [ ] 为插入操作添加基本的错误处理 (例如网络问题、Supabase错误)。
+1. - [x] 实现指令输入的UI界面 (如果尚未存在)。
+2. - [x] 开发函数以构建指令对象 (需符合`commands`表结构)。
+   1. - [x] 确保包含`user_id` (即使是匿名ID)、`command_text`和初始`status` ('pending')。
+3. - [x] 实现Supabase客户端调用，将新指令插入到`commands`表。
+4. - [x] 为插入操作添加基本的错误处理 (例如网络问题、Supabase错误)。
 5. - [ ] 测试从客户端到Supabase的指令提交流程。
 }
 

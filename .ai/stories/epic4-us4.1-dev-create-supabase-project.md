@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+完成
 
 ## Context
 
@@ -26,16 +26,16 @@
 ## Tasks
 
 {
-1. - [ ] 访问 Supabase 官方网站 (supabase.com)。
-2. - [ ] 登录或注册Supabase账户。
-3. - [ ] 在Supabase仪表盘中，选择或创建一个组织。
-4. - [ ] 点击"New project"或类似按钮。
-5. - [ ] 为项目命名 (例如，"CursorRemoteControl")。
-6. - [ ] 生成并安全地保存数据库密码。
-7. - [ ] 选择一个区域 (Region)。
-8. - [ ] 选择定价计划 (例如，Free Tier)。
-9. - [ ] 点击"Create new project"并等待项目初始化完成。
-10. - [ ] 记录下项目的URL和API密钥（anon key 和 service_role key），特别是后面故事会用到的 Project URL, anon key, service_role key。
+1. - [x] 访问 Supabase 官方网站 (supabase.com)。
+2. - [x] 登录或注册Supabase账户。
+3. - [x] 在Supabase仪表盘中，选择或创建一个组织。
+4. - [x] 点击"New project"或类似按钮。
+5. - [x] 为项目命名 (例如，"CursorRemoteControl")。
+6. - [x] 生成并安全地保存数据库密码。
+7. - [x] 选择一个区域 (Region)。
+8. - [x] 选择定价计划 (例如，Free Tier)。
+9. - [x] 点击"Create new project"并等待项目初始化完成。
+10. - [x] 记录下项目的URL和API密钥（anon key 和 service_role key），特别是后面故事会用到的 Project URL, anon key, service_role key。
 }
 
 ## Constraints

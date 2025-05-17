@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+完成
 
 ## Context
 
@@ -26,14 +26,14 @@
 ## Tasks
 
 {
-1. - [ ] 导航到Supabase项目的仪表盘。
-2. - [ ] 进入 "Project Settings" (项目设置)。
-3. - [ ] 选择 "API" 标签页。
-4. - [ ] 找到 "Project API keys" 部分下的 "service_role" 密钥。
-5. - [ ] **安全地**复制此密钥。
-6. - [ ] 为Node.js服务器应用配置环境变量 (例如，在 `.env` 文件中设置 `SUPABASE_SERVICE_KEY` 为复制的密钥值)。
-7. - [ ] 确保服务器代码 (参考US1.8 - 服务器Supabase客户端初始化) 读取此环境变量以初始化Supabase admin客户端。
-8. - [ ] 验证服务器是否能使用此密钥成功连接并执行需要提升权限的操作（初步验证，完整验证在其他故事中）。
+1. - [x] 导航到Supabase项目的仪表盘。
+2. - [x] 进入 "Project Settings" (项目设置)。
+3. - [x] 选择 "API" 标签页。
+4. - [x] 找到 "Project API keys" 部分下的 "service_role" 密钥。
+5. - [x] **安全地**复制此密钥。
+6. - [x] 为Node.js服务器应用配置环境变量 (例如，在 `.env` 文件中设置 `SUPABASE_SERVICE_KEY` 为复制的密钥值)。
+7. - [x] 确保服务器代码 (参考US1.8 - 服务器Supabase客户端初始化) 读取此环境变量以初始化Supabase admin客户端。
+8. - [x] 验证服务器是否能使用此密钥成功连接并执行需要提升权限的操作（初步验证，完整验证在其他故事中）。
 }
 
 ## Constraints

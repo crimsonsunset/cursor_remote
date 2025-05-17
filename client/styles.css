@@ -125,6 +125,28 @@ textarea {
     margin-top: 0.25rem;
 }
 
+/* 消息内容中的列表样式 */
+.message-content ul,
+.message-content ol {
+    padding-left: 20px; /* 为第一层列表项符号留出空间，并提供一些缩进 */
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.message-content li {
+    margin-bottom: 0.25em;
+}
+
+/* 嵌套列表的缩进 */
+.message-content ul ul,
+.message-content ul ol,
+.message-content ol ul,
+.message-content ol ol {
+    margin-left: 20px; /* 额外的缩进给嵌套列表 */
+    margin-top: 0.25em;
+    margin-bottom: 0.25em;
+}
+
 /* 操作按钮区 */
 .actions-section {
     background-color: #fff;

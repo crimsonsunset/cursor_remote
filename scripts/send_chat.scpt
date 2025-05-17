@@ -2,7 +2,7 @@
 
 -- 发送聊天消息到Cursor的AppleScript
 -- 用法: osascript send_chat.scpt "您的消息内容" ["模式"]
--- 模式可选值: "chat", "agent", "agent"(默认)
+-- 模式可选值: "ask", "agent", "agent"(默认)
 -- 返回: Cursor的响应文本
 
 on run argv
@@ -30,12 +30,9 @@ on run argv
             -- 先按 Escape 键尝试取消输入框焦点，避免关闭已打开的agent聊天框
             key code 53 -- Escape key
             delay 0.5 -- 短暂延迟，确保Escape生效
-            
+
             -- 根据不同的聊天模式使用相应的快捷键
-            if chatMode is "chat" then
-                -- 使用⌘+⇧+K打开普通聊天 (根据用户反馈修正)
-                key code 40 using {command down, shift down}
-            else if chatMode is "agent" then
+            if chatMode is "agent" then
                 -- 使用⌘+I打开Agent
                 key code 34 using {command down}
             else if chatMode is "ask" then

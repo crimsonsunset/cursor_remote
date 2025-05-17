@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+Completed
 
 ## Context
 
@@ -20,17 +20,17 @@
 
 ## Estimation
 
-故事点: {待定}
+故事点: {已随US2.3完成}
 
 ## Tasks
 
 {
-1. - [ ] 当指令状态变为 'completed' 时 (通过US2.3的订阅)，触发获取其结果的逻辑。
-2. - [ ] 实现Supabase客户端调用，以查询`results`表中与`command_id`匹配的条目。
-3. - [ ] 开发逻辑以解析/处理获取到的结果中的`result_text`和任何`error_details`。
-4. - [ ] 更新客户端UI以显示指令结果或错误信息。
-5. - [ ] 为获取结果添加错误处理 (例如结果未找到、Supabase错误)。
-6. - [ ] 测试成功指令和以错误结束的指令的结果检索和显示。
+1. - [x] 当指令状态变为 'completed' 时 (通过US2.3的订阅)，触发获取其结果的逻辑。
+2. - [x] 实现Supabase客户端调用，以查询`results`表中与`command_id`匹配的条目。
+3. - [x] 开发逻辑以解析/处理获取到的结果中的`result_text`和任何`error_details`。
+4. - [x] 更新客户端UI以显示指令结果或错误信息。
+5. - [x] 为获取结果添加错误处理 (例如结果未找到、Supabase错误)。
+6. - [x] 测试成功指令和以错误结束的指令的结果检索和显示。
 }
 
 ## Constraints

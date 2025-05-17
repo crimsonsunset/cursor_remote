@@ -8,7 +8,7 @@
 
 ## Status
 
-草稿
+Completed
 
 ## Context
 
@@ -20,16 +20,16 @@
 
 ## Estimation
 
-故事点: {待定}
+故事点: {已完成}
 
 ## Tasks
 
 {
-1. - [ ] 在客户端UI中设计一种一致的方式来显示错误消息 (例如，toast通知、专用的错误区域)。
-2. - [ ] 确保捕获并显示来自Supabase客户端操作（插入指令、订阅、获取结果）的错误。
-3. - [ ] 当指令状态为 'error' 时，显示`commands`表中的`error_message` (PRD中为`last_error`)。
-4. - [ ] 如果可用，当指令执行失败时，显示`results`表中的`error_details` (PRD中为`error_message`)。
-5. - [ ] 测试不同场景下的错误显示 (例如，提交时网络故障、后端脚本执行错误、结果未找到)。
+1. - [x] 在客户端UI中设计一种一致的方式来显示错误消息 (通过通知和聊天历史中的错误消息实现)。
+2. - [x] 确保捕获并显示来自Supabase客户端操作（插入指令、订阅、获取结果）的错误。
+3. - [x] 当指令状态为 'error' 时，显示`commands`表中的`error_message` (PRD中为`last_error`, 代码中使用`error_message`，与commands表schema一致)。
+4. - [x] 如果可用，当指令执行失败时，显示`results`表中的`error_details` (PRD中为`error_message`, 已实现通过`results.error_message`和`is_error`字段处理)。
+5. - [x] 测试不同场景下的错误显示 (例如，提交时网络故障、后端脚本执行错误、结果未找到)。 (由用户验证完成)
 }
 
 ## Constraints

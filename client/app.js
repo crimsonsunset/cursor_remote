@@ -27,6 +27,201 @@ if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
     // UI update for this error is handled in initApp
 }
 
+// At the top of the file, or with other app-level state variables
+const activeSubscriptions = new Map(); // To keep track of active subscriptions
+
+/**
+ * 生成一个简单的 UUID v4 字符串。
+ * @returns {string} UUID v4.
+ */
+function generateUUIDv4() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Basic fallback if crypto.randomUUID is not available
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+/**
+ * 构建用于发送到 Supabase 'commands' 表的指令对象。
+ * @param {string} commandText - 用户输入的指令文本。
+ * @returns {object} - 符合 'commands' 表结构的指令对象。
+ */
+function buildSupabaseCommandPayload(commandText) {
+    // 为匿名用户生成一个临时的 UUID 作为 user_id
+    const userId = generateUUIDv4(); 
+    return {
+        user_id: userId,
+        command_text: commandText,
+        status: 'pending'
+    };
+}
+
+/**
+ * 处理已完成的指令，从 results 表获取并显示结果。
+ * @param {string} commandDbId - 数据库中 commands 表指令的UUID。
+ * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
+ */
+async function handleCompletedCommand(commandDbId, originalCommandText) {
+    console.log(`Command ${commandDbId} completed. Fetching result from 'results' table.`);
+    try {
+        const { data: resultsData, error: resultsError } = await supabaseClient
+            .from('results')
+            .select('result_text, error_message, is_error') 
+            .eq('command_id', commandDbId) 
+            .single(); 
+
+        if (resultsError) {
+            console.error(`Error fetching result for command ${commandDbId}:`, resultsError);
+            addMessageToHistory({
+                type: 'error',
+                content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
+                timestamp: Date.now()
+            });
+        } else if (resultsData) {
+            if (resultsData.is_error) {
+                addMessageToHistory({
+                    type: 'error',
+                    content: resultsData.error_message || '指令执行发生未知错误 (来自results表)',
+                    timestamp: Date.now()
+                });
+            } else {
+                addMessageToHistory({
+                    type: 'cursor',
+                    content: resultsData.result_text, 
+                    timestamp: Date.now()
+                });
+            }
+        } else {
+            addMessageToHistory({
+                type: 'error',
+                content: `指令 "${originalCommandText}" 已完成，但未找到结果。`,
+                timestamp: Date.now()
+            });
+        }
+    } catch (fetchErr) {
+        console.error(`Unexpected error fetching result for command ${commandDbId}:`, fetchErr);
+        addMessageToHistory({
+            type: 'error',
+            content: `获取指令 "${originalCommandText}" 结果时发生意外错误。`,
+            timestamp: Date.now()
+        });
+    }
+    renderMessageHistory(); 
+    scrollChatToBottom();
+}
+
+/**
+ * 订阅特定指令ID的状态更新。
+ * @param {string} commandDbId - 数据库中指令的UUID。
+ * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
+ */
+function subscribeToCommandUpdates(commandDbId, originalCommandText) {
+    console.log(`[DEBUG] Attempting to subscribe for command ID: ${commandDbId}`);
+    const channelName = `command-${commandDbId}`;
+    if (activeSubscriptions.has(channelName)) {
+        const oldChannel = activeSubscriptions.get(channelName);
+        supabaseClient.removeChannel(oldChannel);
+        activeSubscriptions.delete(channelName);
+    }
+
+    const channel = supabaseClient.channel(channelName);
+    activeSubscriptions.set(channelName, channel);
+
+    channel
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'commands',
+                filter: `id=eq.${commandDbId}`
+            },
+            async (payload) => { // 注意这里变成 async
+                console.log('[DEBUG] postgres_changes CALLBACK TRIGGERED. Payload:', payload);
+                const updatedCommand = payload.new;
+
+                if (updatedCommand.status === 'completed') {
+                    await handleCompletedCommand(updatedCommand.id, originalCommandText); 
+                    supabaseClient.removeChannel(channel);
+                    activeSubscriptions.delete(channelName);
+                } else if (updatedCommand.status === 'error') {
+                    addMessageToHistory({
+                        type: 'error',
+                        content: `指令处理错误: ${updatedCommand.error_message || '未知错误'} (来自commands表)`,
+                        timestamp: Date.now()
+                    });
+                    renderMessageHistory();
+                    scrollChatToBottom();
+                    supabaseClient.removeChannel(channel);
+                    activeSubscriptions.delete(channelName);
+                } else if (updatedCommand.status === 'processing') {
+                    console.log(`Command ${commandDbId} is processing.`);
+                }
+            }
+        )
+        .subscribe((status, err) => {
+            console.log(`[DEBUG] SUBSCRIBE CALLBACK TRIGGERED. Status: ${status}`, err ? `Error: ${JSON.stringify(err)}` : '');
+            if (status === 'SUBSCRIBED') {
+                console.log(`Subscribed to updates for command ${commandDbId} on 'commands' table.`);
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.error(`Subscription error for command ${commandDbId} on 'commands' table:`, status, err);
+                addNotificationToChat(`无法订阅指令状态: ${err?.message || status}`);
+                activeSubscriptions.delete(channelName);
+            } else if (status === 'CLOSED') {
+                console.log(`Subscription closed for command ${commandDbId} on 'commands' table.`);
+                activeSubscriptions.delete(channelName);
+            }
+        });
+}
+
+/**
+ * 异步发送指令到 Supabase 'commands' 表。
+ * @param {object} commandPayload - 要发送的指令对象。
+ */
+async function sendSupabaseCommand(commandPayload) {
+    if (!supabaseClient) {
+        console.error('Supabase client is not initialized. Cannot send command.');
+        addNotificationToChat('错误：无法连接到服务，请检查配置。');
+        return;
+    }
+
+    try {
+        addMessageToHistory({
+            type: 'user',
+            content: commandPayload.command_text,
+            timestamp: Date.now()
+        });
+        renderMessageHistory();
+        scrollChatToBottom();
+
+        const { data, error } = await supabaseClient
+            .from('commands')
+            .insert([commandPayload])
+            .select(); // .select() will return an array
+
+        if (error) {
+            console.error('Error sending command to Supabase:', error);
+            addNotificationToChat(`发送指令失败: ${error.message}`);
+        } else if (data && data.length > 0) { // Check if data is an array and has items
+            const insertedCommand = data[0];
+            console.log('Command sent to Supabase successfully:', insertedCommand);
+            console.log('Command ID:', insertedCommand.id);
+            subscribeToCommandUpdates(insertedCommand.id, commandPayload.command_text);
+        } else {
+            console.error('Command sent to Supabase, but no data returned.');
+            addNotificationToChat('指令已发送，但未收到确认。');
+        }
+    } catch (err) {
+        console.error('Unexpected error sending command:', err);
+        addNotificationToChat(`发送指令时发生意外错误: ${err.message}`);
+    }
+}
+
 // 应用状态
 const appState = {
     connected: false,
@@ -76,13 +271,9 @@ function initApp() {
         return; // 阻止进一步执行，因为Supabase未初始化
     }
     
-    // 尝试连接到服务器
-    if (appState.settings.redisHost) {
-        updateConnectionStatus(false, '正在连接...');
-        connectToServer();
-    } else {
-        showSettingsModal();
-    }
+    // 如果 Supabase 客户端已成功初始化，我们更新连接状态
+    // 并跳过旧的 Redis 连接尝试及设置窗口的显示逻辑
+    updateConnectionStatus(true, '已连接 (Supabase)');
     
     // 显示历史消息
     renderMessageHistory();
@@ -129,63 +320,40 @@ function saveSettings(formData) {
 // 设置事件监听器
 function setupEventListeners() {
     // 发送按钮点击
-    elements.sendButton.addEventListener('click', () => {
-        sendMessage();
+    elements.sendButton.addEventListener('click', async () => { // 注意 async
+        const messageText = elements.messageInput.value.trim();
+        if (messageText) {
+            const commandPayload = buildSupabaseCommandPayload(messageText);
+            // console.log('Command payload for Supabase:', commandPayload); // 用于调试
+
+            await sendSupabaseCommand(commandPayload); // 调用新的异步函数
+            
+            // 旧的 sendMessage() 逻辑可以暂时保留或逐步替换
+            // sendMessage(); // 这是旧的 Redis 相关逻辑调用
+
+            elements.messageInput.value = ''; // 清空输入框
+        }
     });
     
     // 输入框按Enter发送
-    elements.messageInput.addEventListener('keydown', (event) => {
+    elements.messageInput.addEventListener('keydown', async (event) => { // 注意 async
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    // 显示设置对话框
-    elements.settingsButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        showSettingsModal();
-    });
-    
-    // 关闭设置对话框
-    elements.closeModal.addEventListener('click', () => {
-        hideSettingsModal();
-    });
-    
-    // 点击模态框外部关闭
-    elements.settingsModal.addEventListener('click', (event) => {
-        if (event.target === elements.settingsModal) {
-            hideSettingsModal();
-        }
-    });
-    
-    // 设置表单提交
-    elements.settingsForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const formData = new FormData(elements.settingsForm);
-        saveSettings(formData);
-        hideSettingsModal();
-    });
-    
-    // 动作按钮点击
-    for (const button of elements.actionButtons) {
-        button.addEventListener('click', () => {
-            const action = button.dataset.action;
-            if (action) {
-                performAction(action);
+            const messageText = elements.messageInput.value.trim();
+            if (messageText) {
+                const commandPayload = buildSupabaseCommandPayload(messageText);
+                // console.log('Command payload for Supabase:', commandPayload); // 用于调试
+
+                await sendSupabaseCommand(commandPayload); // 调用新的异步函数
+
+                // 旧的 sendMessage() 逻辑可以暂时保留或逐步替换
+                // sendMessage(); // 这是旧的 Redis 相关逻辑调用
+
+                elements.messageInput.value = ''; // 清空输入框
             }
-        });
-    }
-}
-
-// 显示设置对话框
-function showSettingsModal() {
-    elements.settingsModal.classList.add('visible');
-}
-
-// 隐藏设置对话框
-function hideSettingsModal() {
-    elements.settingsModal.classList.remove('visible');
+        }
+    });
+    
 }
 
 // 连接到服务器
@@ -240,6 +408,7 @@ function handleCommandTimeout(commandId) {
 
 // 更新连接状态显示
 function updateConnectionStatus(connected, message) {
+    console.log('[DEBUG] updateConnectionStatus called with:', connected, message);
     appState.connected = connected;
     
     if (connected) {
@@ -460,12 +629,26 @@ function renderMessageHistory() {
 
 // 渲染单条消息
 function renderMessage(message) {
+    console.log('Rendering message:', message); // 已存在的DEBUG日志
     const messageElement = document.createElement('div');
     messageElement.className = `message ${message.type}-message`;
     
     const contentElement = document.createElement('div');
     contentElement.className = 'message-content';
-    contentElement.textContent = message.content;
+
+    // 使用 Marked.js 解析 Markdown (如果已加载)
+    if (typeof marked !== 'undefined' && message.content) {
+        try {
+            contentElement.innerHTML = marked.parse(message.content);
+        } catch (e) {
+            console.error('Error parsing Markdown:', e);
+            contentElement.textContent = message.content; // Fallback to raw text on error
+        }
+    } else if (message.content) {
+        contentElement.textContent = message.content; // Fallback if marked is not loaded
+    } else {
+        contentElement.textContent = ''; // Handle cases where content might be null/undefined explicitly
+    }
     
     const timeElement = document.createElement('div');
     timeElement.className = 'message-time';
