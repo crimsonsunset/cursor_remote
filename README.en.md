@@ -2,6 +2,10 @@
 
 [阅读中文版 (Read in Chinese)](README.md)
 
+## Demo Video 🎬
+
+[![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
+
 A solution to remotely control Cursor from your mobile phone using Supabase.
 
 ## Deploy to Vercel (Client)

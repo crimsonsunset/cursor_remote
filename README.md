@@ -2,6 +2,10 @@
 
 [Read this in English](README.en.md)
 
+## 演示视频 🎬
+
+[![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
+
 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
 
 ## 一键部署到 Vercel (客户端)
