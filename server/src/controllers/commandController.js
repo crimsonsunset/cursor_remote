@@ -1,13 +1,14 @@
 import { updateCommandStatus, subscribeToResultForCommand, clearResultSubscription } from '../services/supabaseService.js';
 import runAppleScript from '../appleScriptRunner.js';
 
-const appleScriptTimeoutDuration = 120000; // 2 minutes for AppleScript/Cursor to respond
+const appleScriptTimeoutDuration = 600000; // 10 minutes for AppleScript/Cursor to respond
 
 export const processCommand = async (commandData) => {
   const commandId = commandData.id;
   const originalCommandText = commandData.command_text;
   const chatMode = commandData.raw_command?.chatMode || "agent";
   const supabaseProjectId = process.env.SUPABASE_PROJECT_ID;
+  let resultSubscription = null;
 
   if (!supabaseProjectId) {
     console.error("[CommandController] CRITICAL: SUPABASE_PROJECT_ID is not defined. Cannot construct augmented command.");
@@ -27,7 +28,6 @@ export const processCommand = async (commandData) => {
     console.log(`[CommandController] Sending augmented command to AppleScript for command ${commandId}.`);
     const appleScriptPromise = runAppleScript(augmentedCommandText, chatMode);
 
-    let resultSubscription = null;
     const resultPromise = new Promise((resolve, reject) => {
       resultSubscription = subscribeToResultForCommand(commandId, (payload) => {
         console.log(`[CommandController] Received result for command ${commandId} via subscription:`, payload.new);
@@ -59,6 +59,7 @@ export const processCommand = async (commandData) => {
       await updateCommandStatus(commandId, 'error', `AppleScript execution failed: ${appleScriptOutcome.error}`);
       if (resultSubscription) { // Clean up subscription if AS failed early
         clearResultSubscription(resultSubscription);
+        resultSubscription = null; // Also set to null after clearing
       }
       return;
     }
@@ -75,6 +76,7 @@ export const processCommand = async (commandData) => {
     // Ensure subscription is cleared if an error occurs during promise handling or elsewhere
     if (resultSubscription) {
       clearResultSubscription(resultSubscription);
+      resultSubscription = null; // Set to null after clearing
     }
     try {
       // Check if status was already set to error to avoid overwriting a more specific AppleScript error

@@ -1,12 +1,17 @@
 # Cursor远程控制项目
+> 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
+
+[![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-项目文档-blue)](https://deepwiki.com/terryso/cursor_remote)
 
 [Read this in English](README.en.md)
 
 ## 演示视频 🎬
+> 远程控制 Cursor 进行UI自动化测试
 
 [![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
-
-通过 Supabase 实现手机远程控制 Cursor 的解决方案。
 
 ## 一键部署到 Vercel (客户端)
 
@@ -137,6 +142,25 @@
 
 - `agent`: Agent模式 (快捷键: ⌘+I) - **默认模式**
 - `ask`: Ask模式 (快捷键: ⌘+⇧+K)
+
+## 🚀 未来展望：我们的 Roadmap
+
+我们深知，远程控制的可能性远不止于此！为了让这个项目更加强大和普惠，我们有以下激动人心的计划：
+
+*   **💻 支持更多 AI 编辑器/助手：**
+    *   **Visual Studio Code (VS Code):** 将远程控制能力扩展到广受欢迎的 VS Code，通过其强大的 API 实现更精细的编辑器控制和任务执行。
+    *   **Deepchat:** 集成对 Deepchat ([https://github.com/thinkinaixyz/deepchat](https://github.com/thinkinaixyz/deepchat)) 的支持。Deepchat 作为一个智能助手，连接了强大的AI与个人世界，我们的目标是让用户也能远程与 Deepchat 互动，利用其 MCP（Model Controller Platform）的特性。
+    *   **Trae 及其他 AI 工具:** 探索并逐步支持更多新兴的 AI 代码编辑器和开发助手，让远程控制覆盖更广泛的 AI 开发场景。
+*   **功能增强：**
+    *   **文件系统操作：** 允许远程浏览、打开、甚至修改项目文件。
+    *   **更复杂的指令支持：** 例如，远程执行代码片段、运行测试、控制版本管理等。
+    *   **双向通信增强：** 更丰富的结果反馈，甚至支持流式输出。
+*   **易用性提升：**
+    *   **更便捷的配置流程：** 简化服务器和客户端的安装配置。
+    *   **更完善的错误处理和提示。**
+*   **安全性强化：** 持续关注并提升数据传输和指令执行的安全性。
+
+我们相信，通过社区的共同努力，这个项目将能连接更多优秀的AI工具，为大家带来前所未有的远程协作体验！
 
 ## 安装与使用
 

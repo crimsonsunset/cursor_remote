@@ -1,12 +1,17 @@
 # Cursor Remote Control Project
+> A solution to remotely control Cursor from your mobile phone using Supabase.
+
+[![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-项目文档-blue)](https://deepwiki.com/terryso/cursor_remote)
 
 [阅读中文版 (Read in Chinese)](README.md)
 
 ## Demo Video 🎬
+> Remote control Cursor for UI automation testing
 
 [![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
-
-A solution to remotely control Cursor from your mobile phone using Supabase.
 
 ## Deploy to Vercel (Client)
 
@@ -137,6 +142,25 @@ The following chat modes are supported via `send_chat.scpt`:
 
 - `agent`: Agent mode (Shortcut: ⌘+I) - **Default mode**
 - `ask`: Ask mode (Shortcut: ⌘+⇧+K)
+
+## 🚀 Future Outlook: Our Roadmap
+
+We know the possibilities for remote control extend far beyond what's currently implemented! To make this project even more powerful and beneficial for everyone, we have some exciting plans:
+
+*   **💻 Support for More AI Editors/Assistants:**
+    *   **Visual Studio Code (VS Code):** Extend remote control capabilities to the widely popular VS Code, enabling finer-grained editor control and task execution through its powerful APIs.
+    *   **Deepchat:** Integrate support for Deepchat ([https://github.com/thinkinaixyz/deepchat](https://github.com/thinkinaixyz/deepchat)). As an intelligent assistant connecting powerful AI to the personal world, our goal is to allow users to interact with Deepchat remotely, leveraging its MCP (Model Controller Platform) features.
+    *   **Trae and other AI Tools:** Explore and incrementally support more emerging AI code editors and development assistants, broadening the scope of remote control to cover a wider range of AI development scenarios.
+*   **Feature Enhancements:**
+    *   **File System Operations:** Allow remote browsing, opening, and even modification of project files.
+    *   **Support for More Complex Instructions:** For example, remotely executing code snippets, running tests, controlling version management, etc.
+    *   **Enhanced Bidirectional Communication:** Richer result feedback, potentially including streaming output.
+*   **Usability Improvements:**
+    *   **More Convenient Configuration Process:** Simplify server and client installation and setup.
+    *   **More Comprehensive Error Handling and Prompts.**
+*   **Security Hardening:** Continuously focus on and improve the security of data transmission and command execution.
+
+We believe that with the collective efforts of the community, this project can connect more excellent AI tools and bring an unprecedented remote collaboration experience to everyone!
 
 ## Installation and Usage
 
