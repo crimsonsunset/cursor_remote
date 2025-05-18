@@ -14,7 +14,7 @@ body {
 
 /* 容器样式 */
 .container {
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 1rem;
     display: flex;
@@ -64,7 +64,7 @@ main {
     flex: 1;
     padding: 1rem;
     overflow-y: auto;
-    max-height: 50vh;
+    max-height: 60vh;
     min-height: 300px;
     border-bottom: 1px solid #e9ecef;
 }
