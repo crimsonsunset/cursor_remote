@@ -111,8 +111,14 @@ async function handleCompletedCommand(commandDbId, originalCommandText) {
             timestamp: Date.now()
         });
     }
-    renderMessageHistory(); 
-    scrollChatToBottom();
+    // renderMessageHistory(); // addMessageToHistory should handle individual message rendering
+    // scrollChatToBottom(); // addMessageToHistory should handle scrolling
+
+    // Remove from pendingCommandsClientSide after processing
+    let pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+    pendingCommands = pendingCommands.filter(cmd => cmd.id !== commandDbId);
+    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
+    console.log(`Command ${commandDbId} processed and removed from pending list.`);
 }
 
 /**
@@ -145,22 +151,13 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText) {
                 console.log('[DEBUG] postgres_changes CALLBACK TRIGGERED. Payload:', payload);
                 const updatedCommand = payload.new;
 
-                if (updatedCommand.status === 'completed') {
+                if (updatedCommand.status === 'completed' || updatedCommand.status === 'error') {
                     await handleCompletedCommand(updatedCommand.id, originalCommandText); 
                     supabaseClient.removeChannel(channel);
                     activeSubscriptions.delete(channelName);
-                } else if (updatedCommand.status === 'error') {
-                    addMessageToHistory({
-                        type: 'error',
-                        content: `指令处理错误: ${updatedCommand.error_message || '未知错误'} (来自commands表)`,
-                        timestamp: Date.now()
-                    });
-                    renderMessageHistory();
-                    scrollChatToBottom();
-                    supabaseClient.removeChannel(channel);
-                    activeSubscriptions.delete(channelName);
+                    // pendingCommandsClientSide removal is handled by handleCompletedCommand
                 } else if (updatedCommand.status === 'processing') {
-                    console.log(`Command ${commandDbId} is processing.`);
+                    console.log(`Command ${updatedCommand.id} is processing.`);
                 }
             }
         )
@@ -212,6 +209,16 @@ async function sendSupabaseCommand(commandPayload) {
             console.log('Command sent to Supabase successfully:', insertedCommand);
             console.log('Command ID:', insertedCommand.id);
             subscribeToCommandUpdates(insertedCommand.id, commandPayload.command_text);
+
+            // Store command in localStorage as pending client-side processing
+            let pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+            pendingCommands.push({
+                id: insertedCommand.id,
+                text: commandPayload.command_text,
+                timestamp: Date.now() 
+            });
+            localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
+
         } else {
             console.error('Command sent to Supabase, but no data returned.');
             addNotificationToChat('指令已发送，但未收到确认。');
@@ -257,8 +264,6 @@ const elements = {
 
 // 初始化应用
 function initApp() {
-    // 加载设置
-    loadSettings();
     
     // 设置事件监听器
     setupEventListeners();
@@ -277,83 +282,37 @@ function initApp() {
     
     // 显示历史消息
     renderMessageHistory();
-}
-
-// 加载保存的设置
-function loadSettings() {
-    const savedSettings = localStorage.getItem('cursorRemoteSettings');
-    if (savedSettings) {
-        try {
-            appState.settings = JSON.parse(savedSettings);
-            
-            // 填充设置表单
-            document.getElementById('redisHost').value = appState.settings.redisHost;
-            document.getElementById('redisPort').value = appState.settings.redisPort;
-            document.getElementById('redisPassword').value = appState.settings.redisPassword;
-            document.getElementById('commandChannel').value = appState.settings.commandChannel;
-            document.getElementById('resultChannel').value = appState.settings.resultChannel;
-        } catch (error) {
-            console.error('加载设置失败:', error);
-        }
-    }
-}
-
-// 保存设置
-function saveSettings(formData) {
-    // 更新状态
-    appState.settings = {
-        redisHost: formData.get('redisHost'),
-        redisPort: Number.parseInt(formData.get('redisPort')),
-        redisPassword: formData.get('redisPassword'),
-        commandChannel: formData.get('commandChannel'),
-        resultChannel: formData.get('resultChannel')
-    };
     
-    // 保存到本地存储
-    localStorage.setItem('cursorRemoteSettings', JSON.stringify(appState.settings));
-    
-    // 如果设置已更改，重新连接
-    updateConnectionStatus(false, '正在重新连接...');
-    connectToServer();
+    // 应用启动时检查并处理待处理的指令
+    processPendingCommandsOnLoad();
 }
 
 // 设置事件监听器
 function setupEventListeners() {
     // 发送按钮点击
-    elements.sendButton.addEventListener('click', async () => { // 注意 async
-        const messageText = elements.messageInput.value.trim();
-        if (messageText) {
-            const commandPayload = buildSupabaseCommandPayload(messageText);
-            // console.log('Command payload for Supabase:', commandPayload); // 用于调试
-
-            await sendSupabaseCommand(commandPayload); // 调用新的异步函数
-            
-            // 旧的 sendMessage() 逻辑可以暂时保留或逐步替换
-            // sendMessage(); // 这是旧的 Redis 相关逻辑调用
-
-            elements.messageInput.value = ''; // 清空输入框
-        }
-    });
+    elements.sendButton.addEventListener('click', handleAndClearInput); // 修改为调用新的辅助函数
     
-    // 输入框按Enter发送
-    elements.messageInput.addEventListener('keydown', async (event) => { // 注意 async
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            const messageText = elements.messageInput.value.trim();
-            if (messageText) {
-                const commandPayload = buildSupabaseCommandPayload(messageText);
-                // console.log('Command payload for Supabase:', commandPayload); // 用于调试
-
-                await sendSupabaseCommand(commandPayload); // 调用新的异步函数
-
-                // 旧的 sendMessage() 逻辑可以暂时保留或逐步替换
-                // sendMessage(); // 这是旧的 Redis 相关逻辑调用
-
-                elements.messageInput.value = ''; // 清空输入框
+    // 输入框按键事件
+    elements.messageInput.addEventListener('keydown', async (event) => {
+        if (event.key === 'Enter') {
+            if (event.metaKey || event.ctrlKey) { // Cmd/Ctrl + Enter 发送
+                event.preventDefault(); // 阻止默认的 Enter 行为 (例如换行)
+                await handleAndClearInput();
             }
+            // 如果只是 Enter (没有 Cmd/Ctrl)，则允许默认行为 (在 textarea 中是换行)
         }
     });
     
+    // 设置按钮点击 (确保元素存在)
+    if (elements.settingsButton) {
+        elements.settingsButton.addEventListener('click', () => {
+            // 将来这里实现显示设置模态框的逻辑
+            // 例如: showSettingsModal(); 
+            console.log('Settings button clicked. Modal display logic to be implemented.');
+        });
+    } else {
+        console.warn('Settings button element not found in the DOM.');
+    }
 }
 
 // 连接到服务器
@@ -674,6 +633,73 @@ function formatTime(timestamp) {
 // 生成唯一ID
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+// 新增函数：在应用加载时处理之前待处理的指令
+async function processPendingCommandsOnLoad() {
+    let pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+    if (pendingCommands.length === 0) {
+        console.log('No pending commands to process on load.');
+        return;
+    }
+
+    console.log(`Processing ${pendingCommands.length} pending commands on load.`);
+
+    for (const command of pendingCommands) {
+        if (!command.id || !command.text) {
+            console.warn('Invalid pending command entry:', command);
+            continue; 
+        }
+
+        try {
+            const { data: commandData, error: cmdError } = await supabaseClient
+                .from('commands')
+                .select('status') // Only select status, not error_message
+                .eq('id', command.id)
+                .single();
+
+            if (cmdError) {
+                console.error(`Error fetching status for pending command ${command.id} on load. Message:`, cmdError.message || 'No message property', 'Full error object:', cmdError);
+                // 如果获取状态失败，可以选择暂时保留或移除，这里暂时跳过
+                continue;
+            }
+
+            if (commandData) {
+                if (commandData.status === 'completed' || commandData.status === 'error') {
+                    console.log(`Pending command ${command.id} found as '${commandData.status}'. Handling result/error via handleCompletedCommand.`);
+                    await handleCompletedCommand(command.id, command.text); 
+                    // handleCompletedCommand will remove it from localStorage and display message
+                } else if (commandData.status === 'pending' || commandData.status === 'processing') {
+                    console.log(`Command ${command.id} is still '${commandData.status}'. Re-subscribing.`);
+                    subscribeToCommandUpdates(command.id, command.text);
+                } else {
+                    // Unknown status, maybe remove it to prevent clutter
+                    console.warn(`Command ${command.id} has unknown status '${commandData.status}'. Removing from pending list.`);
+                    let currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+                    currentPending = currentPending.filter(pCmd => pCmd.id !== command.id);
+                    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(currentPending));
+                }
+            } else {
+                 // Command not found in DB, might have been deleted or an issue. Remove from pending.
+                console.warn(`Pending command ${command.id} not found in database. Removing from pending list.`);
+                let currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+                currentPending = currentPending.filter(pCmd => pCmd.id !== command.id);
+                localStorage.setItem('pendingCommandsClientSide', JSON.stringify(currentPending));
+            }
+        } catch (error) {
+            console.error(`Unexpected error processing pending command ${command.id} on load:`, error);
+        }
+    }
+}
+
+// 新增：处理发送消息并清空输入框的辅助函数
+async function handleAndClearInput() {
+    const messageText = elements.messageInput.value.trim();
+    if (messageText) {
+        const commandPayload = buildSupabaseCommandPayload(messageText);
+        await sendSupabaseCommand(commandPayload); // sendSupabaseCommand 内部已处理历史记录和UI更新
+        elements.messageInput.value = ''; // 发送后清空输入框
+    }
 }
 
 // 初始化应用
