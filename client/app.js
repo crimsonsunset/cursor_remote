@@ -543,8 +543,10 @@ function addMessageToHistory(message) {
     }
     
     // 保存到本地存储
+    console.log('[DEBUG] Before saving to localStorage, appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
     localStorage.setItem('cursorRemoteHistory', JSON.stringify(appState.messageHistory));
-    
+    console.log('[DEBUG] After saving to localStorage, localStorage.getItem(\'cursorRemoteHistory\'):', localStorage.getItem('cursorRemoteHistory'));
+
     // 渲染新消息
     renderMessage(message);
     
@@ -564,6 +566,10 @@ function addNotificationToChat(content) {
 
 // 渲染消息历史
 function renderMessageHistory() {
+    console.log('[DEBUG] renderMessageHistory called.');
+    console.log('[DEBUG] Initial localStorage.getItem(\'cursorRemoteHistory\'):', localStorage.getItem('cursorRemoteHistory'));
+    console.log('[DEBUG] Initial appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
+
     // 清空聊天容器
     elements.chatContainer.innerHTML = '';
     
@@ -584,6 +590,7 @@ function renderMessageHistory() {
             console.error('加载历史记录失败:', error);
         }
     }
+    console.log('[DEBUG] After trying to load from localStorage, appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
 }
 
 // 渲染单条消息
