@@ -7,6 +7,7 @@ export const processCommand = async (commandData) => {
   const commandId = commandData.id;
   const originalCommandText = commandData.command_text;
   const chatMode = commandData.raw_command?.chatMode || "agent";
+  const targetEditor = commandData.raw_command?.target_editor || process.env.DEFAULT_EDITOR || "Cursor";
   const supabaseProjectId = process.env.SUPABASE_PROJECT_ID;
   let resultSubscription = null;
 
@@ -26,7 +27,7 @@ export const processCommand = async (commandData) => {
     const augmentedCommandText = originalCommandText + instructionForCursor;
 
     console.log(`[CommandController] Sending augmented command to AppleScript for command ${commandId}.`);
-    const appleScriptPromise = runAppleScript(augmentedCommandText, chatMode);
+    const appleScriptPromise = runAppleScript(augmentedCommandText, chatMode, targetEditor);
 
     const resultPromise = new Promise((resolve, reject) => {
       resultSubscription = subscribeToResultForCommand(commandId, (payload) => {

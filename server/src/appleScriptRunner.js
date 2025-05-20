@@ -13,16 +13,17 @@ const execFileAsync = promisify(execFile);
 // It's in CursorRemote/scripts/send_chat.scpt
 // appleScriptRunner.js is in CursorRemote/server/src/
 // So, from __dirname (server/src), we go up two levels to CursorRemote, then into scripts.
-const scriptPath = path.resolve(__dirname, '../../scripts/send_chat.scpt');
+const scriptPath = path.resolve(__dirname, '../../scripts/send_command_to_editor.scpt');
 
 /**
  * Runs the send_chat.scpt AppleScript to send a message to Cursor.
  * @param {string} commandText The message to send to Cursor.
  * @param {string} [initialChatMode="agent"] The mode for Cursor ("agent", "chat", "ask").
+ * @param {string} targetEditor The target editor for the command.
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  *          A promise resolving to an object indicating script execution success or failure.
  */
-const runAppleScript = async (commandText, initialChatMode = "agent") => {
+const runAppleScript = async (commandText, initialChatMode = "agent", targetEditor = "Cursor") => {
   if (!commandText) {
     return { success: false, error: 'Command text cannot be empty.' };
   }
@@ -34,9 +35,25 @@ const runAppleScript = async (commandText, initialChatMode = "agent") => {
     currentChatMode = "agent";
   }
 
-  const scriptArgs = [commandText, currentChatMode];
+  let scriptTargetAppName;
+  const lowercasedEditor = targetEditor.toLowerCase();
 
-  console.log(`[AppleScriptRunner] Executing: osascript "${scriptPath}" "${commandText}" "${currentChatMode}"`);
+  if (lowercasedEditor === "vscode") {
+    scriptTargetAppName = "Visual Studio Code";
+  } else if (lowercasedEditor === "vscode-insiders") {
+    scriptTargetAppName = "Visual Studio Code - Insiders";
+  } else if (lowercasedEditor === "cursor") {
+    scriptTargetAppName = "Cursor";
+  } else {
+    // 如果 targetEditor 是一个无法识别的值，则发出警告并默认为 "Cursor"。
+    // 考虑到 commandController 总是会提供一个已知值或 "Cursor"，这种情况可能不常发生。
+    console.warn(`[AppleScriptRunner] Received unknown target editor: '${targetEditor}'. Defaulting to 'Cursor'.`);
+    scriptTargetAppName = "Cursor"; 
+  }
+
+  const scriptArgs = [commandText, currentChatMode, scriptTargetAppName];
+
+  console.log(`[AppleScriptRunner] Executing: osascript "${scriptPath}" "${commandText}" "${currentChatMode}" "${scriptTargetAppName}"`);
 
   try {
     const { stdout, stderr } = await execFileAsync('osascript', [scriptPath, ...scriptArgs]);
