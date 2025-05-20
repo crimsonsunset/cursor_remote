@@ -211,6 +211,9 @@ body {
   align-self: flex-end;
   margin-left: auto;
   margin-right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .user-message .message-content {
@@ -221,6 +224,10 @@ body {
   border-radius: 8px;
   max-width: 100%;
   margin-left: auto;
+}
+
+.user-message .action-buttons {
+  margin-top: 4px;
 }
 
 /* 助手消息样式 */

@@ -81,10 +81,12 @@
     
     <!-- 加载动画模板 -->
     <template id="loadingTemplate">
-        <div class="loading-animation">
-            <div class="loading-dot"></div>
-            <div class="loading-dot"></div>
-            <div class="loading-dot"></div>
+        <div class="message assistant-message loading-message">
+            <div class="loading-animation">
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+            </div>
         </div>
     </template>
     
@@ -92,6 +94,11 @@
     <template id="userMessageTemplate">
         <div class="message user-message">
             <div class="message-content">
+            </div>
+            <div class="action-buttons">
+                <button class="action-button copy-button" title="复制消息">
+                    <i class="ri-clipboard-line"></i>
+                </button>
             </div>
         </div>
     </template>
