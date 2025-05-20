@@ -21,6 +21,10 @@ if (!supabaseServiceKey) {
 
 let supabase = null;
 
+// 命令队列和处理状态
+const commandQueue = [];
+let isProcessing = false;
+
 // Function to initialize Supabase client if not already initialized
 const initializeSupabase = () => {
   if (!supabase && supabaseUrl && supabaseServiceKey) {
@@ -81,7 +85,7 @@ export const updateCommandStatus = async (commandId, status, errorMessage = null
   }
 };
 
-// MODIFIED: handleNewCommand now calls the controller
+// MODIFIED: handleNewCommand now adds commands to queue instead of processing immediately
 const handleNewCommand = async (payload) => {
   const newCommand = payload.new;
   console.log('[SupabaseService] New command received via subscription:', newCommand.id);
@@ -90,12 +94,45 @@ const handleNewCommand = async (payload) => {
     console.error('[SupabaseService] Received invalid command data from subscription, missing ID or command_text.');
     return;
   }
-  // Delegate to CommandController
-  processCommand(newCommand).catch(controllerError => {
-      console.error(`[SupabaseService] Error from processCommand for command ${newCommand.id}:`, controllerError);
-      // Attempt to mark the command as error in Supabase if controller failed catastrophically
-      updateCommandStatus(newCommand.id, 'error', `Controller processing failed: ${controllerError.message}`);
-  });
+  
+  // 将新命令添加到队列
+  commandQueue.push(newCommand);
+  console.log(`[SupabaseService] Command ${newCommand.id} added to queue. Queue length: ${commandQueue.length}`);
+  
+  // 如果没有正在处理的命令，开始处理队列
+  if (!isProcessing) {
+    processNextCommand();
+  }
+};
+
+// NEW: Function to process next command in queue
+const processNextCommand = async () => {
+  // 如果队列为空，结束处理
+  if (commandQueue.length === 0) {
+    isProcessing = false;
+    console.log('[SupabaseService] Command queue is empty. Processing complete.');
+    return;
+  }
+  
+  // 设置处理标志
+  isProcessing = true;
+  
+  // 获取队列中的第一个命令
+  const nextCommand = commandQueue.shift();
+  console.log(`[SupabaseService] Processing next command from queue: ${nextCommand.id}. Remaining in queue: ${commandQueue.length}`);
+  
+  try {
+    // 处理命令
+    await processCommand(nextCommand);
+    console.log(`[SupabaseService] Command ${nextCommand.id} processing completed.`);
+  } catch (error) {
+    console.error(`[SupabaseService] Error processing command ${nextCommand.id}:`, error);
+    // 尝试将命令标记为错误
+    await updateCommandStatus(nextCommand.id, 'error', `处理失败: ${error.message}`);
+  } finally {
+    // 无论成功还是失败，继续处理下一个命令
+    processNextCommand();
+  }
 };
 
 // NEW: Function to subscribe to results for a specific command_id
