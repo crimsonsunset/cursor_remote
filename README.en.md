@@ -26,7 +26,7 @@ These keys are used for the client to connect to your Supabase backend.
 
 ## Project Structure
 
-- `server/`: Server-side code, responsible for listening to Supabase commands and controlling Cursor using AppleScript.
+- `server/`: Server-side code, responsible for listening to Supabase commands and controlling the target editor using AppleScript.
   - `src/services/supabaseService.js`: Main server logic, connects to Supabase and subscribes to commands.
   - `src/controllers/commandController.js`: Handles commands received from Supabase and calls AppleScript for execution.
   - `src/appleScriptRunner.js`: Module for executing AppleScript scripts.
@@ -38,16 +38,18 @@ These keys are used for the client to connect to your Supabase backend.
   - `env-config.js`: Contains Supabase connection configuration. **Note**: When deploying via Vercel, environment variables will take precedence over hardcoded values in this file.
   
 - `scripts/`: AppleScript scripts.
-  - `send_chat.scpt`: Script to send chat messages to Cursor.
+  - `send_command_to_editor.scpt`: (or `send_chat.scpt` if not renamed) Script to send commands to the configured target editor.
 
 ## Important Prerequisites
 
 - **Operating System**: This solution is tested and supported only on **macOS**.
-- **Application**: You must have the **Cursor** application installed on your Mac.
-- **Running Status**: The **Cursor application must be running** for AppleScript to control it.
-- **Shortcut Configuration**: To ensure chat modes switch correctly, you must configure (or keep the default) the following shortcuts in Cursor's settings:
-    - Agent Mode: `⌘+I`
-    - Ask Mode: `⌘+⇧+K`
+- **Target Application**: You must have the editor you wish to control, such as **Cursor** or **Visual Studio Code**, installed on your Mac.
+- **Running Status**: The **target application must be running** for AppleScript to control it.
+- **Shortcut Configuration**: To ensure chat modes switch correctly, you may need to configure (or keep the default) the following shortcuts in your target editor's settings:
+    - Agent Mode (e.g., for Cursor): `⌘+I`
+    - Ask/Chat Mode (e.g., for Cursor): `⌘+K` or `⌘+⇧+K`
+    - **VS Code**: You might need to configure shortcuts for GitHub Copilot Chat or other AI assistants to match the actions in the AppleScript.
+- **Default Editor Configuration**: You can set the `DEFAULT_EDITOR` variable in the `.env` file in the project root (e.g., `DEFAULT_EDITOR=VSCode` or `DEFAULT_EDITOR=Cursor`) to specify the default editor the service controls on startup. If the command includes a `target_editor` parameter, it will take precedence.
 
 ## Supabase Configuration
 
@@ -136,19 +138,24 @@ In Cursor's MCP settings, add the following configuration:
 
 ## Supported Features
 
-### Chat Modes
+### Chat Modes and Target Editors
 
-The following chat modes are supported via `send_chat.scpt`:
+Commands can be sent to a configured target editor (e.g., Cursor, VS Code) via AppleScript (`send_command_to_editor.scpt` or `send_chat.scpt`). Supported modes typically include:
 
-- `agent`: Agent mode (Shortcut: ⌘+I) - **Default mode**
-- `ask`: Ask mode (Shortcut: ⌘+⇧+K)
+- `agent`: Agent/General AI assistant mode (e.g., ⌘+I in Cursor)
+- `chat` or `ask`: Contextual chat/ask mode (e.g., ⌘+K or ⌘+⇧+K in Cursor)
+
+Specific shortcuts and behaviors might need adjustments based on the target editor and its AI assistant (like GitHub Copilot Chat) configuration.
+
+When the client sends a command, it can specify the target editor via the `target_editor` field in the `raw_command` JSON object (e.g., `"target_editor": "VSCode"`) and the mode via the `chatMode` field. If `target_editor` is not specified, the server will use the `DEFAULT_EDITOR` configured in its `.env` file. If that is also not configured, it defaults to "Cursor".
 
 ## 🚀 Future Outlook: Our Roadmap
 
 We know the possibilities for remote control extend far beyond what's currently implemented! To make this project even more powerful and beneficial for everyone, we have some exciting plans:
 
-*   **💻 Support for More AI Editors/Assistants:**
-    *   **Visual Studio Code (VS Code):** Extend remote control capabilities to the widely popular VS Code, enabling finer-grained editor control and task execution through its powerful APIs.
+*   **💻 Support for More AI Editors/Assistants:** (Partially Implemented/In Progress)
+    *   **Visual Studio Code (VS Code):** (Initial support) Remote control capabilities have been extended to the widely popular VS Code. Future work will focus on finer-grained editor control and task execution through its powerful APIs.
+    *   **Cursor:** (Primary support) Remains a key supported editor for the project.
     *   **Deepchat:** Integrate support for Deepchat ([https://github.com/thinkinaixyz/deepchat](https://github.com/thinkinaixyz/deepchat)). As an intelligent assistant connecting powerful AI to the personal world, our goal is to allow users to interact with Deepchat remotely, leveraging its MCP (Model Controller Platform) features.
     *   **Trae and other AI Tools:** Explore and incrementally support more emerging AI code editors and development assistants, broadening the scope of remote control to cover a wider range of AI development scenarios.
 *   **Feature Enhancements:**
@@ -179,8 +186,11 @@ We believe that with the collective efforts of the community, this project can c
     ```env
     SUPABASE_URL=https://your-project-id.supabase.co
     SUPABASE_SERVICE_KEY=your-supabase-service-role-key
+    DEFAULT_EDITOR=Cursor # Or VSCode, VSCode-Insiders, etc.
     ```
-    **Important**: `SUPABASE_SERVICE_KEY` is your Service Role Key, which has full access. Keep it secure and do not expose it.
+    **Important**:
+    - `SUPABASE_SERVICE_KEY` is your Service Role Key, which has full access. Keep it secure and do not expose it.
+    - `DEFAULT_EDITOR` (optional) specifies the default editor for the server to control. Acceptable values include `Cursor`, `VSCode`, `VSCode-Insiders`. This will be overridden if a `target_editor` is specified in the client request.
 
 4.  Start the server:
     ```bash
@@ -207,7 +217,7 @@ We believe that with the collective efforts of the community, this project can c
 
 1.  The mobile client (Web interface) converts user actions (like button clicks) into commands using the Supabase client library and inserts the command data into the `commands` table in the Supabase database.
 2.  The server program (`server/src/services/supabaseService.js`) deployed on your computer uses Supabase Realtime to listen for new records inserted into the `commands` table with a status of 'pending'.
-3.  When the server receives a new command, `commandController.js` parses the command and calls the corresponding AppleScript script (in the `scripts/` directory) via `appleScriptRunner.js` to control the local Cursor application.
+3.  When the server receives a new command, `commandController.js` parses the command (including determining the target editor and chat mode) and calls the corresponding AppleScript script (in the `scripts/` directory) via `appleScriptRunner.js` to control the local target editor application.
 4.  The command execution status (e.g., 'completed' or 'error') and any possible error messages are updated back to the corresponding record in the `commands` table by the server.
 5.  (Optional) If the command has execution results that need to be returned to the client, the server can insert the results into the `results` table. The client can listen for changes in the `results` table to receive these results.
 

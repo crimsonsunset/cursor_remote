@@ -26,7 +26,7 @@
 
 ## 项目结构
 
-- `server/`: 服务器端代码，负责监听 Supabase 命令并使用 AppleScript 控制 Cursor。
+- `server/`: 服务器端代码，负责监听 Supabase 命令并使用 AppleScript 控制目标编辑器。
   - `src/services/supabaseService.js`: 主服务器逻辑，连接到 Supabase 并订阅命令。
   - `src/controllers/commandController.js`: 处理从 Supabase 接收到的命令并调用 AppleScript 执行。
   - `src/appleScriptRunner.js`: 执行 AppleScript 脚本的模块。
@@ -38,16 +38,18 @@
   - `env-config.js`: 包含 Supabase 连接配置。**注意**: 通过 Vercel 部署时，环境变量会优先于此文件中的硬编码值。
   
 - `scripts/`: AppleScript 脚本。
-  - `send_chat.scpt`: 发送聊天消息到 Cursor 的脚本。
+  - `send_command_to_editor.scpt`: (或 `send_chat.scpt` 如果未重命名) 发送命令到配置的目标编辑器的脚本。
 
 ## 重要前提条件
 
 - **操作系统**: 此解决方案仅在 **macOS** 上经过测试和支持。
-- **应用程序**: 您的 Mac 上必须已安装 **Cursor** 应用程序。
-- **运行状态**: 为了使 AppleScript 能够控制 Cursor，**Cursor 应用程序必须正在运行**。
-- **快捷键配置**: 为确保聊天模式能正确切换，您必须在 Cursor 的设置中配置（或保留默认的）以下快捷键：
-    - Agent 模式: `⌘+I`
-    - Ask 模式: `⌘+⇧+K`
+- **目标应用程序**: 您的 Mac 上必须已安装您希望控制的编辑器，例如 **Cursor** 或 **Visual Studio Code**。
+- **运行状态**: 为了使 AppleScript 能够控制目标编辑器，**该应用程序必须正在运行**。
+- **快捷键配置**: 为确保聊天模式能正确切换，您可能需要在目标编辑器的设置中配置（或保留默认的）以下快捷键：
+    - Agent 模式 (例如 Cursor): `⌘+I`
+    - Ask/Chat 模式 (例如 Cursor): `⌘+K` 或 `⌘+⇧+K`
+    - **VS Code**: 您可能需要配置 GitHub Copilot Chat 或其他 AI 助手的快捷键以匹配 AppleScript 中的操作。
+- **默认编辑器配置**: 您可以在项目根目录的 `.env` 文件中设置 `DEFAULT_EDITOR` 变量 (例如 `DEFAULT_EDITOR=VSCode` 或 `DEFAULT_EDITOR=Cursor`) 来指定服务启动时默认控制的编辑器。如果命令中包含 `target_editor` 参数，则会优先使用该参数指定的编辑器。
 
 ## Supabase 配置
 
@@ -136,12 +138,16 @@
 
 ## 支持的功能
 
-### 聊天模式
+### 聊天模式与目标编辑器
 
-通过`send_chat.scpt`支持以下聊天模式：
+通过 AppleScript (`send_command_to_editor.scpt` 或 `send_chat.scpt`) 支持向配置的目标编辑器（如 Cursor, VS Code）发送命令。支持的模式通常包括：
 
-- `agent`: Agent模式 (快捷键: ⌘+I) - **默认模式**
-- `ask`: Ask模式 (快捷键: ⌘+⇧+K)
+- `agent`: Agent/通用AI助手模式 (例如 Cursor 中的 ⌘+I)
+- `chat` 或 `ask`: 上下文聊天/提问模式 (例如 Cursor 中的 ⌘+K 或 ⌘+⇧+K)
+
+具体的快捷键和行为可能需要根据目标编辑器及其AI助手（如 GitHub Copilot Chat）的配置进行调整。
+
+客户端发送命令时，可以在 `raw_command` JSON 对象中通过 `target_editor` 字段指定目标编辑器 (例如 `"target_editor": "VSCode"`)，并通过 `chatMode` 字段指定模式。如果未指定 `target_editor`，则会使用服务器端 `.env` 文件中配置的 `DEFAULT_EDITOR`，如果 `.env` 中也未配置，则默认为 "Cursor"。
 
 ## 🚀 未来展望：我们的 Roadmap
 
@@ -179,8 +185,11 @@
     ```env
     SUPABASE_URL=https://your-project-id.supabase.co
     SUPABASE_SERVICE_KEY=your-supabase-service-role-key
+    DEFAULT_EDITOR=Cursor # 或 VSCode, VSCode-Insiders 等
     ```
-    **重要**: `SUPABASE_SERVICE_KEY` 是您的服务角色密钥 (Service Role Key)，具有完全访问权限，请妥善保管，不要泄露。
+    **重要**: 
+    - `SUPABASE_SERVICE_KEY` 是您的服务角色密钥 (Service Role Key)，具有完全访问权限，请妥善保管，不要泄露。
+    - `DEFAULT_EDITOR` (可选) 用于指定服务器默认控制的编辑器。可接受的值包括 `Cursor`, `VSCode`, `VSCode-Insiders`。如果客户端请求中指定了 `target_editor`，则会覆盖此默认值。
 
 4.  启动服务器:
     ```bash
@@ -207,7 +216,7 @@
 
 1.  手机客户端 (Web 界面) 通过 Supabase 客户端库将用户操作（如点击按钮）转换为命令，并将命令数据插入到 Supabase 数据库的 `commands` 表中。
 2.  部署在您电脑上的服务器程序 (`server/src/services/supabaseService.js`) 使用 Supabase Realtime 功能实时监听 `commands` 表中状态为 'pending' 的新插入记录。
-3.  当服务器接收到新命令后，`commandController.js` 解析命令并通过 `appleScriptRunner.js` 调用相应的 AppleScript 脚本 (`scripts/` 目录下的 `.scpt` 文件) 来控制本机的 Cursor 应用。
+3.  当服务器接收到新命令后，`commandController.js` 解析命令（包括确定目标编辑器和聊天模式）并通过 `appleScriptRunner.js` 调用相应的 AppleScript 脚本 (`scripts/` 目录下的 `.scpt` 文件) 来控制本机的目标编辑器应用。
 4.  命令执行状态（如 'completed' 或 'error'）以及可能的错误信息会由服务器更新回 `commands` 表中对应的记录。
 5.  (可选) 如果命令有执行结果需要返回给客户端，服务器可以将结果插入到 `results` 表中。客户端可以监听 `results` 表的变化以接收这些结果。
 
