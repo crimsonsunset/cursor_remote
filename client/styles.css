@@ -91,9 +91,11 @@ body {
   padding: 16px 24px;
   background-color: var(--header-bg);
   width: 100%;
-  z-index: 10;
-  position: sticky;
+  z-index: 50;
+  position: fixed;
   top: 0;
+  left: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .app-title {
@@ -166,6 +168,7 @@ body {
   position: relative;
   width: 100%;
   transition: padding-bottom 0.2s ease;
+  margin-top: 64px;
 }
 
 .chat-container {
@@ -556,10 +559,19 @@ body {
     display: none;
   }
   
+  .main-content {
+    margin-top: 56px; /* 调整移动端下的顶部边距，对应更小的header */
+  }
+  
   .chat-container,
   .input-wrapper {
     width: 100%;
     max-width: 100%;
+  }
+  
+  /* 在移动端隐藏回到底部按钮 */
+  .scroll-to-bottom-btn {
+    display: none !important;
   }
 }
 
