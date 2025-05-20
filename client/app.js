@@ -264,54 +264,249 @@ const elements = {
 
 // 初始化应用
 function initApp() {
-    
     // 设置事件监听器
     setupEventListeners();
 
     // 检查Supabase客户端是否已初始化
     if (!supabaseClient) {
         updateConnectionStatus(false, 'Supabase配置错误');
-        // 可以选择显示设置模态框或特定错误消息
-        // showSettingsModal(); // 或者其他UI提示
-        return; // 阻止进一步执行，因为Supabase未初始化
+        return; 
     }
     
     // 如果 Supabase 客户端已成功初始化，我们更新连接状态
-    // 并跳过旧的 Redis 连接尝试及设置窗口的显示逻辑
     updateConnectionStatus(true, '已连接 (Supabase)');
+    
+    // 加载主题设置
+    loadThemePreference();
     
     // 显示历史消息
     renderMessageHistory();
     
     // 应用启动时检查并处理待处理的指令
     processPendingCommandsOnLoad();
+    
+    // 自动调整文本区域高度
+    setupTextareaAutoResize();
 }
 
 // 设置事件监听器
 function setupEventListeners() {
     // 发送按钮点击
-    elements.sendButton.addEventListener('click', handleAndClearInput); // 修改为调用新的辅助函数
+    elements.sendButton.addEventListener('click', handleAndClearInput);
     
-    // 输入框按键事件
+    // 清除按钮点击
+    const clearButton = document.getElementById('clearButton');
+    if (clearButton) {
+        clearButton.addEventListener('click', clearChat);
+    }
+    
+    // 主题切换按钮
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+    }
+    
+    // 修改输入框按键事件，回车键进行换行而非发送消息
     elements.messageInput.addEventListener('keydown', async (event) => {
-        if (event.key === 'Enter') {
-            if (event.metaKey || event.ctrlKey) { // Cmd/Ctrl + Enter 发送
-                event.preventDefault(); // 阻止默认的 Enter 行为 (例如换行)
-                await handleAndClearInput();
-            }
-            // 如果只是 Enter (没有 Cmd/Ctrl)，则允许默认行为 (在 textarea 中是换行)
+        // 当按下Ctrl+Enter或者发送按钮时才发送消息
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            await handleAndClearInput();
+        }
+        // 普通的Enter键不做特殊处理，允许换行
+    });
+    
+    // 为所有出现的复制按钮添加事件监听器
+    document.addEventListener('click', function(event) {
+        if (event.target.closest('.copy-button')) {
+            const messageElement = event.target.closest('.message');
+            const contentElement = messageElement.querySelector('.message-content');
+            copyToClipboard(contentElement.innerText);
+        }
+    });
+}
+
+// 优化文本区域自动高度调整
+function setupTextareaAutoResize() {
+    const textarea = elements.messageInput;
+    const MAX_ROWS = 5;
+    const lineHeight = 24; // 基于行高 1.5 和字体大小 16px
+    
+    // 初始高度设置为一行
+    textarea.style.height = `${lineHeight}px`;
+    
+    // 输入时自动调整高度
+    textarea.addEventListener('input', function() {
+        // 临时设置高度为自动，以获取真实内容高度
+        this.style.height = 'auto';
+        
+        // 计算当前内容的实际高度
+        const currentHeight = this.scrollHeight;
+        
+        // 计算大约的行数
+        const rowCount = Math.ceil(currentHeight / lineHeight);
+        
+        // 如果超过最大行数，添加scrollable类并设置固定高度
+        if (rowCount > MAX_ROWS) {
+            this.classList.add('scrollable');
+            this.style.height = `${MAX_ROWS * lineHeight}px`;
+        } else {
+            // 否则，移除scrollable类并设置为实际内容高度
+            this.classList.remove('scrollable');
+            this.style.height = `${currentHeight}px`;
         }
     });
     
-    // 设置按钮点击 (确保元素存在)
-    if (elements.settingsButton) {
-        elements.settingsButton.addEventListener('click', () => {
-            // 将来这里实现显示设置模态框的逻辑
-            // 例如: showSettingsModal(); 
-            console.log('Settings button clicked. Modal display logic to be implemented.');
-        });
+    // 初始触发一次自动调整
+    const inputEvent = new Event('input');
+    textarea.dispatchEvent(inputEvent);
+}
+
+// 清除聊天历史
+function clearChat() {
+    // 清空本地存储和消息历史数组
+    localStorage.removeItem('cursorRemoteHistory');
+    appState.messageHistory = [];
+    
+    // 清空聊天容器，只保留欢迎消息
+    elements.chatContainer.innerHTML = '';
+    
+    // 添加系统欢迎消息
+    const welcomeMessage = document.createElement('div');
+    welcomeMessage.className = 'message system-message';
+    welcomeMessage.innerHTML = `
+        <div class="message-content">
+            <p>欢迎使用Cursor远程控制！请输入您想问Cursor的问题。</p>
+        </div>
+    `;
+    elements.chatContainer.appendChild(welcomeMessage);
+}
+
+// 切换暗黑/亮色主题
+function toggleTheme() {
+    const body = document.body;
+    const themeToggle = document.getElementById('themeToggle');
+    const isDarkMode = body.classList.toggle('dark-mode');
+    
+    // 更新主题图标
+    if (themeToggle) {
+        themeToggle.innerHTML = isDarkMode ? 
+            '<i class="ri-sun-line"></i>' : 
+            '<i class="ri-moon-line"></i>';
+    }
+    
+    // 保存主题偏好到本地存储
+    localStorage.setItem('cursorRemoteTheme', isDarkMode ? 'dark' : 'light');
+}
+
+// 加载主题偏好
+function loadThemePreference() {
+    const savedTheme = localStorage.getItem('cursorRemoteTheme');
+    const themeToggle = document.getElementById('themeToggle');
+    
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        if (themeToggle) {
+            themeToggle.innerHTML = '<i class="ri-sun-line"></i>';
+        }
+    }
+}
+
+// 复制文本到剪贴板
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // 显示复制成功提示
+        showToast('复制成功');
+    }).catch(err => {
+        console.error('复制失败:', err);
+    });
+}
+
+// 显示临时提示
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // 2秒后自动消失
+    setTimeout(() => {
+        toast.classList.add('hide');
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 2000);
+}
+
+// 渲染单条消息
+function renderMessage(message) {
+    console.log('Rendering message:', message);
+    
+    // 根据消息类型使用正确的模板
+    let template;
+    if (message.type === 'user') {
+        template = document.getElementById('userMessageTemplate');
+    } else if (message.type === 'cursor' || message.type === 'assistant') { // 兼容旧代码与新UI
+        template = document.getElementById('assistantMessageTemplate');
     } else {
-        console.warn('Settings button element not found in the DOM.');
+        // 对于系统消息或通知，创建一个简单的div
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${message.type}-message`;
+        
+        const contentElement = document.createElement('div');
+        contentElement.className = 'message-content';
+        
+        // 使用 Marked.js 解析 Markdown
+        if (typeof marked !== 'undefined' && message.content) {
+            try {
+                contentElement.innerHTML = marked.parse(message.content);
+            } catch (e) {
+                console.error('Error parsing Markdown:', e);
+                contentElement.textContent = message.content;
+            }
+        } else if (message.content) {
+            contentElement.textContent = message.content;
+        } else {
+            contentElement.textContent = '';
+        }
+        
+        messageElement.appendChild(contentElement);
+        elements.chatContainer.appendChild(messageElement);
+        
+        // 使用Prism.js高亮代码块
+        if (typeof Prism !== 'undefined') {
+            Prism.highlightAllUnder(messageElement);
+        }
+        
+        return;
+    }
+    
+    // 使用模板创建消息元素
+    if (template) {
+        const clone = document.importNode(template.content, true);
+        const contentElement = clone.querySelector('.message-content');
+        
+        // 使用 Marked.js 解析 Markdown
+        if (typeof marked !== 'undefined' && message.content) {
+            try {
+                contentElement.innerHTML = marked.parse(message.content);
+            } catch (e) {
+                console.error('Error parsing Markdown:', e);
+                contentElement.textContent = message.content;
+            }
+        } else if (message.content) {
+            contentElement.textContent = message.content;
+        }
+        
+        elements.chatContainer.appendChild(clone);
+        
+        // 获取刚刚添加的消息元素
+        const messageElement = elements.chatContainer.lastElementChild;
+        
+        // 使用Prism.js高亮代码块
+        if (typeof Prism !== 'undefined') {
+            Prism.highlightAllUnder(messageElement);
+        }
     }
 }
 
@@ -593,39 +788,6 @@ function renderMessageHistory() {
     console.log('[DEBUG] After trying to load from localStorage, appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
 }
 
-// 渲染单条消息
-function renderMessage(message) {
-    console.log('Rendering message:', message); // 已存在的DEBUG日志
-    const messageElement = document.createElement('div');
-    messageElement.className = `message ${message.type}-message`;
-    
-    const contentElement = document.createElement('div');
-    contentElement.className = 'message-content';
-
-    // 使用 Marked.js 解析 Markdown (如果已加载)
-    if (typeof marked !== 'undefined' && message.content) {
-        try {
-            contentElement.innerHTML = marked.parse(message.content);
-        } catch (e) {
-            console.error('Error parsing Markdown:', e);
-            contentElement.textContent = message.content; // Fallback to raw text on error
-        }
-    } else if (message.content) {
-        contentElement.textContent = message.content; // Fallback if marked is not loaded
-    } else {
-        contentElement.textContent = ''; // Handle cases where content might be null/undefined explicitly
-    }
-    
-    const timeElement = document.createElement('div');
-    timeElement.className = 'message-time';
-    timeElement.textContent = formatTime(message.timestamp);
-    
-    messageElement.appendChild(contentElement);
-    messageElement.appendChild(timeElement);
-    
-    elements.chatContainer.appendChild(messageElement);
-}
-
 // 滚动聊天到底部
 function scrollChatToBottom() {
     elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
@@ -709,5 +871,5 @@ async function handleAndClearInput() {
     }
 }
 
-// 初始化应用
+// 页面加载时初始化应用
 document.addEventListener('DOMContentLoaded', initApp); 

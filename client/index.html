@@ -4,53 +4,97 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cursor远程控制</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- <script>
-        var _hmt = _hmt || [];
-        (function() {
-            var hm = document.createElement("script");
-            hm.src = "https://hm.baidu.com/hm.js?dc547e508e07648a27467d83c80ca367";
-            var s = document.getElementsByTagName("script")[0]; 
-            s.parentNode.insertBefore(hm, s);
-        })();
-    </script> -->
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Cursor远程控制</h1>
-            <a href="https://github.com/terryso/cursor_remote" target="_blank" rel="noopener noreferrer" class="github-header-link">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"></path></svg>
-                <span style="margin-left: 5px;">GitHub</span>
-            </a>
-        </header>
-        
-        <main>
-            <section class="chat-section">
-                <div class="chat-container" id="chatContainer">
-                    <!-- 聊天内容将在这里动态添加 -->
-                </div>
-                
-                <div class="input-container">
-                    <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." rows="5"></textarea>
-                    <button id="sendButton" class="primary-button">发送</button>
-                </div>
-            </section>
-            
-            <section class="status-section">
+<body class="light-mode">
+    <div class="app-container">
+        <header class="app-header">
+            <h1 class="app-title">Cursor远程控制</h1>
+            <div class="header-actions">
+                <button id="themeToggle" class="theme-toggle-button" title="切换主题">
+                    <i class="ri-moon-line"></i>
+                </button>
                 <div class="status-indicator">
                     <span class="status-dot" id="connectionStatus"></span>
                     <span id="statusText">未连接</span>
                 </div>
-            </section>
+                <a href="https://github.com/terryso/cursor_remote" target="_blank" rel="noopener noreferrer" class="github-link">
+                    <i class="ri-github-fill"></i>
+                </a>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="chat-container" id="chatContainer">
+                <!-- 欢迎消息 -->
+                <div class="message system-message">
+                    <div class="message-content">
+                        <p>欢迎使用Cursor远程控制！请输入您想问Cursor的问题。</p>
+                    </div>
+                </div>
+                <!-- 聊天内容将在这里动态添加 -->
+            </div>
+            
+            <div class="input-wrapper">
+                <div class="input-container">
+                    <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." rows="1"></textarea>
+                    <div class="input-buttons">
+                        <button id="clearButton" class="icon-button" title="清除对话">
+                            <i class="ri-delete-bin-line"></i>
+                        </button>
+                        <button id="sendButton" class="send-button" title="发送">
+                            <i class="ri-send-plane-fill"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="input-footer">
+                    <span class="input-tip">支持 Markdown 和代码块</span>
+                    <span class="shortcut-tip">Enter 换行 / Ctrl+Enter 发送</span>
+                </div>
+            </div>
         </main>
-        
-        <footer>
-            <p>© 2025 Cursor远程控制</p>
-        </footer>
     </div>
+    
+    <!-- 加载动画模板 -->
+    <template id="loadingTemplate">
+        <div class="loading-animation">
+            <div class="loading-dot"></div>
+            <div class="loading-dot"></div>
+            <div class="loading-dot"></div>
+        </div>
+    </template>
+    
+    <!-- 用户消息模板 -->
+    <template id="userMessageTemplate">
+        <div class="message user-message">
+            <div class="message-content">
+            </div>
+            <div class="message-avatar">
+                <i class="ri-user-3-fill"></i>
+            </div>
+        </div>
+    </template>
+    
+    <!-- 助手消息模板 -->
+    <template id="assistantMessageTemplate">
+        <div class="message assistant-message">
+            <div class="message-avatar">
+                <i class="ri-robot-fill"></i>
+            </div>
+            <div class="message-content">
+            </div>
+            <div class="message-actions">
+                <button class="copy-button" title="复制回复">
+                    <i class="ri-clipboard-line"></i>
+                </button>
+            </div>
+        </div>
+    </template>
     
     <script src="env-config.js"></script>
     <script src="app.js"></script>
