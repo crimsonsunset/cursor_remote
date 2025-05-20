@@ -294,12 +294,6 @@ function setupEventListeners() {
     // 发送按钮点击
     elements.sendButton.addEventListener('click', handleAndClearInput);
     
-    // 清除按钮点击
-    const clearButton = document.getElementById('clearButton');
-    if (clearButton) {
-        clearButton.addEventListener('click', clearChat);
-    }
-    
     // 主题切换按钮
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
@@ -324,19 +318,61 @@ function setupEventListeners() {
             copyToClipboard(contentElement.innerText);
         }
     });
+    
+    // 回到底部按钮
+    const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
+    if (scrollToBottomBtn) {
+        // 点击按钮滚动到底部
+        scrollToBottomBtn.addEventListener('click', function() {
+            scrollChatToBottom();
+        });
+        
+        // 监听页面滚动
+        window.addEventListener('scroll', function() {
+            const scrollPosition = window.scrollY;
+            const viewportHeight = window.innerHeight;
+            const documentHeight = document.body.scrollHeight;
+            
+            // 当距离底部超过300px时显示按钮
+            if (documentHeight - (scrollPosition + viewportHeight) > 300) {
+                scrollToBottomBtn.classList.add('visible');
+            } else {
+                scrollToBottomBtn.classList.remove('visible');
+            }
+        });
+    }
 }
 
 // 优化文本区域自动高度调整
 function setupTextareaAutoResize() {
     const textarea = elements.messageInput;
+    const mainContent = document.querySelector('.main-content');
+    const inputWrapper = document.querySelector('.input-wrapper');
     const MAX_ROWS = 5;
     const lineHeight = 24; // 基于行高 1.5 和字体大小 16px
+    const BASE_PADDING = 120; // 默认底部填充值，与CSS中设置的相同
     
     // 初始高度设置为一行
     textarea.style.height = `${lineHeight}px`;
     
+    // 更新主内容区域的底部填充，以适应输入框高度变化
+    function updateContentPadding() {
+        const inputHeight = inputWrapper.offsetHeight;
+        mainContent.style.paddingBottom = `${inputHeight + 20}px`; // 额外添加20px作为缓冲
+    }
+    
+    // 初始调用一次更新填充
+    updateContentPadding();
+    
     // 输入时自动调整高度
     textarea.addEventListener('input', function() {
+        // 保存当前滚动位置
+        const scrollTop = window.scrollY;
+        
+        // 记住光标位置
+        const selectionStart = this.selectionStart;
+        const selectionEnd = this.selectionEnd;
+        
         // 临时设置高度为自动，以获取真实内容高度
         this.style.height = 'auto';
         
@@ -355,11 +391,23 @@ function setupTextareaAutoResize() {
             this.classList.remove('scrollable');
             this.style.height = `${currentHeight}px`;
         }
+        
+        // 更新内容区域的底部填充，以适应输入框高度变化
+        updateContentPadding();
+        
+        // 恢复光标位置
+        this.setSelectionRange(selectionStart, selectionEnd);
+        
+        // 恢复滚动位置
+        window.scrollTo(0, scrollTop);
     });
     
     // 初始触发一次自动调整
     const inputEvent = new Event('input');
     textarea.dispatchEvent(inputEvent);
+    
+    // 监听窗口大小变化，更新填充
+    window.addEventListener('resize', updateContentPadding);
 }
 
 // 清除聊天历史
@@ -456,9 +504,16 @@ function renderMessage(message) {
         const contentElement = document.createElement('div');
         contentElement.className = 'message-content';
         
-        // 使用 Marked.js 解析 Markdown
+        // 确保使用 Marked.js 解析 Markdown
         if (typeof marked !== 'undefined' && message.content) {
             try {
+                // 设置marked选项以确保正确渲染
+                marked.setOptions({
+                    breaks: true, // 将换行符转换为 <br>
+                    gfm: true,    // 启用GitHub风格的Markdown
+                    headerIds: true, // 为标题添加ID
+                    sanitize: false // 允许HTML标签
+                });
                 contentElement.innerHTML = marked.parse(message.content);
             } catch (e) {
                 console.error('Error parsing Markdown:', e);
@@ -486,9 +541,16 @@ function renderMessage(message) {
         const clone = document.importNode(template.content, true);
         const contentElement = clone.querySelector('.message-content');
         
-        // 使用 Marked.js 解析 Markdown
+        // 确保使用 Marked.js 解析 Markdown
         if (typeof marked !== 'undefined' && message.content) {
             try {
+                // 设置marked选项以确保正确渲染
+                marked.setOptions({
+                    breaks: true, // 将换行符转换为 <br>
+                    gfm: true,    // 启用GitHub风格的Markdown
+                    headerIds: true, // 为标题添加ID
+                    sanitize: false // 允许HTML标签
+                });
                 contentElement.innerHTML = marked.parse(message.content);
             } catch (e) {
                 console.error('Error parsing Markdown:', e);
@@ -790,7 +852,11 @@ function renderMessageHistory() {
 
 // 滚动聊天到底部
 function scrollChatToBottom() {
-    elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+    // 滚动整个页面到底部，而不只是聊天容器
+    window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: 'smooth'
+    });
 }
 
 // 格式化时间

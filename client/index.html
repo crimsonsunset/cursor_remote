@@ -8,6 +8,17 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        // 配置marked.js
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,       // 将换行符转换为<br>
+                gfm: true,          // 启用GitHub风格的Markdown
+                headerIds: true,    // 为标题添加ID
+                sanitize: false     // 允许HTML标签
+            });
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
 </head>
@@ -44,19 +55,27 @@
                 <div class="input-container">
                     <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." rows="1"></textarea>
                     <div class="input-buttons">
-                        <button id="clearButton" class="icon-button" title="清除对话">
-                            <i class="ri-delete-bin-line"></i>
-                        </button>
-                        <button id="sendButton" class="send-button" title="发送">
-                            <i class="ri-send-plane-fill"></i>
+                        <div class="input-tools">
+                            <button class="tool-button" title="上传文件">
+                                <i class="ri-add-line"></i>
+                            </button>
+                        </div>
+                        <button id="sendButton" class="send-button" aria-label="发送提示" title="发送">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M7.99992 14.9993V5.41334L4.70696 8.70631C4.31643 9.09683 3.68342 9.09683 3.29289 8.70631C2.90237 8.31578 2.90237 7.68277 3.29289 7.29225L8.29289 2.29225L8.36906 2.22389C8.76184 1.90354 9.34084 1.92613 9.70696 2.29225L14.707 7.29225L14.7753 7.36842C15.0957 7.76119 15.0731 8.34019 14.707 8.70631C14.3408 9.07242 13.7618 9.09502 13.3691 8.77467L13.2929 8.70631L9.99992 5.41334V14.9993C9.99992 15.5516 9.55221 15.9993 8.99992 15.9993C8.44764 15.9993 7.99993 15.5516 7.99992 14.9993Z" fill="currentColor"></path>
+                            </svg>
                         </button>
                     </div>
                 </div>
                 <div class="input-footer">
-                    <span class="input-tip">支持 Markdown 和代码块</span>
-                    <span class="shortcut-tip">Enter 换行 / Ctrl+Enter 发送</span>
+                    <span class="input-tip">Enter 换行 / Ctrl+Enter 发送</span>
                 </div>
             </div>
+            
+            <!-- 添加回到底部按钮 -->
+            <button id="scrollToBottomBtn" class="scroll-to-bottom-btn" title="回到底部">
+                <i class="ri-arrow-down-line"></i>
+            </button>
         </main>
     </div>
     
@@ -74,22 +93,16 @@
         <div class="message user-message">
             <div class="message-content">
             </div>
-            <div class="message-avatar">
-                <i class="ri-user-3-fill"></i>
-            </div>
         </div>
     </template>
     
     <!-- 助手消息模板 -->
     <template id="assistantMessageTemplate">
         <div class="message assistant-message">
-            <div class="message-avatar">
-                <i class="ri-robot-fill"></i>
-            </div>
             <div class="message-content">
             </div>
-            <div class="message-actions">
-                <button class="copy-button" title="复制回复">
+            <div class="action-buttons">
+                <button class="action-button copy-button" title="复制回复">
                     <i class="ri-clipboard-line"></i>
                 </button>
             </div>
