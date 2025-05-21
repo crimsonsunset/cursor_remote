@@ -8,6 +8,9 @@
 
 [阅读中文版 (Read in Chinese)](README.md)
 
+## Live Demo
+[https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
+
 ## Demo Video 🎬
 > Remote control Cursor for UI automation testing
 
@@ -223,4 +226,4 @@ We believe that with the collective efforts of the community, this project can c
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). 
+This project is licensed under the [MIT License](LICENSE).

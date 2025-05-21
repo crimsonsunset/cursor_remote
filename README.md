@@ -8,6 +8,9 @@
 
 [Read this in English](README.en.md)
 
+## Demo 体验
+[https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
+
 ## 演示视频 🎬
 > 远程控制 Cursor 进行UI自动化测试
 
