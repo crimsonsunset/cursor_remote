@@ -157,6 +157,12 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
 
     const channel = supabaseClient.channel(channelName);
     activeSubscriptions.set(channelName, channel);
+    
+    // 添加超时处理
+    const subscriptionTimeout = setTimeout(() => {
+        console.warn(`Subscription for command ${commandDbId} timed out after ${PENDING_COMMAND_TIMEOUT/1000} seconds`);
+        handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage);
+    }, PENDING_COMMAND_TIMEOUT);
 
     channel
         .on(
@@ -170,6 +176,9 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
             async (payload) => { // 注意这里变成 async
                 console.log('[DEBUG] postgres_changes CALLBACK TRIGGERED. Payload:', payload);
                 const updatedCommand = payload.new;
+                
+                // 收到更新，清除超时计时器
+                clearTimeout(subscriptionTimeout);
 
                 if (updatedCommand.status === 'completed' || updatedCommand.status === 'error') {
                     await handleCompletedCommand(updatedCommand.id, originalCommandText, loadingMessage); 
@@ -186,10 +195,22 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
             if (status === 'SUBSCRIBED') {
                 console.log(`Subscribed to updates for command ${commandDbId} on 'commands' table.`);
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                // 清除超时计时器
+                clearTimeout(subscriptionTimeout);
+                
                 console.error(`Subscription error for command ${commandDbId} on 'commands' table:`, status, err);
                 addNotificationToChat(`无法订阅指令状态: ${err?.message || status}`);
                 activeSubscriptions.delete(channelName);
+                
+                // 处理订阅错误时，也尝试移除加载动画和清除待处理命令
+                if (loadingMessage?.classList.contains('loading-message')) {
+                    loadingMessage.remove();
+                }
+                cleanupPendingCommand(commandDbId);
             } else if (status === 'CLOSED') {
+                // 清除超时计时器
+                clearTimeout(subscriptionTimeout);
+                
                 console.log(`Subscription closed for command ${commandDbId} on 'commands' table.`);
                 activeSubscriptions.delete(channelName);
             }
@@ -283,6 +304,7 @@ const appState = {
 const MAX_HISTORY_LENGTH = 50;
 const COMMAND_TIMEOUT = 30000; // 30秒超时
 const RECONNECT_INTERVAL = 5000; // 5秒重连间隔
+const PENDING_COMMAND_TIMEOUT = 600000; // 10分钟超时，用于pendingCommandsClientSide
 
 // DOM元素
 const elements = {
@@ -323,6 +345,9 @@ function initApp() {
     
     // 自动调整文本区域高度
     setupTextareaAutoResize();
+    
+    // 启动定期清理超时命令的任务
+    startPendingCommandsCleanupTask();
 }
 
 // 设置事件监听器
@@ -1084,4 +1109,116 @@ async function handleSpecialCommands(commandText) {
     
     // 如果不是特殊命令，返回false
     return false;
+}
+
+/**
+ * 处理订阅超时的情况
+ * @param {string} commandDbId - 命令ID
+ * @param {string} originalCommandText - 原始命令文本
+ * @param {HTMLElement} loadingMessage - 加载消息元素
+ */
+function handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage) {
+    console.warn(`Subscription for command ${commandDbId} timed out. Cleaning up resources.`);
+    
+    // 移除加载动画
+    if (loadingMessage?.classList?.contains('loading-message')) {
+        loadingMessage.remove();
+    } else {
+        // 查找可能存在的加载动画
+        const loadingMessages = document.querySelectorAll('.loading-message');
+        for (const el of loadingMessages) {
+            el.remove();
+        }
+    }
+    
+    // 添加超时通知
+    addMessageToHistory({
+        type: 'error',
+        content: `指令 "${originalCommandText}" 处理超时，请稍后重试。`,
+        timestamp: Date.now()
+    });
+    
+    // 清理该命令的订阅
+    const channelName = `command-${commandDbId}`;
+    if (activeSubscriptions.has(channelName)) {
+        const channel = activeSubscriptions.get(channelName);
+        supabaseClient.removeChannel(channel);
+        activeSubscriptions.delete(channelName);
+    }
+    
+    // 从待处理列表中移除
+    cleanupPendingCommand(commandDbId);
+}
+
+/**
+ * 从pendingCommandsClientSide中移除指定的命令
+ * @param {string} commandId - 要移除的命令ID
+ */
+function cleanupPendingCommand(commandId) {
+    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+    const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandId);
+    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
+    console.log(`Command ${commandId} removed from pending list.`);
+}
+
+/**
+ * 启动定期清理超时的pendingCommandsClientSide命令的任务
+ */
+function startPendingCommandsCleanupTask() {
+    // 每分钟检查一次超时命令
+    setInterval(() => {
+        cleanupTimeoutPendingCommands();
+    }, 60000); // 每分钟执行一次
+    
+    // 初始执行一次
+    cleanupTimeoutPendingCommands();
+}
+
+/**
+ * 清理超时的pendingCommandsClientSide命令
+ */
+function cleanupTimeoutPendingCommands() {
+    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+    if (pendingCommands.length === 0) {
+        return;
+    }
+    
+    console.log(`Checking ${pendingCommands.length} pending commands for timeout...`);
+    const now = Date.now();
+    const timeoutThreshold = PENDING_COMMAND_TIMEOUT;
+    let hasTimeoutCommands = false;
+    
+    const updatedCommands = pendingCommands.filter(command => {
+        const commandAge = now - command.timestamp;
+        const isTimeout = commandAge > timeoutThreshold;
+        
+        if (isTimeout) {
+            console.warn(`Command ${command.id} timed out after ${commandAge/1000} seconds.`);
+            hasTimeoutCommands = true;
+            
+            // 移除该命令的订阅（如果存在）
+            const channelName = `command-${command.id}`;
+            if (activeSubscriptions.has(channelName)) {
+                const channel = activeSubscriptions.get(channelName);
+                supabaseClient.removeChannel(channel);
+                activeSubscriptions.delete(channelName);
+            }
+        }
+        
+        return !isTimeout; // 保留未超时的命令
+    });
+    
+    if (hasTimeoutCommands) {
+        localStorage.setItem('pendingCommandsClientSide', JSON.stringify(updatedCommands));
+        console.log(`Cleaned up timed out commands. Remaining: ${updatedCommands.length}`);
+        
+        // 如果有超时命令，检查并移除可能残留的加载动画
+        const loadingMessages = document.querySelectorAll('.loading-message');
+        if (loadingMessages.length > 0 && updatedCommands.length === 0) {
+            for (const el of loadingMessages) {
+                el.remove();
+            }
+            addNotificationToChat('已清理超时未响应的指令。');
+        }
+    }
 } 
