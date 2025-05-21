@@ -6,9 +6,6 @@
  * 因为浏览器不能直接连接Redis服务器。
  */
 
-// const SUPABASE_URL = 'https://rzsupavqzxhyrgcexrpx.supabase.co'; // To be replaced by env var
-// const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6c3VwYXZxenhoeXJnY2V4cnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc0NzI4MTMsImV4cCI6MjA2MzA0ODgxM30.6S5s7ruZA6x3JRc6d9Oq8USOBxoDlJCXOXTOaJKimPA'; // To be replaced by env var
-
 let supabaseClient;
 
 // Supabase SDK and config are expected to be loaded via CDN and env-config.js respectively
@@ -17,7 +14,6 @@ if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
     typeof supabase !== 'undefined' && supabase.createClient) {
     try {
         supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-        console.log('Supabase client initialized with credentials from window object:', supabaseClient);
     } catch (error) {
         console.error('Error initializing Supabase client with provided credentials:', error);
         supabaseClient = null; // Ensure client is null if initialization fails
@@ -68,7 +64,6 @@ function buildSupabaseCommandPayload(commandText) {
  * @param {HTMLElement} [loadingMessage] - 加载消息元素的引用，用于完成后移除。
  */
 async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
-    console.log(`Command ${commandDbId} completed. Fetching result from 'results' table.`);
     try {
         // 修改查询方式，不使用.single()方法
         const { data: resultsData, error: resultsError } = await supabaseClient
@@ -117,7 +112,6 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                 content: `指令 "${originalCommandText}" 已完成，但未在结果表中找到记录。可能是处理过程中出现错误。`,
                 timestamp: Date.now()
             });
-            console.warn(`No result found in 'results' table for command ${commandDbId}`);
         }
     } catch (fetchErr) {
         console.error(`Unexpected error fetching result for command ${commandDbId}:`, fetchErr);
@@ -138,7 +132,6 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
     const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
     const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandDbId);
     localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
-    console.log(`Command ${commandDbId} processed and removed from pending list.`);
 }
 
 /**
@@ -147,7 +140,6 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
  * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
  */
 function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMessage) {
-    console.log(`[DEBUG] Attempting to subscribe for command ID: ${commandDbId}`);
     const channelName = `command-${commandDbId}`;
     if (activeSubscriptions.has(channelName)) {
         const oldChannel = activeSubscriptions.get(channelName);
@@ -160,7 +152,6 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
     
     // 添加超时处理
     const subscriptionTimeout = setTimeout(() => {
-        console.warn(`Subscription for command ${commandDbId} timed out after ${PENDING_COMMAND_TIMEOUT/1000} seconds`);
         handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage);
     }, PENDING_COMMAND_TIMEOUT);
 
@@ -174,7 +165,6 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                 filter: `id=eq.${commandDbId}`
             },
             async (payload) => { // 注意这里变成 async
-                console.log('[DEBUG] postgres_changes CALLBACK TRIGGERED. Payload:', payload);
                 const updatedCommand = payload.new;
                 
                 // 收到更新，清除超时计时器
@@ -185,16 +175,11 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                     supabaseClient.removeChannel(channel);
                     activeSubscriptions.delete(channelName);
                     // pendingCommandsClientSide removal is handled by handleCompletedCommand
-                } else if (updatedCommand.status === 'processing') {
-                    console.log(`Command ${updatedCommand.id} is processing.`);
                 }
             }
         )
         .subscribe((status, err) => {
-            console.log(`[DEBUG] SUBSCRIBE CALLBACK TRIGGERED. Status: ${status}`, err ? `Error: ${JSON.stringify(err)}` : '');
-            if (status === 'SUBSCRIBED') {
-                console.log(`Subscribed to updates for command ${commandDbId} on 'commands' table.`);
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 // 清除超时计时器
                 clearTimeout(subscriptionTimeout);
                 
@@ -211,7 +196,6 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                 // 清除超时计时器
                 clearTimeout(subscriptionTimeout);
                 
-                console.log(`Subscription closed for command ${commandDbId} on 'commands' table.`);
                 activeSubscriptions.delete(channelName);
             }
         });
@@ -252,8 +236,6 @@ async function sendSupabaseCommand(commandPayload) {
             }
         } else if (data && data.length > 0) { // Check if data is an array and has items
             const insertedCommand = data[0];
-            console.log('Command sent to Supabase successfully:', insertedCommand);
-            console.log('Command ID:', insertedCommand.id);
             
             // 订阅更新 - 保持加载动画直到收到响应
             subscribeToCommandUpdates(insertedCommand.id, commandPayload.command_text, loadingMessage);
@@ -268,7 +250,6 @@ async function sendSupabaseCommand(commandPayload) {
             localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
 
         } else {
-            console.error('Command sent to Supabase, but no data returned.');
             addNotificationToChat('指令已发送，但未收到确认。');
             // 移除加载动画
             if (loadingMessage?.classList.contains('loading-message')) {
@@ -549,8 +530,6 @@ function showToast(message) {
 
 // 渲染单条消息
 function renderMessage(message) {
-    console.log('Rendering message:', message);
-    
     // 根据消息类型使用正确的模板
     let template;
     if (message.type === 'user') {
@@ -685,7 +664,6 @@ function handleCommandTimeout(commandId) {
 
 // 更新连接状态显示
 function updateConnectionStatus(connected, message) {
-    console.log('[DEBUG] updateConnectionStatus called with:', connected, message);
     appState.connected = connected;
     
     if (connected) {
@@ -823,7 +801,6 @@ function handleResponse(response) {
     // 查找对应的命令
     const command = appState.pendingCommands.get(response.id);
     if (!command) {
-        console.warn('收到未知命令的响应:', response);
         return;
     }
     
@@ -861,9 +838,7 @@ function addMessageToHistory(message) {
     }
     
     // 保存到本地存储
-    console.log('[DEBUG] Before saving to localStorage, appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
     localStorage.setItem('cursorRemoteHistory', JSON.stringify(appState.messageHistory));
-    console.log('[DEBUG] After saving to localStorage, localStorage.getItem(\'cursorRemoteHistory\'):', localStorage.getItem('cursorRemoteHistory'));
 
     // 渲染新消息
     renderMessage(message);
@@ -884,10 +859,6 @@ function addNotificationToChat(content) {
 
 // 渲染消息历史
 function renderMessageHistory() {
-    console.log('[DEBUG] renderMessageHistory called.');
-    console.log('[DEBUG] Initial localStorage.getItem(\'cursorRemoteHistory\'):', localStorage.getItem('cursorRemoteHistory'));
-    console.log('[DEBUG] Initial appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
-
     // 清空聊天容器
     elements.chatContainer.innerHTML = '';
     
@@ -908,7 +879,6 @@ function renderMessageHistory() {
             console.error('加载历史记录失败:', error);
         }
     }
-    console.log('[DEBUG] After trying to load from localStorage, appState.messageHistory:', JSON.parse(JSON.stringify(appState.messageHistory)));
 }
 
 // 滚动聊天到底部
@@ -935,15 +905,11 @@ function generateId() {
 async function processPendingCommandsOnLoad() {
     const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
     if (pendingCommands.length === 0) {
-        console.log('No pending commands to process on load.');
         return;
     }
 
-    console.log(`Processing ${pendingCommands.length} pending commands on load.`);
-
     for (const command of pendingCommands) {
         if (!command.id || !command.text) {
-            console.warn('Invalid pending command entry:', command);
             continue; 
         }
 
@@ -962,11 +928,9 @@ async function processPendingCommandsOnLoad() {
 
             if (commandData) {
                 if (commandData.status === 'completed' || commandData.status === 'error') {
-                    console.log(`Pending command ${command.id} found as '${commandData.status}'. Handling result/error via handleCompletedCommand.`);
                     await handleCompletedCommand(command.id, command.text, null); 
                     // handleCompletedCommand will remove it from localStorage and display message
                 } else if (commandData.status === 'pending' || commandData.status === 'processing') {
-                    console.log(`Command ${command.id} is still '${commandData.status}'. Re-subscribing.`);
                     
                     // 添加加载动画，表示正在处理中
                     const loadingTemplate = document.getElementById('loadingTemplate');
@@ -980,14 +944,12 @@ async function processPendingCommandsOnLoad() {
                     subscribeToCommandUpdates(command.id, command.text, loadingMessage);
                 } else {
                     // Unknown status, maybe remove it to prevent clutter
-                    console.warn(`Command ${command.id} has unknown status '${commandData.status}'. Removing from pending list.`);
                     const currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
                     const filtered = currentPending.filter(pCmd => pCmd.id !== command.id);
                     localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filtered));
                 }
             } else {
                  // Command not found in DB, might have been deleted or an issue. Remove from pending.
-                console.warn(`Pending command ${command.id} not found in database. Removing from pending list.`);
                 const currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
                 const filtered = currentPending.filter(pCmd => pCmd.id !== command.id);
                 localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filtered));
@@ -1059,7 +1021,6 @@ async function handleChannelDelete(channelName) {
         
         // 如果没有找到频道
         if (!existingChannels || existingChannels.length === 0) {
-            console.log(`Channel "${channelName}" not found or already deleted.`);
             addNotificationToChat(`频道 "${channelName}" 不存在或已被删除。`);
             return true; // 返回成功，因为频道已经不存在了
         }
@@ -1076,7 +1037,6 @@ async function handleChannelDelete(channelName) {
             return false;
         }
         
-        console.log(`Channel "${channelName}" deleted successfully.`);
         addNotificationToChat(`频道 "${channelName}" 已成功删除。`);
         return true;
     } catch (err) {
@@ -1118,8 +1078,6 @@ async function handleSpecialCommands(commandText) {
  * @param {HTMLElement} loadingMessage - 加载消息元素
  */
 function handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage) {
-    console.warn(`Subscription for command ${commandDbId} timed out. Cleaning up resources.`);
-    
     // 移除加载动画
     if (loadingMessage?.classList?.contains('loading-message')) {
         loadingMessage.remove();
@@ -1158,7 +1116,6 @@ function cleanupPendingCommand(commandId) {
     const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
     const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandId);
     localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
-    console.log(`Command ${commandId} removed from pending list.`);
 }
 
 /**
@@ -1183,7 +1140,6 @@ function cleanupTimeoutPendingCommands() {
         return;
     }
     
-    console.log(`Checking ${pendingCommands.length} pending commands for timeout...`);
     const now = Date.now();
     const timeoutThreshold = PENDING_COMMAND_TIMEOUT;
     let hasTimeoutCommands = false;
@@ -1193,7 +1149,6 @@ function cleanupTimeoutPendingCommands() {
         const isTimeout = commandAge > timeoutThreshold;
         
         if (isTimeout) {
-            console.warn(`Command ${command.id} timed out after ${commandAge/1000} seconds.`);
             hasTimeoutCommands = true;
             
             // 移除该命令的订阅（如果存在）
@@ -1210,7 +1165,6 @@ function cleanupTimeoutPendingCommands() {
     
     if (hasTimeoutCommands) {
         localStorage.setItem('pendingCommandsClientSide', JSON.stringify(updatedCommands));
-        console.log(`Cleaned up timed out commands. Remaining: ${updatedCommands.length}`);
         
         // 如果有超时命令，检查并移除可能残留的加载动画
         const loadingMessages = document.querySelectorAll('.loading-message');
