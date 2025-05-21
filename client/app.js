@@ -873,8 +873,8 @@ function renderMessageHistory() {
                 renderMessage(message);
             }
             
-            // 滚动到底部
-            scrollChatToBottom();
+            // 滚动到底部（使用即时滚动）
+            scrollChatToBottom(true);
         } catch (error) {
             console.error('加载历史记录失败:', error);
         }
@@ -882,11 +882,11 @@ function renderMessageHistory() {
 }
 
 // 滚动聊天到底部
-function scrollChatToBottom() {
+function scrollChatToBottom(instant = false) {
     // 滚动整个页面到底部，而不只是聊天容器
     window.scrollTo({
         top: document.body.scrollHeight,
-        behavior: 'smooth'
+        behavior: instant ? 'auto' : 'smooth'
     });
 }
 
@@ -993,6 +993,14 @@ async function handleAndClearInput() {
 
 // 页面加载时初始化应用
 document.addEventListener('DOMContentLoaded', initApp);
+
+// 确保页面完全加载后滚动到底部
+window.onload = function() {
+    // 使用setTimeout确保在所有内容渲染后滚动，使用即时滚动
+    setTimeout(() => {
+        scrollChatToBottom(true);
+    }, 100);
+};
 
 /**
  * 处理频道删除操作
