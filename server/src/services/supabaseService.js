@@ -345,26 +345,18 @@ const subscribeToCommands = async (retryCount = 3, retryDelay = 5000) => {
         console.log('[SupabaseService] Successfully subscribed to new commands!');
       } else if (status === 'TIMED_OUT') {
         console.error('[SupabaseService] Subscription to commands timed out. Attempting to reconnect...');
-        
-        // 重新连接尝试
         await ensureSupabaseConnection();
         setTimeout(() => subscribeToCommands(retryCount, retryDelay), retryDelay);
       } else if (status === 'CHANNEL_ERROR') {
-        console.error('[SupabaseService] Subscription to commands failed due to a channel error:', err);
-        
-        // 重新连接尝试
-        await ensureSupabaseConnection();
-        setTimeout(() => subscribeToCommands(retryCount, retryDelay), retryDelay);
-      } else if (err) {
-        console.error('[SupabaseService] Error subscribing to commands:', err);
-        
-        // 重新连接尝试
+        console.error('[SupabaseService] Channel error on command subscription. Attempting to reconnect... Error:', err || '(No specific error details)');
         await ensureSupabaseConnection();
         setTimeout(() => subscribeToCommands(retryCount, retryDelay), retryDelay);
       } else if (status === 'CLOSED') {
-        console.warn('[SupabaseService] Command subscription closed unexpectedly. Attempting to reconnect...');
-        
-        // 重新连接尝试
+        console.warn('[SupabaseService] Command subscription closed unexpectedly. Attempting to reconnect... Error:', err || '(No specific error details)');
+        await ensureSupabaseConnection();
+        setTimeout(() => subscribeToCommands(retryCount, retryDelay), retryDelay);
+      } else {
+        console.warn(`[SupabaseService] Command subscription status changed to ${status}. Attempting to reconnect... Error:`, err || '(No specific error details)');
         await ensureSupabaseConnection();
         setTimeout(() => subscribeToCommands(retryCount, retryDelay), retryDelay);
       }
