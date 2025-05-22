@@ -17,13 +17,13 @@ export const processCommand = async (commandData) => {
     return;
   }
 
-  console.log(`[CommandController] Processing command ${commandId}: ${originalCommandText.substring(0, 100)}...`);
+  console.log(`[CommandController] Processing command ${commandId}: ${originalCommandText.substring(0, 50)}...`);
 
   try {
     // 更新命令状态为处理中
     try {
       await updateCommandStatus(commandId, 'processing');
-      console.log(`[CommandController] Command ${commandId} status updated to 'processing'.`);
+      // 减少状态更新的日志输出
     } catch (statusError) {
       console.error(`[CommandController] Failed to update initial status for command ${commandId}:`, statusError);
       // 继续处理，即使状态更新失败
@@ -32,7 +32,8 @@ export const processCommand = async (commandData) => {
     const instructionForCursor = `\n\nIMPORTANT INSTRUCTION FOR AI MODEL (Using Supabase MCP Tools):\nMy original query to you is: \"${originalCommandText}\".\nThe unique ID for this command instance is: \"${commandId}\".\nThe Supabase Project ID for your MCP tool to use is: \"${supabaseProjectId}\".\n\nPlease perform the following steps in order:\n1. First, fully address my original query (\"${originalCommandText}\"). This may involve using any relevant tools at your disposal (like Playwright tools if applicable) to gather information or perform actions. Formulate your complete answer (\"your_answer_text\") to my original query.\n2. Second, present \"your_answer_text\" to me as your primary response in our chat.\n3. Third, AFTER you have presented \"your_answer_text\" to me, you MUST then use your Supabase MCP tool \`mcp_supabase_execute_sql\` to log this interaction.\n   a. For this tool call, use project_id: \"${supabaseProjectId}\".\n   b. The SQL query you need to execute is an INSERT statement into the \"results\" table.\n   c. Construct your SQL query. The text to be logged in the database should be your original, semantic answer to my query (this is the content of \"your_answer_text\" before any special formatting for display). Let's call this text to be logged \`{answer_text_for_sql}\`. Prepare \`{answer_text_for_sql}\` for the SQL string literal as follows:\n      i. Replace every single quote character (') in \`{answer_text_for_sql}\` with two single quote characters ('').\n      ii. Ensure that actual newline characters within \`{answer_text_for_sql}\` are preserved as true newlines in the SQL string literal. Do NOT convert these newlines into the two-character string '\\\\\\\\n' or any other escaped sequence.\n      Then, form the SQL query: \`INSERT INTO results (command_id, result_text, is_error) VALUES ('${commandId}', '{answer_text_for_sql}', FALSE);\`;\n   d. Execute this SQL query using your \`mcp_supabase_execute_sql\` tool. This is a critical step for logging purposes.\n\nPlease confirm you understand and will execute these steps in the specified order: 1. Address query & Formulate answer, 2. Present answer, 3. Log answer to database.`;
     const augmentedCommandText = originalCommandText + instructionForCursor;
 
-    console.log(`[CommandController] Sending augmented command to AppleScript for command ${commandId}.`);
+    // 减少详细的AppleScript执行日志
+    console.log(`[CommandController] Executing command ${commandId} via AppleScript`);
     const appleScriptPromise = runAppleScript(augmentedCommandText, chatMode, targetEditor);
 
     // 设置结果监听，带重试机制
@@ -98,12 +99,12 @@ export const processCommand = async (commandData) => {
       return;
     }
 
-    console.log(`[CommandController] AppleScript send successful for command ${commandId}. Waiting for result via subscription.`);
+    console.log(`[CommandController] Waiting for result via subscription for command ${commandId}.`);
 
     // 等待结果并处理可能的错误
     try {
       const resultData = await resultPromise; // Wait for the result from the subscription
-      console.log(`[CommandController] Result successfully received for command ${commandId}.`);
+      console.log(`[CommandController] Result received for command ${commandId}.`);
       
       // 更新命令状态为完成或错误
       try {
