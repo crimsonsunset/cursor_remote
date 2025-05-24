@@ -1,19 +1,19 @@
 # Cursor远程控制项目
 > 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
 
-## 🚨 首次使用须知
-如果您是第一次设置此项目，**请先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库**，否则客户端将无法连接。
-
-📖 **快速开始**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
-
-📚 **文档导航**: 查看 [文档目录](docs/README.md) 了解完整的文档结构。
-
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-项目文档-blue)](https://deepwiki.com/terryso/cursor_remote)
 
 [Read this in English](README.en.md)
+
+## 🚨 首次使用须知
+如果您是第一次设置此项目，**请先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库**，否则客户端将无法连接。
+
+📖 **快速开始**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
+
+📚 **文档导航**: 查看 [文档目录](docs/README.md) 了解完整的文档结构。
 
 ## Demo 体验
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)

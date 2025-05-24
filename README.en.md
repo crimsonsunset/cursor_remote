@@ -1,19 +1,19 @@
 # Cursor Remote Control Project
 > A solution to remotely control Cursor from your mobile phone using Supabase.
 
-## 🚨 First-Time Setup Notice
-If you are setting up this project for the first time, **please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to configure your Supabase database first**, otherwise the client will not be able to connect.
-
-📖 **Quick Start**: Check [Deployment Status](docs/deployment/DEPLOYMENT_STATUS.md) to understand current deployment status and tasks.
-
-📚 **Documentation**: See [Documentation Directory](docs/README.en.md) for complete documentation structure.
-
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-项目文档-blue)](https://deepwiki.com/terryso/cursor_remote)
 
 [阅读中文版 (Read in Chinese)](README.md)
+
+## 🚨 First-Time Setup Notice
+If you are setting up this project for the first time, **please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to configure your Supabase database first**, otherwise the client will not be able to connect.
+
+📖 **Quick Start**: Check [Deployment Status](docs/deployment/DEPLOYMENT_STATUS.md) to understand current deployment status and tasks.
+
+📚 **Documentation**: See [Documentation Directory](docs/README.en.md) for complete documentation structure.
 
 ## Live Demo
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
