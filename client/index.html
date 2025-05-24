@@ -39,9 +39,6 @@
                 <button id="historyButton" class="tool-button" title="命令历史">
                     <i class="ri-history-line"></i>
                 </button>
-                <button id="favoritesButton" class="tool-button" title="收藏夹">
-                    <i class="ri-star-line"></i>
-                </button>
                 <button id="statusButton" class="tool-button" title="系统状态">
                     <i class="ri-dashboard-line"></i>
                 </button>
@@ -147,34 +144,9 @@
             <div class="modal-body">
                 <div class="history-filters">
                     <input type="text" id="historySearch" placeholder="搜索命令..." class="search-input">
-                    <select id="historyFilter" class="filter-select" title="时间过滤">
-                        <option value="all">全部</option>
-                        <option value="today">今天</option>
-                        <option value="week">本周</option>
-                        <option value="month">本月</option>
-                    </select>
                 </div>
                 <div id="historyList" class="history-list">
                     <!-- 历史记录将在这里动态加载 -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 收藏夹模态窗口 -->
-    <div id="favoritesModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>收藏夹</h3>
-                <button class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="favorites-header">
-                    <input type="text" id="favoritesSearch" placeholder="搜索收藏..." class="search-input">
-                    <button id="addFavoriteBtn" class="action-button">添加收藏</button>
-                </div>
-                <div id="favoritesList" class="favorites-list">
-                    <!-- 收藏项目将在这里动态加载 -->
                 </div>
             </div>
         </div>

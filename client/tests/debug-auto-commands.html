@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>调试自动命令</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .debug-info { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; }
+        .clear-btn { background: #ff4444; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .clear-btn:hover { background: #cc3333; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 调试自动发送测试命令问题</h1>
+    
+    <div class="debug-section">
+        <h2>1. 检查本地存储</h2>
+        <div id="localStorageInfo" class="debug-info">正在检查...</div>
+        <button class="clear-btn" onclick="clearPendingCommands()">清除待处理命令</button>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. 检查最近的命令</h2>
+        <div id="recentCommandsInfo" class="debug-info">正在检查...</div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>3. 监控页面加载事件</h2>
+        <div id="loadEventsInfo" class="debug-info">正在监控...</div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>4. 实时日志</h2>
+        <div id="realTimeLog" class="debug-info">
+            <pre id="logContent"></pre>
+        </div>
+        <button class="clear-btn" onclick="clearLog()">清除日志</button>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script>
+        let supabaseClient;
+        let logContent = '';
+        
+        // 初始化日志记录
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            logContent += logMessage + '\n';
+            document.getElementById('logContent').textContent = logContent;
+            console.log(logMessage);
+        }
+        
+        // 监控函数调用
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            if (args.some(arg => typeof arg === 'string' && 
+                (arg.includes('Connection test') || arg.includes('submit_command') || arg.includes('连接测试')))) {
+                addLog('🚨 检测到连接测试相关日志: ' + args.join(' '));
+            }
+            originalConsoleLog.apply(console, args);
+        };
+        
+        // 初始化 Supabase
+        if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
+            typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY &&
+            typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                addLog('✅ Supabase 客户端初始化成功');
+            } catch (error) {
+                addLog('❌ Supabase 客户端初始化失败: ' + error.message);
+            }
+        } else {
+            addLog('❌ Supabase 配置缺失');
+        }
+        
+        // 检查本地存储
+        function checkLocalStorage() {
+            const pendingCommands = localStorage.getItem('pendingCommandsClientSide');
+            const messageHistory = localStorage.getItem('messageHistory');
+            
+            let info = '<h3>本地存储状态:</h3>';
+            
+            if (pendingCommands) {
+                try {
+                    const parsed = JSON.parse(pendingCommands);
+                    info += `<p><strong>待处理命令:</strong> ${parsed.length} 个</p>`;
+                    info += `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+                    
+                    // 检查是否包含测试命令
+                    const testCommands = parsed.filter(cmd => 
+                        cmd.text && cmd.text.includes('Connection test'));
+                    if (testCommands.length > 0) {
+                        info += `<p style="color: red;"><strong>⚠️ 发现 ${testCommands.length} 个测试命令在待处理列表中!</strong></p>`;
+                        addLog(`🔍 发现 ${testCommands.length} 个测试命令在本地存储中`);
+                    }
+                } catch (e) {
+                    info += `<p style="color: red;">解析待处理命令失败: ${e.message}</p>`;
+                }
+            } else {
+                info += '<p>无待处理命令</p>';
+            }
+            
+            if (messageHistory) {
+                try {
+                    const parsed = JSON.parse(messageHistory);
+                    info += `<p><strong>消息历史:</strong> ${parsed.length} 条</p>`;
+                    
+                    // 检查最近的消息
+                    const recentTestMessages = parsed.filter(msg => 
+                        msg.content && msg.content.includes('Connection test')).slice(-3);
+                    if (recentTestMessages.length > 0) {
+                        info += '<p><strong>最近的测试消息:</strong></p>';
+                        recentTestMessages.forEach(msg => {
+                            info += `<p>- [${new Date(msg.timestamp).toLocaleString()}] ${msg.content.substring(0, 100)}...</p>`;
+                        });
+                    }
+                } catch (e) {
+                    info += `<p style="color: red;">解析消息历史失败: ${e.message}</p>`;
+                }
+            } else {
+                info += '<p>无消息历史</p>';
+            }
+            
+            document.getElementById('localStorageInfo').innerHTML = info;
+        }
+        
+        // 清除待处理命令
+        function clearPendingCommands() {
+            localStorage.removeItem('pendingCommandsClientSide');
+            addLog('🧹 已清除本地存储中的待处理命令');
+            checkLocalStorage();
+        }
+        
+        // 检查最近的命令
+        async function checkRecentCommands() {
+            if (!supabaseClient) {
+                document.getElementById('recentCommandsInfo').innerHTML = '<p>Supabase 未连接</p>';
+                return;
+            }
+            
+            try {
+                const { data: commands, error } = await supabaseClient
+                    .from('commands')
+                    .select('id, command_text, status, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+                    
+                if (error) {
+                    document.getElementById('recentCommandsInfo').innerHTML = 
+                        `<p style="color: red;">查询失败: ${error.message}</p>`;
+                    return;
+                }
+                
+                let info = '<h3>最近的命令:</h3>';
+                const testCommands = commands.filter(cmd => 
+                    cmd.command_text && cmd.command_text.includes('Connection test'));
+                
+                if (testCommands.length > 0) {
+                    info += `<p style="color: orange;"><strong>⚠️ 发现 ${testCommands.length} 个测试命令!</strong></p>`;
+                    testCommands.forEach(cmd => {
+                        info += `<p>- [${new Date(cmd.created_at).toLocaleString()}] ${cmd.command_text} (${cmd.status})</p>`;
+                    });
+                    addLog(`🔍 数据库中发现 ${testCommands.length} 个测试命令`);
+                } else {
+                    info += '<p>最近没有测试命令</p>';
+                }
+                
+                document.getElementById('recentCommandsInfo').innerHTML = info;
+                
+            } catch (error) {
+                addLog('❌ 检查最近命令时出错: ' + error.message);
+            }
+        }
+        
+        // 监控页面加载事件
+        function monitorLoadEvents() {
+            let info = '<h3>页面加载事件:</h3>';
+            
+            // 监控 DOMContentLoaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    addLog('📄 DOMContentLoaded 事件触发');
+                });
+            } else {
+                addLog('📄 页面已加载完成 (readyState: ' + document.readyState + ')');
+            }
+            
+            // 监控 load 事件
+            if (document.readyState !== 'complete') {
+                window.addEventListener('load', () => {
+                    addLog('🌐 window load 事件触发');
+                });
+            } else {
+                addLog('🌐 窗口已完全加载');
+            }
+            
+            document.getElementById('loadEventsInfo').innerHTML = info + 
+                '<p>事件监控已激活，查看实时日志部分</p>';
+        }
+        
+        // 清除日志
+        function clearLog() {
+            logContent = '';
+            document.getElementById('logContent').textContent = '';
+        }
+        
+        // 页面加载时执行检查
+        window.addEventListener('load', () => {
+            addLog('🚀 调试页面加载完成，开始检查...');
+            checkLocalStorage();
+            checkRecentCommands();
+            monitorLoadEvents();
+        });
+        
+    </script>
+</body>
+</html>

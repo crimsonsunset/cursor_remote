@@ -663,6 +663,18 @@ message-content td {
   pointer-events: none;
 }
 
+.toast-success {
+  background-color: #44aa44 !important;
+}
+
+.toast-error {
+  background-color: #ff4444 !important;
+}
+
+.toast-warning {
+  background-color: #ffaa00 !important;
+}
+
 .toast.hide {
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -789,30 +801,24 @@ message-content td {
 }
 
 /* ===== 搜索和过滤器样式 ===== */
-.search-input, .filter-select {
+.search-input {
   background-color: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 8px 12px;
   color: var(--text-color);
   font-size: 14px;
+  width: 100%;
 }
 
-.search-input:focus, .filter-select:focus {
+.search-input:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-.history-filters, .favorites-header {
-  display: flex;
-  gap: 12px;
+.history-filters {
   margin-bottom: 20px;
-  align-items: center;
-}
-
-.search-input {
-  flex: 1;
 }
 
 .action-button {
@@ -884,6 +890,63 @@ message-content td {
 .history-action:hover {
   background-color: var(--button-hover);
   color: var(--text-color);
+}
+
+/* 状态徽章样式 */
+.status-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+
+.status-pending {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status-processing {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-completed {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-error {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.has-results-badge {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.dark-mode .status-pending {
+  background-color: #451a03;
+  color: #fbbf24;
+}
+
+.dark-mode .status-processing {
+  background-color: #1e3a8a;
+  color: #60a5fa;
+}
+
+.dark-mode .status-completed {
+  background-color: #064e3b;
+  color: #34d399;
+}
+
+.dark-mode .status-error {
+  background-color: #7f1d1d;
+  color: #f87171;
 }
 
 /* ===== 收藏夹样式 ===== */
@@ -1106,6 +1169,47 @@ message-content td {
   height: 100%;
   background-color: var(--primary-color);
   transition: width 0.3s ease;
+}
+
+/* 队列摘要样式 */
+.queue-summary {
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.summary-item:last-child {
+  border-bottom: none;
+}
+
+.summary-label {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.summary-value {
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.empty-message {
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+  padding: 16px;
+  background-color: var(--code-bg);
+  border-radius: 6px;
+  border: 1px dashed var(--border-color);
 }
 
 /* ===== Supabase诊断相关样式 ===== */

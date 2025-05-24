@@ -2,9 +2,11 @@
 > 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
 
 ## 🚨 首次使用须知
-如果您是第一次设置此项目，**请先按照 [SETUP_DATABASE.md](SETUP_DATABASE.md) 指南配置Supabase数据库**，否则客户端将无法连接。
+如果您是第一次设置此项目，**请先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库**，否则客户端将无法连接。
 
-📖 **快速开始**: 查看 [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
+📖 **快速开始**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
+
+📚 **文档导航**: 查看 [文档目录](docs/README.md) 了解完整的文档结构。
 
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
@@ -20,6 +22,28 @@
 > 远程控制 Cursor 进行UI自动化测试
 
 [![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
+
+## ✨ 主要功能
+
+### 🎮 远程控制
+- **命令发送**: 通过手机发送文本命令到 Cursor/VS Code
+- **智能建议**: 基于历史记录的命令自动补全
+- **实时反馈**: 命令执行状态实时显示
+
+### 📊 系统监控
+- **连接状态**: 实时显示 Supabase 连接状态
+- **系统指标**: CPU、内存使用率监控
+- **性能分析**: 响应时间和成功率统计
+
+### 📝 历史管理
+- **命令历史**: 查看和管理所有历史命令
+- **搜索过滤**: 快速搜索特定的历史命令
+- **删除功能**: 清理不需要的历史记录
+
+### 🔧 诊断工具
+- **连接测试**: 一键检测 Supabase 连接问题
+- **状态仪表盘**: 多标签页显示详细系统信息
+- **错误诊断**: 自动检测并提供解决方案
 
 ## 一键部署到 Vercel (客户端)
 
@@ -40,8 +64,11 @@
   - `src/appleScriptRunner.js`: 执行 AppleScript 脚本的模块。
   
 - `client/`: 手机客户端代码 (Web 界面)。
-  - `index.html`: Web 界面。
+  - `index.html`: Web 界面，包含命令发送、历史管理、系统监控等功能。
   - `app.js`: 客户端 JavaScript 代码，与 Supabase 交互。
+  - `enhancement.js`: 增强功能模块，提供智能建议和数据管理。
+  - `systemMonitor.js`: 系统监控模块，实时显示系统状态和性能指标。
+  - `connection-test.js`: 连接测试模块，诊断 Supabase 连接问题。
   - `styles.css`: 样式表。
   - `env-config.js`: 包含 Supabase 连接配置。**注意**: 通过 Vercel 部署时，环境变量会优先于此文件中的硬编码值。
   
@@ -222,11 +249,38 @@
 
 ## 工作原理
 
+### 核心流程
 1.  手机客户端 (Web 界面) 通过 Supabase 客户端库将用户操作（如点击按钮）转换为命令，并将命令数据插入到 Supabase 数据库的 `commands` 表中。
 2.  部署在您电脑上的服务器程序 (`server/src/services/supabaseService.js`) 使用 Supabase Realtime 功能实时监听 `commands` 表中状态为 'pending' 的新插入记录。
 3.  当服务器接收到新命令后，`commandController.js` 解析命令（包括确定目标编辑器和聊天模式）并通过 `appleScriptRunner.js` 调用相应的 AppleScript 脚本 (`scripts/` 目录下的 `.scpt` 文件) 来控制本机的目标编辑器应用。
 4.  命令执行状态（如 'completed' 或 'error'）以及可能的错误信息会由服务器更新回 `commands` 表中对应的记录。
 5.  (可选) 如果命令有执行结果需要返回给客户端，服务器可以将结果插入到 `results` 表中。客户端可以监听 `results` 表的变化以接收这些结果。
+
+### 增强功能
+- **智能建议**: `enhancement.js` 分析历史命令，提供自动补全和智能建议
+- **系统监控**: `systemMonitor.js` 实时收集和显示系统性能指标
+- **连接诊断**: `connection-test.js` 自动检测连接问题并提供解决方案
+- **历史管理**: 支持命令历史搜索、过滤和删除功能
+- **状态仪表盘**: 多标签页展示概览、分析、队列和系统信息
+
+## 📚 文档和维护
+
+### 文档结构
+- [`docs/`](docs/) - 完整文档目录
+  - [`architecture/`](docs/architecture/) - 系统架构文档
+  - [`deployment/`](docs/deployment/) - 部署和设置指南
+  - [`fixes/`](docs/fixes/) - 问题修复文档
+  - [`testing/`](docs/testing/) - 测试指南
+
+### 维护工具
+- [`scripts/maintenance/`](scripts/maintenance/) - 维护脚本
+  - `check-status.sh` - 系统状态检查
+  - `fix-db.sh` - 数据库修复工具
+
+### 项目报告
+- [功能完成报告](docs/FUNCTIONALITY_COMPLETION_REPORT.md) - 项目完成状态
+- [清理报告](docs/CLEANUP_REPORT.md) - 代码清理详情
+- [最终解决方案](docs/FINAL_SOLUTION.md) - 关键问题解决方案
 
 ## License
 

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试命令历史按钮功能</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-button {
+            background: #2563eb;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #1d4ed8;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 3px;
+            min-height: 50px;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+        
+        /* 模拟命令历史界面 */
+        .mock-history {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            margin: 5px 0;
+            background: white;
+        }
+        .history-command {
+            flex: 1;
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .history-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .history-action {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .history-action:hover {
+            background: #218838;
+        }
+        .history-action[data-action="copy"] {
+            background: #17a2b8;
+        }
+        .history-action[data-action="delete"] {
+            background: #dc3545;
+            color: white;
+        }
+        
+        /* Toast样式 */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #44aa44;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        .toast-error { background-color: #ff4444; }
+        .toast-warning { background-color: #ffaa00; }
+        .toast.hide { opacity: 0; }
+        
+        /* 输入框样式 */
+        #testMessageInput {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            resize: vertical;
+            min-height: 60px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 命令历史按钮功能测试</h1>
+        
+        <div class="test-section">
+            <h3>1. 模拟输入框</h3>
+            <textarea id="testMessageInput" placeholder="命令将被填入这里..."></textarea>
+        </div>
+        
+        <div class="test-section">
+            <h3>2. 模拟命令历史列表</h3>
+            <div class="mock-history">
+                <div class="history-item" data-command="ls -la">
+                    <div class="history-command">ls -la</div>
+                    <div class="history-actions">
+                        <button class="history-action" data-action="use" title="使用此命令">使用</button>
+                        <button class="history-action" data-action="copy" title="复制命令">复制</button>
+                        <button class="history-action" data-action="delete" title="删除此命令">删除</button>
+                    </div>
+                </div>
+                
+                <div class="history-item" data-command="git status">
+                    <div class="history-command">git status</div>
+                    <div class="history-actions">
+                        <button class="history-action" data-action="use" title="使用此命令">使用</button>
+                        <button class="history-action" data-action="copy" title="复制命令">复制</button>
+                        <button class="history-action" data-action="delete" title="删除此命令">删除</button>
+                    </div>
+                </div>
+                
+                <div class="history-item" data-command="npm install @supabase/supabase-js">
+                    <div class="history-command">npm install @supabase/supabase-js</div>
+                    <div class="history-actions">
+                        <button class="history-action" data-action="use" title="使用此命令">使用</button>
+                        <button class="history-action" data-action="copy" title="复制命令">复制</button>
+                        <button class="history-action" data-action="delete" title="删除此命令">删除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>3. 功能测试按钮</h3>
+            <button class="test-button" onclick="testUseCommand()">测试"使用"功能</button>
+            <button class="test-button" onclick="testCopyCommand()">测试"复制"功能</button>
+            <button class="test-button" onclick="testDeleteCommand()">测试"删除"功能</button>
+            <button class="test-button" onclick="clearTestResults()">清除结果</button>
+            
+            <div id="testResults" class="test-result">
+                <strong>测试结果将显示在这里...</strong>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>4. 本地存储检查</h3>
+            <button class="test-button" onclick="checkLocalStorage()">检查收藏夹存储</button>
+            <button class="test-button" onclick="clearHistory()">清除历史记录</button>
+            
+            <div id="storageResults" class="test-result">
+                <strong>存储状态将显示在这里...</strong>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>5. 使用说明</h3>
+            <ol>
+                <li><strong>使用功能</strong>：点击"使用"按钮应该将命令填入上方的输入框</li>
+                <li><strong>复制功能</strong>：点击"复制"按钮应该将命令复制到剪贴板并显示提示</li>
+                <li><strong>收藏功能</strong>：点击"收藏"按钮应该将命令添加到本地存储的收藏夹</li>
+                <li>所有操作都应该显示相应的Toast提示消息</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // 模拟主应用的函数
+        
+        // 模拟 showToast 函数
+        function showToast(message, type = 'success') {
+            // 移除现有的toast
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // 2秒后自动消失
+            setTimeout(() => {
+                toast.classList.add('hide');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, 2000);
+        }
+        
+        // 模拟 closeModal 函数
+        function closeModal(modalId) {
+            console.log(`模拟关闭模态窗口: ${modalId}`);
+            showToast(`模拟关闭 ${modalId}`);
+        }
+        
+        // === 命令历史功能实现 ===
+        
+        // 使用命令 - 将命令填入输入框
+        function useCommand(command) {
+            try {
+                const messageInput = document.getElementById('testMessageInput');
+                if (messageInput) {
+                    messageInput.value = command;
+                    messageInput.focus();
+                    
+                    closeModal('historyModal');
+                    showToast('命令已填入输入框');
+                    console.log('✅ 使用历史命令:', command);
+                    
+                    logTestResult('使用功能', `成功填入命令: "${command}"`, 'success');
+                } else {
+                    console.error('❌ 找不到消息输入框');
+                    showToast('无法使用命令：找不到输入框', 'error');
+                    logTestResult('使用功能', '失败: 找不到输入框', 'error');
+                }
+            } catch (error) {
+                console.error('❌ 使用命令失败:', error);
+                showToast('使用命令失败: ' + error.message, 'error');
+                logTestResult('使用功能', `失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 复制命令到剪贴板
+        function copyCommandToClipboard(command) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(command).then(() => {
+                        showToast('命令已复制到剪贴板');
+                        console.log('✅ 命令已复制:', command);
+                        logTestResult('复制功能', `成功复制命令: "${command}"`, 'success');
+                    }).catch(err => {
+                        console.error('❌ 复制失败:', err);
+                        fallbackCopyToClipboard(command);
+                    });
+                } else {
+                    fallbackCopyToClipboard(command);
+                }
+            } catch (error) {
+                console.error('❌ 复制命令失败:', error);
+                showToast('复制失败: ' + error.message, 'error');
+                logTestResult('复制功能', `失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 备用复制方法
+        function fallbackCopyToClipboard(text) {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (successful) {
+                    showToast('命令已复制到剪贴板');
+                    console.log('✅ 命令已复制（备用方法）:', text);
+                    logTestResult('复制功能', `成功复制命令 (备用方法): "${text}"`, 'success');
+                } else {
+                    showToast('复制失败，请手动复制', 'error');
+                    logTestResult('复制功能', '失败: 备用复制方法也失败', 'error');
+                }
+            } catch (error) {
+                console.error('❌ 备用复制方法失败:', error);
+                showToast('复制失败，请手动复制', 'error');
+                logTestResult('复制功能', `失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 删除历史命令
+        function deleteHistoryCommand(command) {
+            try {
+                if (!confirm(`确定要删除这个历史命令吗？\n\n"${command}"`)) {
+                    return;
+                }
+                
+                // 从localStorage获取历史记录
+                let history = JSON.parse(localStorage.getItem('cursorRemote_commandHistory') || '[]');
+                
+                // 过滤掉要删除的命令
+                const originalLength = history.length;
+                history = history.filter(item => item.command !== command);
+                
+                if (history.length === originalLength) {
+                    showToast('未找到要删除的命令', 'warning');
+                    logTestResult('删除功能', `命令未找到: "${command}"`, 'warning');
+                    return;
+                }
+                
+                // 保存更新后的历史记录
+                localStorage.setItem('cursorRemote_commandHistory', JSON.stringify(history));
+                
+                showToast('命令已删除');
+                console.log('🗑️ 命令已从历史记录中删除:', command);
+                logTestResult('删除功能', `成功删除命令: "${command}"`, 'success');
+                
+            } catch (error) {
+                console.error('❌ 删除命令失败:', error);
+                showToast('删除命令失败: ' + error.message, 'error');
+                logTestResult('删除功能', `失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 处理历史记录操作
+        function handleHistoryAction(event) {
+            const action = event.target.closest('.history-action')?.dataset.action;
+            const historyItem = event.target.closest('.history-item');
+            
+            if (!action || !historyItem) return;
+            
+            const command = historyItem.dataset.command;
+            
+            switch (action) {
+                case 'use':
+                    useCommand(command);
+                    break;
+                case 'copy':
+                    copyCommandToClipboard(command);
+                    break;
+                case 'delete':
+                    deleteHistoryCommand(command);
+                    break;
+                default:
+                    console.warn('未知的历史记录操作:', action);
+            }
+        }
+        
+        // 记录测试结果
+        function logTestResult(testName, result, type) {
+            const testResults = document.getElementById('testResults');
+            const timestamp = new Date().toLocaleTimeString();
+            const resultHtml = `
+                <div class="${type}">
+                    <strong>[${timestamp}] ${testName}:</strong> ${result}
+                </div>
+            `;
+            testResults.innerHTML += resultHtml;
+        }
+        
+        // 测试函数
+        function testUseCommand() {
+            useCommand('echo "测试使用命令功能"');
+        }
+        
+        function testCopyCommand() {
+            copyCommandToClipboard('echo "测试复制命令功能"');
+        }
+        
+        function testDeleteCommand() {
+            deleteHistoryCommand('echo "测试删除命令功能"');
+        }
+        
+        function clearTestResults() {
+            document.getElementById('testResults').innerHTML = '<strong>测试结果将显示在这里...</strong>';
+        }
+        
+        function checkLocalStorage() {
+            const history = JSON.parse(localStorage.getItem('cursorRemote_commandHistory') || '[]');
+            const storageResults = document.getElementById('storageResults');
+            
+            if (history.length === 0) {
+                storageResults.innerHTML = '<div class="warning">历史记录为空</div>';
+            } else {
+                let html = `<div class="success">找到 ${history.length} 个历史命令:</div>`;
+                history.forEach((item, index) => {
+                    const command = item.command || item;
+                    const timestamp = item.timestamp || item.created_at || '未知时间';
+                    const displayTime = timestamp ? new Date(timestamp).toLocaleString() : '未知时间';
+                    html += `<div>📋 ${index + 1}. ${command} (${displayTime})</div>`;
+                });
+                storageResults.innerHTML = html;
+            }
+        }
+        
+        function clearHistory() {
+            localStorage.removeItem('cursorRemote_commandHistory');
+            showToast('历史记录已清空');
+            document.getElementById('storageResults').innerHTML = '<div class="success">历史记录已清空</div>';
+        }
+        
+        // 添加事件监听器
+        document.addEventListener('click', function(event) {
+            if (event.target.closest('.history-action')) {
+                handleHistoryAction(event);
+            }
+        });
+        
+        // 页面加载完成后的初始化
+        window.addEventListener('load', function() {
+            console.log('🧪 测试页面加载完成');
+            logTestResult('页面初始化', '测试环境准备就绪', 'success');
+            checkLocalStorage();
+        });
+    </script>
+</body>
+</html>

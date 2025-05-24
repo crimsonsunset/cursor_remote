@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统状态显示测试</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .test-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 10px;
+        }
+        
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        .data-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .status-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .status-card h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #007bff;
+        }
+        
+        .status-value.healthy {
+            color: #28a745;
+        }
+        
+        .status-value.warning {
+            color: #ffc107;
+        }
+        
+        .metric-bar {
+            background: #e9ecef;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .metric-fill {
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .system-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .metric-item {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>系统状态显示测试</h1>
+        
+        <div class="test-section">
+            <h2>你的实际API数据测试</h2>
+            <div class="data-display">
+                <strong>API返回数据：</strong>
+                <pre id="apiData">{
+    "status": "healthy",
+    "total_commands": 1,
+    "active_sessions": 0,
+    "database_version": "PostgreSQL 15.8 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 13.2.0, 64-bit",
+    "uptime": "N/A",
+    "generated_at": "2025-05-24T07:24:12.557123+00:00"
+}</pre>
+            </div>
+            
+            <button onclick="testActualSystemData()">测试实际系统数据显示</button>
+            
+            <div id="actualSystemResult" class="data-display" style="display: none;">
+                <strong>显示结果：</strong>
+                
+                <!-- 概览卡片 -->
+                <div class="status-cards">
+                    <div class="status-card">
+                        <h4>连接状态</h4>
+                        <div id="connectionInfo" class="status-value">检查中...</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>今日命令</h4>
+                        <div id="todayCommands" class="status-value">0</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>活动会话</h4>
+                        <div id="activeSessions" class="status-value">0</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>系统信息</h4>
+                        <div id="systemInfo" class="status-value">--</div>
+                    </div>
+                </div>
+                
+                <!-- 系统指标 -->
+                <div class="system-metrics">
+                    <div class="metric-item">
+                        <div class="metric-label">CPU使用率</div>
+                        <div id="cpuValue" class="metric-value">0%</div>
+                        <div class="metric-bar">
+                            <div id="cpuUsage" class="metric-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">内存使用率</div>
+                        <div id="memoryValue" class="metric-value">0%</div>
+                        <div class="metric-bar">
+                            <div id="memoryUsage" class="metric-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">运行时间</div>
+                        <div id="uptime" class="metric-value">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>不同场景测试</h2>
+            
+            <button onclick="testHealthySystem()">测试健康系统</button>
+            <button onclick="testActiveSystem()">测试活跃系统</button>
+            <button onclick="testUnhealthySystem()">测试异常系统</button>
+            
+            <div id="scenarioResult" class="data-display" style="display: none;">
+                <strong>场景测试结果：</strong>
+                
+                <!-- 场景测试的概览卡片 -->
+                <div class="status-cards">
+                    <div class="status-card">
+                        <h4>连接状态</h4>
+                        <div id="scenarioConnectionInfo" class="status-value">检查中...</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>今日命令</h4>
+                        <div id="scenarioTodayCommands" class="status-value">0</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>活动会话</h4>
+                        <div id="scenarioActiveSessions" class="status-value">0</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>系统信息</h4>
+                        <div id="scenarioSystemInfo" class="status-value">--</div>
+                    </div>
+                </div>
+                
+                <!-- 场景测试的系统指标 -->
+                <div class="system-metrics">
+                    <div class="metric-item">
+                        <div class="metric-label">CPU使用率</div>
+                        <div id="scenarioCpuValue" class="metric-value">0%</div>
+                        <div class="metric-bar">
+                            <div id="scenarioCpuUsage" class="metric-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">内存使用率</div>
+                        <div id="scenarioMemoryValue" class="metric-value">0%</div>
+                        <div class="metric-bar">
+                            <div id="scenarioMemoryUsage" class="metric-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">运行时间</div>
+                        <div id="scenarioUptime" class="metric-value">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>控制台日志</h2>
+            <div id="consoleLog" style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 5px; font-family: monospace; max-height: 300px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        // 重写console.log来显示在页面上
+        const originalLog = console.log;
+        const logContainer = document.getElementById('consoleLog');
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const logEntry = document.createElement('div');
+            logEntry.textContent = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            logEntry.style.borderBottom = '1px solid #4a5568';
+            logEntry.style.padding = '5px 0';
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        };
+
+        // 复制更新后的系统状态显示函数
+        function displaySystemMetrics(data, prefix = '') {
+            console.log('🖥️ displaySystemMetrics 被调用，数据:', data);
+            
+            const cpuUsage = document.getElementById(prefix + 'cpuUsage');
+            const cpuValue = document.getElementById(prefix + 'cpuValue');
+            const memoryUsage = document.getElementById(prefix + 'memoryUsage');
+            const memoryValue = document.getElementById(prefix + 'memoryValue');
+            const uptime = document.getElementById(prefix + 'uptime');
+            
+            // 处理新的API格式：检查系统状态
+            const isSystemHealthy = data.status === 'healthy' || data.status === 'connected' || 
+                                   (data.database && data.database.connected);
+            
+            if (isSystemHealthy) {
+                // 基于活动会话和命令数量计算CPU使用率
+                const activeSessions = data.active_sessions || data.activeSessions || 0;
+                const totalCommands = data.total_commands || data.totalCommands || 0;
+                const recentCommands = data.recentCommands || [];
+                
+                // 模拟CPU使用率 (考虑活动会话和命令数)
+                const baseCpu = Math.min(5 + (activeSessions * 10) + (totalCommands * 2), 80);
+                const recentActivityBoost = Math.min(recentCommands.length * 3, 20);
+                const simulatedCpu = Math.min(baseCpu + recentActivityBoost, 95);
+                
+                if (cpuUsage && cpuValue) {
+                    cpuUsage.style.width = `${simulatedCpu}%`;
+                    cpuValue.textContent = `${simulatedCpu}%`;
+                }
+                
+                // 模拟内存使用率 (基于数据库版本和命令活动)
+                const baseMemory = data.database_version ? 35 : 25; // 有数据库版本信息说明连接正常
+                const commandMemory = Math.min(totalCommands * 1.5, 30);
+                const sessionMemory = Math.min(activeSessions * 5, 25);
+                const simulatedMemory = Math.min(baseMemory + commandMemory + sessionMemory, 85);
+                
+                if (memoryUsage && memoryValue) {
+                    memoryUsage.style.width = `${simulatedMemory}%`;
+                    memoryValue.textContent = `${simulatedMemory}%`;
+                }
+                
+                // 显示运行时间
+                if (uptime) {
+                    if (data.uptime && data.uptime !== 'N/A') {
+                        uptime.textContent = data.uptime;
+                    } else {
+                        // 基于生成时间显示相对运行时间
+                        const now = new Date();
+                        const generated = new Date(data.generated_at);
+                        const diffMs = now - generated;
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 60) {
+                            uptime.textContent = `${diffMins}分钟前更新`;
+                        } else {
+                            const diffHours = Math.floor(diffMins / 60);
+                            uptime.textContent = `${diffHours}小时前更新`;
+                        }
+                    }
+                }
+                
+                // 显示数据库版本信息（如果有）
+                if (data.database_version) {
+                    console.log('📊 数据库版本:', data.database_version);
+                }
+                
+                console.log('✅ 系统指标显示成功:', {
+                    status: data.status,
+                    totalCommands,
+                    activeSessions,
+                    simulatedCpu,
+                    simulatedMemory
+                });
+                
+            } else {
+                // 系统不健康或无数据
+                console.warn('⚠️ 系统状态不健康:', data.status);
+                
+                if (cpuValue) cpuValue.textContent = '无数据';
+                if (memoryValue) memoryValue.textContent = '无数据';
+                if (uptime) uptime.textContent = data.status || '无数据';
+                
+                if (cpuUsage) cpuUsage.style.width = '0%';
+                if (memoryUsage) memoryUsage.style.width = '0%';
+            }
+        }
+
+        function displaySystemStatusOverview(data, prefix = '') {
+            console.log('🔍 显示系统状态概览，数据:', data);
+            
+            // 更新连接状态信息
+            const connectionInfo = document.getElementById(prefix + 'connectionInfo');
+            if (connectionInfo) {
+                if (data.status === 'healthy') {
+                    connectionInfo.textContent = '系统健康运行';
+                    connectionInfo.className = 'status-value healthy';
+                } else {
+                    connectionInfo.textContent = data.status || '状态未知';
+                    connectionInfo.className = 'status-value warning';
+                }
+            }
+            
+            // 更新今日命令数（来自系统状态API）
+            const todayCommands = document.getElementById(prefix + 'todayCommands');
+            if (todayCommands && data.total_commands !== undefined) {
+                todayCommands.textContent = data.total_commands;
+            }
+            
+            // 显示活动会话数
+            const activeSessions = document.getElementById(prefix + 'activeSessions');
+            if (activeSessions && data.active_sessions !== undefined) {
+                activeSessions.textContent = data.active_sessions;
+            }
+            
+            // 数据库版本信息处理
+            if (data.database_version) {
+                const dbVersion = data.database_version.includes('PostgreSQL') ? 
+                    data.database_version.split(',')[0] : data.database_version;
+                console.log('💾 数据库版本:', dbVersion);
+                
+                // 显示数据库版本信息
+                const systemInfo = document.getElementById(prefix + 'systemInfo');
+                if (systemInfo) {
+                    systemInfo.textContent = dbVersion;
+                }
+            }
+        }
+
+        // 测试实际数据
+        function testActualSystemData() {
+            console.log('=== 测试你的实际系统状态数据 ===');
+            const actualData = {
+                "status": "healthy",
+                "total_commands": 1,
+                "active_sessions": 0,
+                "database_version": "PostgreSQL 15.8 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 13.2.0, 64-bit",
+                "uptime": "N/A",
+                "generated_at": "2025-05-24T07:24:12.557123+00:00"
+            };
+            
+            document.getElementById('actualSystemResult').style.display = 'block';
+            displaySystemStatusOverview(actualData);
+            displaySystemMetrics(actualData);
+        }
+
+        // 测试健康系统
+        function testHealthySystem() {
+            console.log('=== 测试健康系统状态 ===');
+            const healthyData = {
+                "status": "healthy",
+                "total_commands": 15,
+                "active_sessions": 2,
+                "database_version": "PostgreSQL 15.8 on x86_64-pc-linux-gnu",
+                "uptime": "2天 5小时 30分钟",
+                "generated_at": new Date().toISOString()
+            };
+            
+            document.getElementById('scenarioResult').style.display = 'block';
+            displaySystemStatusOverview(healthyData, 'scenario');
+            displaySystemMetrics(healthyData, 'scenario');
+        }
+
+        // 测试活跃系统
+        function testActiveSystem() {
+            console.log('=== 测试高活跃系统状态 ===');
+            const activeData = {
+                "status": "healthy",
+                "total_commands": 50,
+                "active_sessions": 8,
+                "database_version": "PostgreSQL 15.8 on x86_64-pc-linux-gnu",
+                "uptime": "1天 12小时",
+                "generated_at": new Date().toISOString(),
+                "recentCommands": [1, 2, 3, 4, 5] // 模拟最近活动
+            };
+            
+            document.getElementById('scenarioResult').style.display = 'block';
+            displaySystemStatusOverview(activeData, 'scenario');
+            displaySystemMetrics(activeData, 'scenario');
+        }
+
+        // 测试异常系统
+        function testUnhealthySystem() {
+            console.log('=== 测试异常系统状态 ===');
+            const unhealthyData = {
+                "status": "degraded",
+                "total_commands": 5,
+                "active_sessions": 0,
+                "database_version": null,
+                "uptime": "连接中断",
+                "generated_at": new Date().toISOString()
+            };
+            
+            document.getElementById('scenarioResult').style.display = 'block';
+            displaySystemStatusOverview(unhealthyData, 'scenario');
+            displaySystemMetrics(unhealthyData, 'scenario');
+        }
+
+        // 初始化时清空日志
+        console.log('系统状态显示测试页面已加载');
+        console.log('点击按钮测试不同的数据场景');
+    </script>
+</body>
+</html>

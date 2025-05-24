@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统状态测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .status-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .log-output {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .progress-bar {
+            background: #e9ecef;
+            border-radius: 4px;
+            height: 20px;
+            position: relative;
+            margin: 5px 0;
+        }
+        .progress-fill {
+            background: #007bff;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>系统状态数据测试</h1>
+        
+        <div class="status-section">
+            <h3>控制按钮</h3>
+            <button class="test-button" onclick="testAnalytics()">测试分析数据</button>
+            <button class="test-button" onclick="testQueue()">测试队列数据</button>
+            <button class="test-button" onclick="testSystemMetrics()">测试系统指标</button>
+            <button class="test-button" onclick="clearLog()">清空日志</button>
+        </div>
+
+        <div class="status-section">
+            <h3>分析数据显示</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-value" id="totalCommands">--</div>
+                    <div class="status-label">总命令数</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="successRate">--</div>
+                    <div class="status-label">成功率</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="avgResponseTime">--</div>
+                    <div class="status-label">平均响应时间</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <h3>队列状态显示</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-value" id="queueLength">--</div>
+                    <div class="status-label">队列长度</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="processingCount">--</div>
+                    <div class="status-label">处理中</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="retryCount">--</div>
+                    <div class="status-label">失败重试</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <h3>系统指标显示</h3>
+            <div>
+                <label>CPU使用率:</label>
+                <div class="progress-bar">
+                    <div id="cpuUsage" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <span id="cpuValue">0%</span>
+            </div>
+            <div>
+                <label>内存使用率:</label>
+                <div class="progress-bar">
+                    <div id="memoryUsage" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <span id="memoryValue">0%</span>
+            </div>
+            <div>
+                <label>运行时间:</label>
+                <span id="uptime">--</span>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <h3>测试日志</h3>
+            <div id="logOutput" class="log-output"></div>
+        </div>
+    </div>
+
+    <!-- 引入配置和主要脚本 -->
+    <script src="env-config.js"></script>
+    <script src="enhancement.js"></script>
+    
+    <script>
+        // 日志函数
+        function log(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logOutput.textContent += logMessage;
+            logOutput.scrollTop = logOutput.scrollHeight;
+            console.log(logMessage);
+        }
+
+        function clearLog() {
+            document.getElementById('logOutput').textContent = '';
+        }
+
+        // 初始化Supabase客户端
+        if (typeof window.ENV_CONFIG !== 'undefined' && window.ENV_CONFIG.SUPABASE_URL) {
+            const { createClient } = supabase;
+            window.supabaseClient = createClient(
+                window.ENV_CONFIG.SUPABASE_URL,
+                window.ENV_CONFIG.SUPABASE_ANON_KEY
+            );
+            log('Supabase客户端初始化成功');
+        } else {
+            log('无法初始化Supabase客户端 - 检查env-config.js', 'error');
+        }
+
+        // 测试分析数据
+        async function testAnalytics() {
+            try {
+                log('开始测试分析数据...');
+                const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    log(`分析数据API错误: ${error.message}`, 'error');
+                    return;
+                }
+                
+                log(`分析数据原始响应: ${JSON.stringify(result)}`);
+                
+                // 处理可能的JSON字符串格式
+                let analyticsData = result;
+                if (typeof result === 'string') {
+                    analyticsData = JSON.parse(result);
+                }
+                
+                // 显示数据
+                displayAnalyticsData(analyticsData);
+                log('分析数据显示完成');
+                
+            } catch (error) {
+                log(`测试分析数据失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试队列数据
+        async function testQueue() {
+            try {
+                log('开始测试队列数据...');
+                const { data: result, error } = await supabaseClient.rpc('get_queue_status');
+                
+                if (error) {
+                    log(`队列数据API错误: ${error.message}`, 'error');
+                    return;
+                }
+                
+                log(`队列数据原始响应: ${JSON.stringify(result)}`);
+                
+                // 处理可能的JSON字符串格式
+                let queueData = result;
+                if (typeof result === 'string') {
+                    queueData = JSON.parse(result);
+                }
+                
+                // 显示数据
+                displayQueueData(queueData);
+                log('队列数据显示完成');
+                
+            } catch (error) {
+                log(`测试队列数据失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试系统指标
+        async function testSystemMetrics() {
+            try {
+                log('开始测试系统指标...');
+                const { data: result, error } = await supabaseClient.rpc('get_system_status');
+                
+                if (error) {
+                    log(`系统指标API错误: ${error.message}`, 'error');
+                    return;
+                }
+                
+                log(`系统指标原始响应: ${JSON.stringify(result)}`);
+                
+                // 处理可能的JSON字符串格式
+                let systemData = result;
+                if (typeof result === 'string') {
+                    systemData = JSON.parse(result);
+                }
+                
+                // 显示数据
+                displaySystemMetrics(systemData);
+                log('系统指标显示完成');
+                
+            } catch (error) {
+                log(`测试系统指标失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 从app.js复制的显示函数
+        function displayAnalyticsData(data) {
+            // 处理数据库返回的实际字段
+            const totalCommands = data.totalCommands || data.total_commands || 0;
+            const successfulCommands = data.successfulCommands || data.successful_commands || 0;
+            const failedCommands = data.failedCommands || data.failed_commands || 0;
+            const averageResponseTime = data.averageResponseTime || data.average_response_time || 0;
+            
+            // 计算成功率
+            const successRate = totalCommands > 0 ? (successfulCommands / totalCommands) : 0;
+            
+            // 更新显示
+            document.getElementById('totalCommands').textContent = totalCommands;
+            document.getElementById('successRate').textContent = `${(successRate * 100).toFixed(1)}%`;
+            document.getElementById('avgResponseTime').textContent = `${averageResponseTime ? averageResponseTime.toFixed(2) : '0.00'}s`;
+        }
+
+        function displayQueueData(data) {
+            // 处理数据库返回的实际字段
+            const pendingCount = data.pendingCommands || data.pending || 0;
+            const processingCountVal = data.processingCommands || data.processing || 0;
+            const errorCount = data.errorCommands || data.failed || 0;
+            
+            // 更新显示
+            document.getElementById('queueLength').textContent = pendingCount + processingCountVal;
+            document.getElementById('processingCount').textContent = processingCountVal;
+            document.getElementById('retryCount').textContent = errorCount;
+        }
+
+        function displaySystemMetrics(data) {
+            // 显示基于数据库连接状态的指标
+            if (data.database && data.database.connected) {
+                // 模拟CPU使用率（基于命令活动）
+                const recentCommands = data.recentCommands || [];
+                const simulatedCpu = Math.min(10 + (recentCommands.length * 5), 100);
+                
+                const cpuUsage = document.getElementById('cpuUsage');
+                const cpuValue = document.getElementById('cpuValue');
+                if (cpuUsage && cpuValue) {
+                    cpuUsage.style.width = `${simulatedCpu}%`;
+                    cpuValue.textContent = `${simulatedCpu}%`;
+                }
+                
+                // 模拟内存使用率
+                const simulatedMemory = Math.min(30 + (recentCommands.length * 3), 90);
+                const memoryUsage = document.getElementById('memoryUsage');
+                const memoryValue = document.getElementById('memoryValue');
+                if (memoryUsage && memoryValue) {
+                    memoryUsage.style.width = `${simulatedMemory}%`;
+                    memoryValue.textContent = `${simulatedMemory}%`;
+                }
+                
+                // 显示系统运行时间
+                const uptime = document.getElementById('uptime');
+                if (uptime) {
+                    uptime.textContent = '系统正常运行';
+                }
+            } else {
+                // 如果没有数据，显示默认值
+                document.getElementById('cpuValue').textContent = '无数据';
+                document.getElementById('memoryValue').textContent = '无数据';
+                document.getElementById('uptime').textContent = '无数据';
+            }
+        }
+
+        // 页面加载时自动运行一次测试
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('页面加载完成，开始自动测试...');
+                testAnalytics();
+                setTimeout(() => testQueue(), 1000);
+                setTimeout(() => testSystemMetrics(), 2000);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

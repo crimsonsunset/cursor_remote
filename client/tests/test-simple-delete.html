@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简化删除功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .history-item {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .delete-btn:hover {
+            background: #c82333;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ 简化删除功能测试</h1>
+        
+        <div class="test-section">
+            <h3>数据库连接状态</h3>
+            <div id="connectionStatus">检查中...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>删除功能说明</h3>
+            <p><strong>简化版删除函数特点：</strong></p>
+            <ul>
+                <li>✅ 只需要命令ID，不再使用文本回退</li>
+                <li>✅ 删除代码大幅简化，去除冗余逻辑</li>
+                <li>✅ 专注处理外键约束错误（23503）</li>
+                <li>✅ 清晰的错误提示和解决方案</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>模拟历史记录</h3>
+            <div id="historyList">
+                <div class="history-item" data-command-id="test-id-1" data-command="echo 'test command 1'">
+                    <span>echo 'test command 1'</span>
+                    <button class="delete-btn" onclick="testDelete(this.parentElement)">删除</button>
+                </div>
+                <div class="history-item" data-command-id="test-id-2" data-command="ls -la">
+                    <span>ls -la</span>
+                    <button class="delete-btn" onclick="testDelete(this.parentElement)">删除</button>
+                </div>
+                <div class="history-item" data-command-id="" data-command="没有ID的命令">
+                    <span>没有ID的命令 (测试错误处理)</span>
+                    <button class="delete-btn" onclick="testDelete(this.parentElement)">删除</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>删除结果</h3>
+            <div id="deleteStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>操作日志</h3>
+            <div id="logOutput" class="log"></div>
+            <button onclick="clearLog()">清空日志</button>
+        </div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script>
+        let supabaseClient = null;
+        let logOutput = '';
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logOutput += logEntry;
+            document.getElementById('logOutput').textContent = logOutput;
+            console.log(message);
+        }
+
+        function clearLog() {
+            logOutput = '';
+            document.getElementById('logOutput').textContent = '';
+        }
+
+        // 显示状态
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('deleteStatus');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // 初始化Supabase
+        async function initSupabase() {
+            try {
+                if (!window.ENV_CONFIG) {
+                    throw new Error('环境配置未加载');
+                }
+
+                const { createClient } = supabase;
+                supabaseClient = createClient(
+                    window.ENV_CONFIG.SUPABASE_URL,
+                    window.ENV_CONFIG.SUPABASE_ANON_KEY
+                );
+
+                log('Supabase客户端初始化成功');
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span style="color: green;">✅ 已连接到Supabase</span>';
+                
+                return true;
+            } catch (error) {
+                log(`Supabase初始化失败: ${error.message}`, 'error');
+                document.getElementById('connectionStatus').innerHTML = 
+                    `<span style="color: red;">❌ 连接失败: ${error.message}</span>`;
+                return false;
+            }
+        }
+
+        // 简化的删除函数
+        async function deleteHistoryCommand(command, historyItem) {
+            if (!command || !historyItem) {
+                log('❌ 删除参数不完整', 'error');
+                showStatus('删除参数错误', 'error');
+                return;
+            }
+
+            if (!confirm('确定要删除这条历史记录吗？此操作不可恢复。')) {
+                return;
+            }
+
+            const commandId = historyItem?.dataset?.commandId;
+            
+            if (!commandId || commandId === 'undefined' || commandId === 'null') {
+                log('❌ 无法删除：缺少命令ID', 'error');
+                showStatus('删除失败：缺少命令ID', 'error');
+                return;
+            }
+
+            if (!supabaseClient) {
+                log('❌ Supabase客户端不可用', 'error');
+                showStatus('无法连接到数据库', 'error');
+                return;
+            }
+
+            try {
+                log(`🗑️ 删除命令 ID: ${commandId}`);
+                
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+                
+                if (error) {
+                    log(`❌ 删除失败: ${error.message}`, 'error');
+                    
+                    if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+                        showStatus('删除失败：存在外键约束。请先在 Supabase SQL Editor 中执行 database/fix-delete-functions.sql 脚本！', 'error');
+                    } else {
+                        showStatus(`删除失败: ${error.message}`, 'error');
+                    }
+                    return;
+                }
+                
+                if (!data?.success) {
+                    const errorMsg = data?.error || '删除操作失败';
+                    
+                    if (data?.error_code === '23503') {
+                        showStatus('删除失败：存在外键约束。请先在 Supabase SQL Editor 中执行 database/fix-delete-functions.sql 脚本！', 'error');
+                    } else {
+                        showStatus(`删除失败: ${errorMsg}`, 'error');
+                    }
+                    return;
+                }
+                
+                // 成功删除
+                log(`✅ 删除成功: ${data.deleted_count} 条命令, ${data.deleted_results_count} 条结果`);
+                
+                // 从DOM移除元素
+                historyItem.remove();
+                
+                showStatus('删除成功', 'success');
+                
+            } catch (error) {
+                log(`❌ 删除异常: ${error.message}`, 'error');
+                
+                if (error.message?.includes('foreign key constraint')) {
+                    showStatus('删除失败：存在外键约束。请先在 Supabase SQL Editor 中执行 database/fix-delete-functions.sql 脚本！', 'error');
+                } else {
+                    showStatus(`删除失败: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // 测试删除功能
+        function testDelete(historyItem) {
+            const command = historyItem.dataset.command;
+            log(`开始测试删除: ${command}`);
+            deleteHistoryCommand(command, historyItem);
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', async () => {
+            log('页面加载完成，开始初始化...');
+            await initSupabase();
+        });
+    </script>
+
+    <!-- 引入Supabase -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</body>
+</html>

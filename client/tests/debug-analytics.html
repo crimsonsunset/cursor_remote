@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分析数据调试器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 14px;
+        }
+        .button:hover { background: #0056CC; }
+        .button.success { background: #34C759; }
+        .button.warning { background: #FF9500; }
+        .button.danger { background: #FF3B30; }
+        .log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 150px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            display: block;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .error-message {
+            color: #FF3B30;
+            background: #FFE6E6;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success-message {
+            color: #34C759;
+            background: #E6F7E6;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .info-message {
+            color: #007AFF;
+            background: #E6F3FF;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error { color: #FF3B30; }
+        .success { color: #34C759; }
+        .info { color: #007AFF; }
+        .warning { color: #FF9500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 分析数据调试器</h1>
+        <p>实时监控分析数据加载过程，调试"无法加载分析数据"问题</p>
+        
+        <div class="controls">
+            <button class="button" onclick="testRPCFunction()">测试RPC函数</button>
+            <button class="button success" onclick="testFallbackMethod()">测试备用方法</button>
+            <button class="button warning" onclick="testDisplayFunction()">测试显示函数</button>
+            <button class="button" onclick="testFullProcess()">完整流程测试</button>
+            <button class="button danger" onclick="clearAll()">清空所有</button>
+        </div>
+        
+        <div id="status" class="info-message">
+            等待测试命令...
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📊 模拟分析数据显示</h2>
+        <div id="commandStats">等待数据...</div>
+        <div id="usageTrends">等待趋势数据...</div>
+    </div>
+
+    <div class="container">
+        <h2>📝 详细日志</h2>
+        <div id="log" class="log">准备开始调试...\n</div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        let supabaseClient;
+
+        // 初始化 Supabase 客户端
+        async function initSupabase() {
+            try {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                log('✅ Supabase 客户端初始化成功', 'success');
+                updateStatus('✅ 已连接到数据库', 'success');
+                return true;
+            } catch (error) {
+                log(`❌ Supabase 初始化失败: ${error.message}`, 'error');
+                updateStatus('❌ 数据库连接失败', 'error');
+                return false;
+            }
+        }
+
+        // 测试RPC函数调用
+        async function testRPCFunction() {
+            if (!supabaseClient && !await initSupabase()) return;
+            
+            log('\n🧪 测试 get_command_analytics RPC函数...', 'info');
+            updateStatus('🔄 测试RPC函数中...', 'info');
+            
+            try {
+                const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    log(`❌ RPC调用失败: ${error.message}`, 'error');
+                    log(`错误详情: ${JSON.stringify(error, null, 2)}`, 'error');
+                    updateStatus('❌ RPC函数调用失败', 'error');
+                    return null;
+                } else {
+                    log('✅ RPC调用成功', 'success');
+                    log(`返回数据: ${JSON.stringify(result, null, 2)}`, 'info');
+                    updateStatus('✅ RPC函数调用成功', 'success');
+                    return result;
+                }
+            } catch (error) {
+                log(`❌ RPC调用异常: ${error.message}`, 'error');
+                updateStatus('❌ RPC调用发生异常', 'error');
+                return null;
+            }
+        }
+
+        // 测试备用查询方法
+        async function testFallbackMethod() {
+            if (!supabaseClient && !await initSupabase()) return;
+            
+            log('\n🔧 测试备用查询方法...', 'info');
+            updateStatus('🔄 测试备用查询中...', 'info');
+            
+            try {
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                
+                const { data: metrics, error: metricsError } = await supabaseClient
+                    .from('command_metrics')
+                    .select('*')
+                    .gte('created_at', twentyFourHoursAgo);
+                    
+                if (metricsError) {
+                    log(`❌ 直接查询失败: ${metricsError.message}`, 'error');
+                    updateStatus('❌ 直接查询失败', 'error');
+                    return null;
+                }
+                
+                log(`✅ 直接查询成功，获得 ${metrics?.length || 0} 条记录`, 'success');
+                
+                // 手动计算统计数据
+                const totalCommands = metrics?.length || 0;
+                const successfulCommands = metrics?.filter(m => m.success === true).length || 0;
+                const failedCommands = metrics?.filter(m => m.success === false).length || 0;
+                const successRate = totalCommands > 0 ? (successfulCommands / totalCommands) * 100 : 0;
+                
+                const analyticsData = {
+                    total_commands: totalCommands,
+                    completed_commands: successfulCommands,
+                    error_commands: failedCommands,
+                    success_rate: parseFloat(successRate.toFixed(2)),
+                    totalCommands: totalCommands,
+                    successfulCommands: successfulCommands,
+                    failedCommands: failedCommands,
+                    averageResponseTime: 0,
+                    commandsByHour: [],
+                    timestamp: new Date().toISOString()
+                };
+                
+                log(`📊 备用方法构建的数据: ${JSON.stringify(analyticsData, null, 2)}`, 'info');
+                updateStatus('✅ 备用查询成功', 'success');
+                return analyticsData;
+                
+            } catch (error) {
+                log(`❌ 备用方法异常: ${error.message}`, 'error');
+                updateStatus('❌ 备用查询发生异常', 'error');
+                return null;
+            }
+        }
+
+        // 测试显示函数（使用模拟数据）
+        async function testDisplayFunction() {
+            log('\n🎯 测试 displayAnalyticsData 函数...', 'info');
+            updateStatus('🔄 测试显示函数中...', 'info');
+            
+            // 创建测试数据
+            const testData = {
+                total_commands: 5,
+                completed_commands: 4,
+                error_commands: 1,
+                success_rate: 80.00,
+                totalCommands: 5,
+                successfulCommands: 4,
+                failedCommands: 1,
+                averageResponseTime: 1.23,
+                commandsByHour: [
+                    { hour: 10, count: 2 },
+                    { hour: 11, count: 3 }
+                ],
+                timestamp: new Date().toISOString()
+            };
+            
+            log(`📝 使用测试数据: ${JSON.stringify(testData, null, 2)}`, 'info');
+            
+            try {
+                // 调用显示函数 - 直接使用主应用的函数逻辑
+                displayAnalyticsDataTest(testData);
+                log('✅ 显示函数调用成功', 'success');
+                updateStatus('✅ 显示函数测试成功', 'success');
+            } catch (error) {
+                log(`❌ 显示函数调用失败: ${error.message}`, 'error');
+                updateStatus('❌ 显示函数测试失败', 'error');
+            }
+        }
+
+        // 完整流程测试
+        async function testFullProcess() {
+            log('\n🚀 开始完整流程测试...', 'info');
+            updateStatus('🔄 完整流程测试中...', 'info');
+            
+            // 1. 先测试RPC
+            const rpcData = await testRPCFunction();
+            
+            let finalData = null;
+            if (rpcData) {
+                log('🎯 使用RPC数据进行显示测试', 'info');
+                finalData = rpcData;
+            } else {
+                log('🔧 RPC失败，尝试备用方法', 'warning');
+                finalData = await testFallbackMethod();
+            }
+            
+            if (finalData) {
+                log('📊 开始显示数据', 'info');
+                displayAnalyticsDataTest(finalData);
+                updateStatus('✅ 完整流程测试成功', 'success');
+            } else {
+                log('❌ 完整流程测试失败：无法获取数据', 'error');
+                updateStatus('❌ 完整流程测试失败', 'error');
+            }
+        }
+
+        // 测试版本的显示函数
+        function displayAnalyticsDataTest(data) {
+            console.log('🎯 displayAnalyticsDataTest 被调用，数据:', data);
+            
+            const commandStats = document.getElementById('commandStats');
+            const usageTrends = document.getElementById('usageTrends');
+            
+            if (!commandStats) {
+                console.error('❌ 找不到 commandStats 元素');
+                return;
+            }
+            
+            try {
+                const totalCommands = data.total_commands || data.totalCommands || 0;
+                const completedCommands = data.completed_commands || data.successfulCommands || 0;
+                const errorCommands = data.error_commands || data.failedCommands || 0;
+                const averageResponseTime = data.averageResponseTime || data.average_response_time || 0;
+                
+                let successRate;
+                if (data.success_rate !== undefined) {
+                    successRate = parseFloat(data.success_rate) / 100;
+                } else {
+                    successRate = totalCommands > 0 ? (completedCommands / totalCommands) : 0;
+                }
+                
+                const statsHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">总命令数</span>
+                            <span class="stat-value">${totalCommands}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">成功率</span>
+                            <span class="stat-value">${(successRate * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">平均响应时间</span>
+                            <span class="stat-value">${averageResponseTime ? averageResponseTime.toFixed(2) : '0.00'}s</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">失败次数</span>
+                            <span class="stat-value">${errorCommands}</span>
+                        </div>
+                    </div>
+                `;
+                
+                commandStats.innerHTML = statsHTML;
+                log('✅ commandStats 内容已更新', 'success');
+                
+                // 处理趋势数据
+                if (usageTrends) {
+                    const commandsByHour = data.commandsByHour || [];
+                    let trendsHTML = '<div class="trends-info">';
+                    
+                    if (commandsByHour && Array.isArray(commandsByHour) && commandsByHour.length > 0) {
+                        const peakHour = commandsByHour.reduce((max, current) => 
+                            current.count > max.count ? current : max
+                        );
+                        trendsHTML += `<p>最活跃时段: ${peakHour.hour}:00 (${peakHour.count} 次命令)</p>`;
+                        
+                        trendsHTML += '<div class="hour-stats">';
+                        commandsByHour.slice(-6).forEach(hour => {
+                            trendsHTML += `<span class="hour-stat" style="margin: 5px; padding: 5px; background: #e6f3ff; border-radius: 4px; display: inline-block;">${hour.hour}:00 - ${hour.count}次</span>`;
+                        });
+                        trendsHTML += '</div>';
+                    } else {
+                        trendsHTML += '<p>暂无使用趋势数据</p>';
+                    }
+                    
+                    trendsHTML += '</div>';
+                    usageTrends.innerHTML = trendsHTML;
+                    log('✅ 使用趋势已更新', 'success');
+                }
+                
+            } catch (error) {
+                console.error('❌ displayAnalyticsDataTest 处理过程中发生错误:', error);
+                commandStats.innerHTML = '<div class="error-message">数据处理错误: ' + error.message + '</div>';
+            }
+        }
+
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type + '-message';
+        }
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const line = `[${timestamp}] ${message}\n`;
+            logElement.innerHTML += `<span class="${type}">${line}</span>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearAll() {
+            document.getElementById('log').innerHTML = '日志已清空，准备新的测试...\n';
+            document.getElementById('commandStats').innerHTML = '等待数据...';
+            document.getElementById('usageTrends').innerHTML = '等待趋势数据...';
+            updateStatus('等待测试命令...', 'info');
+        }
+
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            initSupabase();
+        });
+    </script>
+</body>
+</html>

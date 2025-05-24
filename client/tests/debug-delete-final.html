@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除功能最终调试 - Cursor Remote</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        .step {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .step h3 {
+            color: #495057;
+            margin-top: 0;
+            border-bottom: 2px solid #6c757d;
+            padding-bottom: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 15px 0;
+            white-space: pre-wrap;
+            border: 1px solid #34495e;
+        }
+        .data-item {
+            background: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 8px 0;
+            font-family: monospace;
+        }
+        .command-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .command-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .command-text {
+            flex: 1;
+            font-family: monospace;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .delete-btn:hover {
+            background: #c82333;
+        }
+    </style>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="env-config.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🐛 删除功能最终调试</h1>
+        
+        <div class="step">
+            <h3>🔧 1. 环境检查</h3>
+            <button onclick="checkEnvironment()">检查环境</button>
+            <div id="env-result"></div>
+        </div>
+
+        <div class="step">
+            <h3>📋 2. 获取历史记录</h3>
+            <button onclick="loadHistory()">加载历史记录</button>
+            <div id="history-result"></div>
+            <div id="history-list" class="command-list"></div>
+        </div>
+
+        <div class="step">
+            <h3>🗑️ 3. 测试删除功能</h3>
+            <button onclick="testDeleteById()">测试按ID删除</button>
+            <button onclick="testDeleteByText()">测试按文本删除</button>
+            <div id="delete-result"></div>
+        </div>
+
+        <div class="step">
+            <h3>🔍 4. 实时删除测试</h3>
+            <p>从上面的历史记录列表中点击删除按钮进行实时测试</p>
+            <div id="realtime-result"></div>
+        </div>
+
+        <div class="step">
+            <h3>📊 5. 详细日志</h3>
+            <button onclick="clearLog()">清除日志</button>
+            <div id="debug-log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let supabaseClient = null;
+        let debugLog = '';
+        let currentHistory = [];
+
+        function log(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            if (data) {
+                debugLog += logEntry + '\n' + JSON.stringify(data, null, 2) + '\n\n';
+            } else {
+                debugLog += logEntry + '\n';
+            }
+            document.getElementById('debug-log').textContent = debugLog;
+            console.log(message, data);
+        }
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+
+        function clearLog() {
+            debugLog = '';
+            document.getElementById('debug-log').textContent = '';
+        }
+
+        async function checkEnvironment() {
+            log('🔧 开始环境检查...');
+            
+            try {
+                // 检查配置
+                if (typeof window.SUPABASE_URL === 'undefined' || typeof window.SUPABASE_ANON_KEY === 'undefined') {
+                    throw new Error('Supabase配置未找到');
+                }
+                
+                log('✅ Supabase配置已加载', {
+                    url: window.SUPABASE_URL,
+                    key: window.SUPABASE_ANON_KEY.substring(0, 20) + '...'
+                });
+
+                // 初始化客户端
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                log('✅ Supabase客户端已初始化');
+
+                // 测试连接
+                const { data: testData, error: testError } = await supabaseClient
+                    .from('commands')
+                    .select('count', { count: 'exact', head: true });
+
+                if (testError) {
+                    throw testError;
+                }
+
+                log('✅ 数据库连接正常');
+
+                // 测试函数是否存在
+                const functions = ['get_command_history_with_ids', 'delete_command_by_id', 'delete_command_by_text'];
+                for (const funcName of functions) {
+                    try {
+                        if (funcName === 'get_command_history_with_ids') {
+                            const { error } = await supabaseClient.rpc(funcName, {
+                                limit_count: 1,
+                                search_text: ''
+                            });
+                            if (error) throw error;
+                        } else if (funcName === 'delete_command_by_id') {
+                            const { error } = await supabaseClient.rpc(funcName, {
+                                p_command_id: '00000000-0000-0000-0000-000000000000'
+                            });
+                            // 这里我们期望一个"记录未找到"的成功响应，而不是函数错误
+                        } else if (funcName === 'delete_command_by_text') {
+                            const { error } = await supabaseClient.rpc(funcName, {
+                                p_command_text: '__test_nonexistent_command__',
+                                p_user_id: null
+                            });
+                            // 同样期望"记录未找到"的成功响应
+                        }
+                        log(`✅ 函数 ${funcName} 存在且可调用`);
+                    } catch (funcError) {
+                        if (funcError.message.includes('function') && funcError.message.includes('does not exist')) {
+                            log(`❌ 函数 ${funcName} 不存在`, funcError);
+                        } else {
+                            log(`✅ 函数 ${funcName} 存在 (测试调用完成)`, { error: funcError.message });
+                        }
+                    }
+                }
+
+                showResult('env-result', '✅ 环境检查完成，所有组件正常', 'success');
+
+            } catch (error) {
+                log('❌ 环境检查失败', error);
+                showResult('env-result', `❌ 环境检查失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadHistory() {
+            if (!supabaseClient) {
+                showResult('history-result', '❌ 请先检查环境', 'error');
+                return;
+            }
+
+            log('📋 开始加载历史记录...');
+
+            try {
+                const { data: history, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 20,
+                    search_text: ''
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                log('✅ 历史记录加载成功', { count: history?.length || 0 });
+                currentHistory = history || [];
+
+                // 显示历史记录列表
+                const historyList = document.getElementById('history-list');
+                if (currentHistory.length === 0) {
+                    historyList.innerHTML = '<div class="data-item">暂无历史记录</div>';
+                    showResult('history-result', '📋 历史记录为空', 'warning');
+                } else {
+                    const historyHTML = currentHistory.map((item, index) => `
+                        <div class="command-item">
+                            <div class="command-text">
+                                <strong>ID:</strong> ${item.id}<br>
+                                <strong>命令:</strong> ${item.command_text}<br>
+                                <strong>时间:</strong> ${item.created_at}
+                            </div>
+                            <button class="delete-btn" onclick="realtimeDelete('${item.id}', '${item.command_text.replace(/'/g, "\\'")}', ${index})">删除</button>
+                        </div>
+                    `).join('');
+                    
+                    historyList.innerHTML = historyHTML;
+                    showResult('history-result', `✅ 加载了 ${currentHistory.length} 条历史记录`, 'success');
+                }
+
+            } catch (error) {
+                log('❌ 加载历史记录失败', error);
+                showResult('history-result', `❌ 加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDeleteById() {
+            if (!supabaseClient || currentHistory.length === 0) {
+                showResult('delete-result', '❌ 请先加载历史记录', 'error');
+                return;
+            }
+
+            const testCommand = currentHistory[0];
+            log(`🗑️ 测试按ID删除: ${testCommand.id}`);
+
+            try {
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: testCommand.id
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                log('✅ 按ID删除测试完成', data);
+                
+                if (data.success) {
+                    showResult('delete-result', `✅ 按ID删除成功: 删除了 ${data.deleted_count} 条记录`, 'success');
+                    // 重新加载历史记录
+                    await loadHistory();
+                } else {
+                    showResult('delete-result', `❌ 按ID删除失败: ${data.message}`, 'error');
+                }
+
+            } catch (error) {
+                log('❌ 按ID删除测试失败', error);
+                showResult('delete-result', `❌ 按ID删除异常: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDeleteByText() {
+            if (!supabaseClient || currentHistory.length === 0) {
+                showResult('delete-result', '❌ 请先加载历史记录', 'error');
+                return;
+            }
+
+            const testCommand = currentHistory[currentHistory.length - 1]; // 使用最后一条记录
+            log(`🗑️ 测试按文本删除: ${testCommand.command_text}`);
+
+            try {
+                const { data, error } = await supabaseClient.rpc('delete_command_by_text', {
+                    p_command_text: testCommand.command_text,
+                    p_user_id: null
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                log('✅ 按文本删除测试完成', data);
+                
+                if (data.success) {
+                    showResult('delete-result', `✅ 按文本删除成功: 删除了 ${data.deleted_count} 条记录`, 'success');
+                    // 重新加载历史记录
+                    await loadHistory();
+                } else {
+                    showResult('delete-result', `❌ 按文本删除失败: ${data.message}`, 'error');
+                }
+
+            } catch (error) {
+                log('❌ 按文本删除测试失败', error);
+                showResult('delete-result', `❌ 按文本删除异常: ${error.message}`, 'error');
+            }
+        }
+
+        async function realtimeDelete(commandId, commandText, index) {
+            if (!confirm(`确定要删除这条记录吗？\nID: ${commandId}\n命令: ${commandText}`)) {
+                return;
+            }
+
+            log(`🗑️ 实时删除测试 - ID: ${commandId}`);
+            showResult('realtime-result', '🔄 正在删除...', 'warning');
+
+            try {
+                // 模拟主应用的删除逻辑
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                log('✅ 实时删除完成', data);
+
+                if (data.success && data.deleted_count > 0) {
+                    showResult('realtime-result', `✅ 删除成功: 删除了 ${data.deleted_count} 条记录`, 'success');
+                    
+                    // 验证删除结果
+                    setTimeout(async () => {
+                        log('🔍 验证删除结果...');
+                        const { data: verifyData, error: verifyError } = await supabaseClient.rpc('get_command_history_with_ids', {
+                            limit_count: 50,
+                            search_text: ''
+                        });
+
+                        if (!verifyError && verifyData) {
+                            const stillExists = verifyData.some(item => item.id === commandId);
+                            if (stillExists) {
+                                log('❌ 验证失败: 记录仍然存在');
+                                showResult('realtime-result', '❌ 删除验证失败: 记录仍然存在于数据库中', 'error');
+                            } else {
+                                log('✅ 验证成功: 记录已删除');
+                                showResult('realtime-result', '✅ 删除验证成功: 记录已从数据库中移除', 'success');
+                                // 重新加载历史记录
+                                await loadHistory();
+                            }
+                        }
+                    }, 1000);
+                } else {
+                    showResult('realtime-result', `❌ 删除失败: ${data.message || '未知原因'}`, 'error');
+                }
+
+            } catch (error) {
+                log('❌ 实时删除异常', error);
+                showResult('realtime-result', `❌ 删除异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载完成后自动执行环境检查
+        window.addEventListener('load', () => {
+            setTimeout(checkEnvironment, 500);
+        });
+    </script>
+</body>
+</html>

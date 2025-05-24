@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL执行器 - 修复分析函数</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 14px;
+        }
+        .button:hover { background: #0056CC; }
+        .button.danger { background: #FF3B30; }
+        .button.danger:hover { background: #D70015; }
+        .log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        .sql-area {
+            width: 100%;
+            height: 200px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            resize: vertical;
+        }
+        .error { color: #FF3B30; }
+        .success { color: #34C759; }
+        .info { color: #007AFF; }
+        .warning { color: #FF9500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛠️ SQL执行器 - 修复分析函数</h1>
+        <p>用于直接执行SQL命令修复数据库函数</p>
+        
+        <div class="controls">
+            <button class="button" onclick="executeFixScript()">执行修复脚本</button>
+            <button class="button" onclick="testCurrentFunction()">测试当前函数</button>
+            <button class="button" onclick="testAfterFix()">测试修复后函数</button>
+            <button class="button danger" onclick="clearLog()">清空日志</button>
+        </div>
+        
+        <div>
+            <h3>SQL命令:</h3>
+            <textarea id="sqlCommand" class="sql-area" placeholder="输入SQL命令...">-- 获取命令分析数据的修复版本
+CREATE OR REPLACE FUNCTION get_command_analytics(timeframe_hours INTEGER DEFAULT 24)
+RETURNS JSON AS $$
+DECLARE
+  result JSON;
+  start_time TIMESTAMP;
+  total_count INTEGER;
+  success_count INTEGER;
+  failed_count INTEGER;
+  calculated_success_rate NUMERIC;
+BEGIN
+  start_time := NOW() - INTERVAL '1 hour' * timeframe_hours;
+  
+  -- 计算统计数据
+  SELECT 
+    COUNT(*),
+    COUNT(*) FILTER (WHERE success = true),
+    COUNT(*) FILTER (WHERE success = false)
+  INTO total_count, success_count, failed_count
+  FROM command_metrics 
+  WHERE created_at >= start_time;
+  
+  -- 计算成功率（以百分比形式返回，如 100.00）
+  IF total_count > 0 THEN
+    calculated_success_rate := (success_count::NUMERIC / total_count::NUMERIC) * 100;
+  ELSE
+    calculated_success_rate := 0;
+  END IF;
+  
+  -- 构建返回结果，同时支持新旧两种格式
+  SELECT json_build_object(
+    -- 新格式字段（优先）
+    'total_commands', total_count,
+    'completed_commands', success_count,
+    'error_commands', failed_count,
+    'success_rate', ROUND(calculated_success_rate, 2),
+    
+    -- 兼容旧格式字段
+    'totalCommands', total_count,
+    'successfulCommands', success_count,
+    'failedCommands', failed_count,
+    
+    -- 其他字段
+    'averageResponseTime', COALESCE(AVG(processing_duration), 0),
+    'commandsByHour', COALESCE((
+      SELECT json_agg(
+        json_build_object(
+          'hour', EXTRACT(hour from created_at),
+          'count', count(*)
+        )
+      )
+      FROM command_metrics 
+      WHERE created_at >= start_time
+      GROUP BY EXTRACT(hour from created_at)
+      ORDER BY EXTRACT(hour from created_at)
+    ), '[]'::json),
+    'timestamp', NOW()
+  ) INTO result
+  FROM command_metrics 
+  WHERE created_at >= start_time;
+  
+  RETURN result;
+EXCEPTION WHEN OTHERS THEN
+  -- 错误处理：返回空数据结构
+  RETURN json_build_object(
+    'total_commands', 0,
+    'completed_commands', 0,
+    'error_commands', 0,
+    'success_rate', 0,
+    'totalCommands', 0,
+    'successfulCommands', 0,
+    'failedCommands', 0,
+    'averageResponseTime', 0,
+    'commandsByHour', '[]'::json,
+    'timestamp', NOW(),
+    'error', SQLERRM
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;</textarea>
+        </div>
+        
+        <div id="log" class="log">点击按钮开始操作...\n</div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        let supabaseClient;
+
+        // 初始化 Supabase 客户端
+        async function initSupabase() {
+            try {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                log('✅ Supabase 客户端初始化成功', 'success');
+                return true;
+            } catch (error) {
+                log(`❌ Supabase 初始化失败: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 执行修复脚本
+        async function executeFixScript() {
+            if (!supabaseClient) {
+                if (!await initSupabase()) return;
+            }
+
+            log('\n🛠️ 执行修复脚本...', 'info');
+            
+            const sql = document.getElementById('sqlCommand').value;
+            if (!sql.trim()) {
+                log('❌ 请输入SQL命令', 'error');
+                return;
+            }
+
+            try {
+                // 注意：直接执行SQL需要服务器端权限，这里我们用RPC方式
+                log('⚠️ 注意：直接执行SQL需要数据库管理员权限', 'warning');
+                log('🔄 建议：请将SQL复制到数据库管理工具中执行', 'info');
+                log(`SQL内容已准备:\n${sql}`, 'info');
+                
+            } catch (error) {
+                log(`❌ 执行失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试当前函数
+        async function testCurrentFunction() {
+            if (!supabaseClient) {
+                if (!await initSupabase()) return;
+            }
+
+            log('\n🧪 测试当前 get_command_analytics 函数...', 'info');
+            
+            try {
+                const { data, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    log(`❌ 函数调用失败: ${error.message}`, 'error');
+                    log(`详细信息: ${JSON.stringify(error, null, 2)}`, 'error');
+                } else {
+                    log('✅ 函数调用成功', 'success');
+                    log(`返回数据: ${JSON.stringify(data, null, 2)}`, 'info');
+                    
+                    // 分析返回的字段格式
+                    log('\n📋 字段格式分析:', 'info');
+                    if (data.total_commands !== undefined) {
+                        log('✅ 新格式字段 total_commands 存在', 'success');
+                    } else {
+                        log('❌ 新格式字段 total_commands 不存在', 'error');
+                    }
+                    
+                    if (data.totalCommands !== undefined) {
+                        log('✅ 旧格式字段 totalCommands 存在', 'success');
+                    } else {
+                        log('❌ 旧格式字段 totalCommands 不存在', 'error');
+                    }
+                    
+                    if (data.success_rate !== undefined) {
+                        log('✅ success_rate 字段存在', 'success');
+                    } else {
+                        log('❌ success_rate 字段不存在', 'error');
+                    }
+                }
+            } catch (error) {
+                log(`❌ 测试异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试修复后的函数
+        async function testAfterFix() {
+            log('\n🎯 提示: 请先在数据库中执行修复脚本，然后再调用此测试', 'warning');
+            await testCurrentFunction();
+        }
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const line = `[${timestamp}] ${message}\n`;
+            logElement.innerHTML += `<span class="${type}">${line}</span>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '日志已清空，点击按钮开始操作...\n';
+        }
+
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            initSupabase();
+        });
+    </script>
+</body>
+</html>

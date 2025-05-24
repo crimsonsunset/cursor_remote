@@ -3,7 +3,6 @@ class ClientEnhancementService {
   constructor(supabaseClient) {
     this.supabase = supabaseClient;
     this.commandHistory = [];
-    this.favorites = [];
     
     // 初始化数据
     this.loadAllData();
@@ -11,15 +10,11 @@ class ClientEnhancementService {
 
   // 加载所有数据
   async loadAllData() {
-    await Promise.all([
-      this.loadCommandHistory(),
-      this.loadFavorites()
-    ]);
+    await this.loadCommandHistory();
   }
 
   // 命令历史管理 - 从Supabase获取
   async loadCommandHistory(limit = 50, search = null) {
-    console.log('🔄 开始从Supabase加载命令历史...');
     try {
       const { data, error } = await this.supabase.rpc('get_command_history', {
         limit_count: limit,
@@ -27,19 +22,14 @@ class ClientEnhancementService {
       });
       
       if (error) {
-        console.error('❌ Supabase查询出错:', error);
         throw error;
       }
-      
-      console.log('📥 Supabase原始响应:', data);
       
       // 处理数据库返回的JSON格式
       let historyData = data;
       if (typeof data === 'string') {
         historyData = JSON.parse(data);
       }
-      
-      console.log('📊 解析后的历史数据:', historyData);
       
       // 转换数据格式以匹配客户端期望的格式
       this.commandHistory = (historyData || []).map(item => ({
@@ -52,11 +42,8 @@ class ClientEnhancementService {
         metrics: item.metrics
       }));
       
-      console.log('✅ 历史记录加载成功，数量:', this.commandHistory.length);
       return this.commandHistory;
     } catch (error) {
-      console.error('❌ 加载命令历史失败:', error);
-      console.log('🔄 回退到localStorage...');
       // fallback to localStorage
       return this.loadCommandHistoryFromLocal();
     }
@@ -73,75 +60,6 @@ class ClientEnhancementService {
     }
   }
 
-  // 常用命令收藏 - 从Supabase获取
-  async loadFavorites(category = null) {
-    try {
-      const { data, error } = await this.supabase.rpc('get_favorite_commands', {
-        category_filter: category
-      });
-      
-      if (error) throw error;
-      
-      // 处理数据库返回的JSON格式
-      let favoritesData = data;
-      if (typeof data === 'string') {
-        favoritesData = JSON.parse(data);
-      }
-      
-      this.favorites = favoritesData || [];
-      return this.favorites;
-    } catch (error) {
-      console.error('加载收藏命令失败:', error);
-      return this.loadFavoritesFromLocal();
-    }
-  }
-
-  loadFavoritesFromLocal() {
-    try {
-      this.favorites = JSON.parse(localStorage.getItem('cursorRemote_favorites')) || [];
-      return this.favorites;
-    } catch {
-      this.favorites = [];
-      return [];
-    }
-  }
-
-  // 添加到收藏 - 保存到Supabase
-  async addToFavorites(command, title, category = 'general') {
-    try {
-      const result = await this.supabase.rpc('add_favorite_command', {
-        command_text: command,
-        category: category,
-        description: title || command.substring(0, 30) + '...'
-      });
-      
-      if (result.success) {
-        await this.loadFavorites(); // 重新加载
-        return true;
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (error) {
-      console.error('添加收藏失败:', error);
-      return this.addToFavoritesLocal(command, title);
-    }
-  }
-
-  addToFavoritesLocal(command, title) {
-    const favorite = {
-      id: Date.now(),
-      command_text: command,
-      description: title || command.substring(0, 30) + '...',
-      category: 'general',
-      usage_count: 0,
-      created_at: new Date().toISOString()
-    };
-
-    this.favorites.push(favorite);
-    localStorage.setItem('cursorRemote_favorites', JSON.stringify(this.favorites));
-    return favorite;
-  }
-
   // 智能命令建议
   getSuggestions(currentInput) {
     const suggestions = [];
@@ -149,7 +67,7 @@ class ClientEnhancementService {
     // 基于历史记录的建议
     const historyMatches = this.commandHistory
       .filter(item => item.command.toLowerCase().includes(currentInput.toLowerCase()))
-      .slice(0, 3)
+      .slice(0, 5)
       .map(item => ({
         type: 'history',
         text: item.command,
@@ -157,21 +75,10 @@ class ClientEnhancementService {
         icon: '🕒'
       }));
 
-    // 基于收藏的建议
-    const favoriteMatches = this.favorites
-      .filter(item => item.command.toLowerCase().includes(currentInput.toLowerCase()))
-      .slice(0, 2)
-      .map(item => ({
-        type: 'favorite',
-        text: item.command,
-        title: item.title,
-        icon: '⭐'
-      }));
-
     // 智能补全建议
     const smartSuggestions = this.getSmartSuggestions(currentInput);
 
-    return [...historyMatches, ...favoriteMatches, ...smartSuggestions];
+    return [...historyMatches, ...smartSuggestions];
   }
 
   getSmartSuggestions(input) {
@@ -207,7 +114,6 @@ class ClientEnhancementService {
   exportData() {
     return {
       commandHistory: this.commandHistory,
-      favorites: this.favorites,
       exportedAt: new Date().toISOString()
     };
   }
@@ -217,22 +123,11 @@ class ClientEnhancementService {
       this.commandHistory = [...data.commandHistory, ...this.commandHistory].slice(0, 100);
       localStorage.setItem('cursorRemote_commandHistory', JSON.stringify(this.commandHistory));
     }
-
-    if (data.favorites) {
-      this.favorites = [...this.favorites, ...data.favorites];
-      localStorage.setItem('cursorRemote_favorites', JSON.stringify(this.favorites));
-    }
   }
 
   // Getter方法 - 为了向后兼容
   getCommandHistory() {
-    console.log('📚 getCommandHistory被调用，当前历史记录数量:', this.commandHistory.length);
-    console.log('📚 历史记录内容:', this.commandHistory);
     return this.commandHistory;
-  }
-
-  getFavorites() {
-    return this.favorites;
   }
 
   // 添加到历史记录的方法
@@ -263,10 +158,22 @@ class ClientEnhancementService {
     localStorage.removeItem('cursorRemote_commandHistory');
   }
 
-  // 从收藏中移除
-  removeFromFavorites(id) {
-    this.favorites = this.favorites.filter(item => item.id !== id);
-    localStorage.setItem('cursorRemote_favorites', JSON.stringify(this.favorites));
+  // 从历史记录中移除特定命令
+  removeCommand(command) {
+    if (!command) return false;
+    
+    const originalLength = this.commandHistory.length;
+    this.commandHistory = this.commandHistory.filter(item => 
+      item.command !== command && item.command_text !== command
+    );
+    
+    const wasRemoved = this.commandHistory.length < originalLength;
+    if (wasRemoved) {
+      // 更新本地存储
+      localStorage.setItem('cursorRemote_commandHistory', JSON.stringify(this.commandHistory));
+    }
+    
+    return wasRemoved;
   }
 }
 
@@ -274,27 +181,18 @@ class ClientEnhancementService {
 let globalEnhancementService = null;
 
 function initGlobalEnhancementService(supabaseClient) {
-  console.log('🚀 初始化全局增强服务...', supabaseClient ? '有Supabase客户端' : '无Supabase客户端');
   if (!globalEnhancementService && supabaseClient) {
     globalEnhancementService = new ClientEnhancementService(supabaseClient);
     window.clientEnhancementService = globalEnhancementService;
-    
-    console.log('✅ 全局增强服务初始化完成');
     
     // 为了向后兼容和便于使用，也将各个功能单独暴露
     window.CommandHistory = {
       getHistory: () => globalEnhancementService.getCommandHistory(),
       addCommand: (command) => globalEnhancementService.addToHistory(command),
-      clearHistory: () => globalEnhancementService.clearHistory()
+      clearHistory: () => globalEnhancementService.clearHistory(),
+      removeCommand: (command) => globalEnhancementService.removeCommand(command),
+      clearCache: () => globalEnhancementService.clearHistory() // 兼容性别名
     };
-
-    window.CommandFavorites = {
-      getFavorites: () => globalEnhancementService.getFavorites(),
-      addFavorite: (command, title) => globalEnhancementService.addToFavorites(command, title),
-      removeFavorite: (id) => globalEnhancementService.removeFromFavorites(id)
-    };
-    
-    console.log('✅ 全局对象暴露完成');
   }
   return globalEnhancementService;
 }

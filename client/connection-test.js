@@ -59,17 +59,7 @@ async function runConnectionTest() {
             console.log('✅ get_command_analytics成功:', analytics);
         }
         
-        // 4. 测试get_favorite_commands
-        console.log('🔍 测试 get_favorite_commands...');
-        const { data: favorites, error: favoritesError } = await client.rpc('get_favorite_commands');
-        if (favoritesError) {
-            console.error('❌ get_favorite_commands错误:', favoritesError);
-            throw new Error(`get_favorite_commands failed: ${favoritesError.message}`);
-        } else {
-            console.log('✅ get_favorite_commands成功:', favorites);
-        }
-        
-        // 6. 测试get_command_history
+        // 4. 测试get_command_history
         console.log('🔍 测试 get_command_history...');
         const { data: history, error: historyError } = await client.rpc('get_command_history', { 
             limit_count: 5, 

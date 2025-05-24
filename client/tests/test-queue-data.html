@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>队列数据测试</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 14px;
+        }
+        .button:hover { background: #0056CC; }
+        .log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 150px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .error { color: #FF3B30; }
+        .success { color: #34C759; }
+        .info { color: #007AFF; }
+        .warning { color: #FF9500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 队列数据测试</h1>
+        <p>测试队列数据显示逻辑，验证"队列为空"问题的修复</p>
+        
+        <div class="controls">
+            <button class="button" onclick="testActualData()">测试实际数据</button>
+            <button class="button" onclick="testEmptyQueue()">测试空队列</button>
+            <button class="button" onclick="testWithActivity()">测试有活动数据</button>
+            <button class="button" onclick="clearTest()">清空测试</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📊 队列状态显示</h2>
+        <div class="test-section">
+            <h3>队列统计</h3>
+            <div class="metric-row">
+                <span>队列长度:</span>
+                <span id="queueLength">-</span>
+            </div>
+            <div class="metric-row">
+                <span>处理中:</span>
+                <span id="processingCount">-</span>
+            </div>
+            <div class="metric-row">
+                <span>失败重试:</span>
+                <span id="retryCount">-</span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>队列详情</h3>
+            <div id="queueList">等待测试数据...</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📝 测试日志</h2>
+        <div id="log" class="log">准备开始测试...\n</div>
+    </div>
+
+    <script>
+        // 复制主应用的队列数据处理函数
+        function displayQueueData(data) {
+            console.log('🔄 displayQueueData 被调用，数据:', data);
+            
+            const queueLength = document.getElementById('queueLength');
+            const processingCount = document.getElementById('processingCount');
+            const retryCount = document.getElementById('retryCount');
+            const queueList = document.getElementById('queueList');
+            
+            // 处理数据库返回的实际字段 - 支持新的API格式
+            const pendingCount = data.pending_commands || data.pendingCommands || data.pending || 0;
+            const processingCountVal = data.processing_commands || data.processingCommands || data.processing || 0;
+            const errorCount = data.error_commands || data.errorCommands || data.failed || 0;
+            const totalToday = data.total_today || data.totalToday || 0;
+            
+            log(`📊 队列数据解析: pending=${pendingCount}, processing=${processingCountVal}, error=${errorCount}, total=${totalToday}`, 'info');
+            
+            // 更新队列统计显示
+            if (queueLength) queueLength.textContent = pendingCount + processingCountVal;
+            if (processingCount) processingCount.textContent = processingCountVal;
+            if (retryCount) retryCount.textContent = errorCount;
+            
+            if (queueList) {
+                const recentActivity = data.recentActivity || data.recent_activity || [];
+                
+                // 如果没有最近活动数据，但有今日总数，显示统计信息而不是"队列为空"
+                if (recentActivity.length === 0) {
+                    if (totalToday > 0) {
+                        queueList.innerHTML = `
+                            <div class="queue-summary">
+                                <div class="summary-item">
+                                    <span class="summary-label">今日总命令</span>
+                                    <span class="summary-value">${totalToday}</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">等待中</span>
+                                    <span class="summary-value">${pendingCount}</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">处理中</span>
+                                    <span class="summary-value">${processingCountVal}</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">队列状态</span>
+                                    <span class="summary-value">${data.queue_health || '正常'}</span>
+                                </div>
+                                <div class="empty-message" style="margin-top: 15px;">
+                                    ${pendingCount === 0 && processingCountVal === 0 ? 
+                                        '当前没有待处理的命令' : 
+                                        '没有可显示的活动详情'
+                                    }
+                                </div>
+                            </div>
+                        `;
+                        log('✅ 显示队列摘要（有今日数据）', 'success');
+                    } else {
+                        queueList.innerHTML = '<div class="empty-message">今日暂无命令记录</div>';
+                        log('⚠️ 显示空队列消息（无今日数据）', 'warning');
+                    }
+                } else {
+                    const queueHTML = recentActivity.map(item => `
+                        <div class="queue-item">
+                            <div class="queue-item-header">
+                                <span class="queue-item-command">${escapeHtml(item.command_text || '未知命令')}</span>
+                                <span class="queue-item-status ${item.status}">${getStatusText(item.status)}</span>
+                            </div>
+                            <div class="queue-item-meta">
+                                <span>状态: ${item.status}</span>
+                                <span>创建时间: ${formatDate(item.created_at)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                    queueList.innerHTML = queueHTML;
+                    log(`✅ 显示活动列表（${recentActivity.length}个项目）`, 'success');
+                }
+            }
+        }
+
+        // 辅助函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待中',
+                'processing': '处理中',
+                'completed': '已完成',
+                'failed': '失败',
+                'error': '错误'
+            };
+            return statusMap[status] || status;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '未知时间';
+            return new Date(dateString).toLocaleString('zh-CN');
+        }
+
+        // 测试函数
+        function testActualData() {
+            log('\n🧪 测试实际API数据...', 'info');
+            
+            // 你提供的实际数据
+            const actualData = {
+                "pending_commands": 0,
+                "processing_commands": 0,
+                "total_today": 1,
+                "queue_health": "good",
+                "generated_at": "2025-05-24T07:12:59.68517+00:00"
+            };
+            
+            log(`📝 使用数据: ${JSON.stringify(actualData, null, 2)}`, 'info');
+            displayQueueData(actualData);
+        }
+
+        function testEmptyQueue() {
+            log('\n🧪 测试真正的空队列...', 'info');
+            
+            const emptyData = {
+                "pending_commands": 0,
+                "processing_commands": 0,
+                "total_today": 0,
+                "queue_health": "good"
+            };
+            
+            log(`📝 使用数据: ${JSON.stringify(emptyData, null, 2)}`, 'info');
+            displayQueueData(emptyData);
+        }
+
+        function testWithActivity() {
+            log('\n🧪 测试有活动数据的队列...', 'info');
+            
+            const activeData = {
+                "pending_commands": 1,
+                "processing_commands": 1,
+                "total_today": 3,
+                "queue_health": "good",
+                "recentActivity": [
+                    {
+                        "command_text": "测试命令1",
+                        "status": "processing",
+                        "created_at": "2025-05-24T07:10:00Z"
+                    },
+                    {
+                        "command_text": "测试命令2",
+                        "status": "pending",
+                        "created_at": "2025-05-24T07:12:00Z"
+                    }
+                ]
+            };
+            
+            log(`📝 使用数据: ${JSON.stringify(activeData, null, 2)}`, 'info');
+            displayQueueData(activeData);
+        }
+
+        function clearTest() {
+            document.getElementById('queueLength').textContent = '-';
+            document.getElementById('processingCount').textContent = '-';
+            document.getElementById('retryCount').textContent = '-';
+            document.getElementById('queueList').innerHTML = '等待测试数据...';
+            document.getElementById('log').innerHTML = '测试已清空，准备新的测试...\n';
+        }
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const line = `[${timestamp}] ${message}\n`;
+            logElement.innerHTML += `<span class="${type}">${line}</span>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // 页面加载时显示说明
+        window.addEventListener('DOMContentLoaded', () => {
+            log('📋 队列数据测试页面已加载', 'info');
+            log('💡 点击"测试实际数据"按钮来验证你的API数据显示效果', 'info');
+        });
+    </script>
+</body>
+</html>

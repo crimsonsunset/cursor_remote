@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        button { margin: 5px; padding: 10px 15px; }
+        .log-output { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>🗑️ 删除功能测试页面</h1>
+    
+    <div class="test-section">
+        <h2>测试说明</h2>
+        <p>此页面用于测试历史记录删除功能，验证删除后记录是否真正从数据库中移除。</p>
+        
+        <h3>测试步骤：</h3>
+        <ol>
+            <li>点击"初始化测试环境"加载Supabase配置</li>
+            <li>点击"添加测试命令"创建一些测试数据</li>
+            <li>点击"查看当前历史"查看所有历史记录</li>
+            <li>点击"删除测试命令"删除指定命令</li>
+            <li>再次点击"查看当前历史"验证删除结果</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>操作按钮</h2>
+        <button onclick="initTestEnvironment()">初始化测试环境</button>
+        <button onclick="addTestCommands()">添加测试命令</button>
+        <button onclick="viewCurrentHistory()">查看当前历史</button>
+        <button onclick="deleteTestCommand()">删除测试命令</button>
+        <button onclick="testCascadeDelete()">测试级联删除</button>
+        <button onclick="clearLogs()">清空日志</button>
+    </div>
+
+    <div class="test-section">
+        <h2>测试日志</h2>
+        <div id="logOutput" class="log-output">等待测试开始...</div>
+    </div>
+
+    <!-- 引入Supabase SDK -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="env-config.js"></script>
+
+    <script>
+        let supabaseClient;
+        let testCommands = [
+            '测试删除命令 #1 - ' + Date.now(),
+            '测试删除命令 #2 - ' + Date.now(),
+            '测试删除命令 #3 - ' + Date.now()
+        ];
+
+        function log(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            logOutput.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('logOutput').innerHTML = '日志已清空<br>';
+        }
+
+        async function initTestEnvironment() {
+            try {
+                log('🔧 初始化测试环境...');
+                
+                if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
+                    typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY) {
+                    
+                    supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                    log('✅ Supabase客户端初始化成功', 'success');
+                    
+                    // 测试连接
+                    const { data, error } = await supabaseClient.rpc('get_command_history', {
+                        limit_count: 1,
+                        search_text: ''
+                    });
+                    
+                    if (error) {
+                        log('❌ Supabase连接测试失败: ' + error.message, 'error');
+                    } else {
+                        log('✅ Supabase连接测试成功', 'success');
+                    }
+                } else {
+                    log('❌ Supabase配置未找到', 'error');
+                }
+            } catch (error) {
+                log('❌ 初始化失败: ' + error.message, 'error');
+            }
+        }
+
+        async function addTestCommands() {
+            if (!supabaseClient) {
+                log('❌ 请先初始化测试环境', 'error');
+                return;
+            }
+
+            try {
+                log('➕ 开始添加测试命令...');
+                
+                for (const command of testCommands) {
+                    const result = await supabaseClient.rpc('submit_command', {
+                        p_command_text: command,
+                        p_user_id: 'test_user'
+                    });
+                    
+                    log(`✅ 已添加测试命令: ${command}`, 'success');
+                }
+                
+                log('🎉 所有测试命令添加完成', 'success');
+            } catch (error) {
+                log('❌ 添加测试命令失败: ' + error.message, 'error');
+            }
+        }
+
+        async function viewCurrentHistory() {
+            if (!supabaseClient) {
+                log('❌ 请先初始化测试环境', 'error');
+                return;
+            }
+
+            try {
+                log('🔍 查看当前历史记录...');
+                
+                const { data: history, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 20,
+                    search_text: ''
+                });
+                
+                if (error) {
+                    log('❌ 获取历史记录失败: ' + error.message, 'error');
+                    return;
+                }
+                
+                if (!history || history.length === 0) {
+                    log('📭 当前没有历史记录', 'info');
+                    return;
+                }
+                
+                log(`📊 找到 ${history.length} 条历史记录:`, 'info');
+                history.forEach((item, index) => {
+                    const isTestCommand = testCommands.some(cmd => item.command_text.includes(cmd.split(' - ')[0]));
+                    const marker = isTestCommand ? '🧪' : '📝';
+                    const statusInfo = item.status ? ` [${item.status}]` : '';
+                    const resultsInfo = item.has_results ? ' 📊' : '';
+                    log(`${marker} ${index + 1}. ${item.command_text}${statusInfo}${resultsInfo} (ID: ${item.id})`, 'info');
+                });
+                
+            } catch (error) {
+                log('❌ 查看历史记录失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteTestCommand() {
+            if (!supabaseClient) {
+                log('❌ 请先初始化测试环境', 'error');
+                return;
+            }
+
+            try {
+                // 先查找测试命令
+                const { data: history, error: searchError } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 50,
+                    search_text: '测试删除命令'
+                });
+                
+                if (searchError) {
+                    log('❌ 查找测试命令失败: ' + searchError.message, 'error');
+                    return;
+                }
+                
+                if (!history || history.length === 0) {
+                    log('⚠️ 没有找到测试命令，请先添加测试命令', 'error');
+                    return;
+                }
+                
+                const commandToDelete = history[0];
+                log(`🗑️ 准备删除命令: ${commandToDelete.command_text} (ID: ${commandToDelete.id})`);
+                
+                // 使用新的删除函数
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandToDelete.id
+                });
+                
+                if (error) {
+                    log('❌ 删除失败: ' + error.message, 'error');
+                    log('错误详情: ' + JSON.stringify(error), 'error');
+                } else {
+                    log('✅ 删除操作完成!', 'success');
+                    log('删除结果: ' + JSON.stringify(data, null, 2), 'info');
+                    
+                    if (data.success) {
+                        log(`🎉 成功删除 ${data.deleted_count} 条记录`, 'success');
+                        
+                        // 验证删除结果
+                        setTimeout(async () => {
+                            log('🔍 验证删除结果...');
+                            const { data: verifyHistory, error: verifyError } = await supabaseClient.rpc('get_command_history_with_ids', {
+                                limit_count: 50,
+                                search_text: ''
+                            });
+                            
+                            if (!verifyError && verifyHistory) {
+                                const stillExists = verifyHistory.some(item => item.id === commandToDelete.id);
+                                if (stillExists) {
+                                    log('❌ 验证失败：记录仍然存在于数据库中', 'error');
+                                } else {
+                                    log('✅ 验证成功：记录已从数据库中移除', 'success');
+                                    log('📊 当前剩余历史记录数量: ' + verifyHistory.length, 'info');
+                                }
+                            }
+                        }, 1000);
+                    } else {
+                        log('❌ 删除失败: ' + data.message, 'error');
+                    }
+                }
+                
+            } catch (error) {
+                log('❌ 删除测试命令失败: ' + error.message, 'error');
+            }
+        }
+
+        // 测试级联删除功能
+        async function testCascadeDelete() {
+            if (!supabaseClient) {
+                log('❌ 请先初始化测试环境', 'error');
+                return;
+            }
+
+            try {
+                log('🧪 开始测试级联删除功能...');
+                
+                // 1. 添加一个测试命令
+                const testCommand = `级联删除测试命令 - ${Date.now()}`;
+                log(`➕ 添加测试命令: ${testCommand}`);
+                
+                const submitResult = await supabaseClient.rpc('submit_command', {
+                    p_command_text: testCommand,
+                    p_user_id: 'test_cascade_user'
+                });
+                
+                if (!submitResult.data || !submitResult.data.success) {
+                    log('❌ 添加测试命令失败', 'error');
+                    return;
+                }
+                
+                const commandId = submitResult.data.command_id;
+                log(`✅ 测试命令已添加，ID: ${commandId}`);
+                
+                // 2. 模拟添加结果记录（如果需要的话）
+                log('📊 检查是否有相关记录...');
+                
+                // 等待一下让记录完全写入
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 3. 查看删除前的状态
+                const { data: beforeHistory } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 10,
+                    search_text: testCommand
+                });
+                
+                log(`📋 删除前找到 ${beforeHistory ? beforeHistory.length : 0} 条匹配记录`);
+                
+                // 4. 执行删除
+                log(`🗑️ 执行删除操作...`);
+                const deleteResult = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+                
+                log('删除结果: ' + JSON.stringify(deleteResult.data, null, 2), 'info');
+                
+                if (deleteResult.data && deleteResult.data.success) {
+                    log(`✅ 删除成功，删除了 ${deleteResult.data.deleted_count} 条记录`, 'success');
+                    
+                    // 5. 验证删除结果
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    const { data: afterHistory } = await supabaseClient.rpc('get_command_history_with_ids', {
+                        limit_count: 100,
+                        search_text: ''
+                    });
+                    
+                    const stillExists = afterHistory && afterHistory.some(item => item.id === commandId);
+                    
+                    if (stillExists) {
+                        log('❌ 级联删除测试失败：主记录仍然存在', 'error');
+                    } else {
+                        log('✅ 级联删除测试成功：主记录和相关记录都已删除', 'success');
+                    }
+                    
+                    // 6. 检查相关表是否也被清理了
+                    try {
+                        log('🔍 检查相关表清理情况...');
+                        const { data: metricsCheck } = await supabaseClient
+                            .from('command_metrics')
+                            .select('id')
+                            .eq('command_id', commandId);
+                            
+                        const { data: resultsCheck } = await supabaseClient
+                            .from('results')
+                            .select('id')
+                            .eq('command_id', commandId);
+                            
+                        log(`📊 剩余 command_metrics 记录: ${metricsCheck ? metricsCheck.length : 0}`, 'info');
+                        log(`📊 剩余 results 记录: ${resultsCheck ? resultsCheck.length : 0}`, 'info');
+                        
+                        if ((metricsCheck && metricsCheck.length > 0) || (resultsCheck && resultsCheck.length > 0)) {
+                            log('⚠️ 警告：相关表中仍有残留记录，级联删除可能未完全生效', 'error');
+                        } else {
+                            log('✅ 所有相关表都已正确清理', 'success');
+                        }
+                    } catch (checkError) {
+                        log('⚠️ 无法检查相关表状态: ' + checkError.message, 'error');
+                    }
+                    
+                } else {
+                    log('❌ 删除失败: ' + (deleteResult.data ? deleteResult.data.message : '未知错误'), 'error');
+                }
+                
+                log('🏁 级联删除测试完成', 'info');
+                
+            } catch (error) {
+                log('❌ 级联删除测试失败: ' + error.message, 'error');
+            }
+        }
+
+        // 页面加载完成后自动初始化
+        window.addEventListener('load', function() {
+            log('🚀 删除功能测试页面已加载');
+            log('📋 请按照测试步骤进行操作');
+        });
+    </script>
+</body>
+</html>

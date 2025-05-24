@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除命令刷新测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .status-indicator {
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .history-item {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            background: #f9f9f9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .history-command {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 14px;
+            color: #333;
+            flex: 1;
+        }
+        
+        .history-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .history-action {
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .history-action:hover {
+            background: #0056b3;
+        }
+        
+        .history-action[data-action="delete"] {
+            background: #dc3545;
+        }
+        
+        .history-action[data-action="delete"]:hover {
+            background: #c82333;
+        }
+        
+        .test-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        
+        .test-button:hover {
+            background: #218838;
+        }
+        
+        #historyList {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+        
+        .empty-message {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+            font-style: italic;
+        }
+        
+        .log-container {
+            background: #1e1e1e;
+            color: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            word-wrap: break-word;
+        }
+        
+        .log-error {
+            color: #ff6b6b;
+        }
+        
+        .log-success {
+            color: #51cf66;
+        }
+        
+        .log-info {
+            color: #74c0fc;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🗑️ 删除命令自动刷新测试</h1>
+        
+        <div id="connectionStatus" class="status-indicator status-info">
+            🔄 正在连接到 Supabase...
+        </div>
+        
+        <div id="testStatus" class="status-indicator" style="display: none;"></div>
+        
+        <div style="margin: 20px 0;">
+            <button class="test-button" onclick="loadTestHistory()">🔄 加载测试历史</button>
+            <button class="test-button" onclick="addTestCommand()">➕ 添加测试命令</button>
+            <button class="test-button" onclick="clearAllTestCommands()">🗑️ 清空测试数据</button>
+        </div>
+        
+        <h3>📋 命令历史列表</h3>
+        <p style="color: #666; font-size: 14px;">
+            测试说明：点击删除按钮后，该项目应该立即从列表中消失，无需手动刷新页面。
+        </p>
+        
+        <div id="historyList">
+            <div class="empty-message">正在加载历史记录...</div>
+        </div>
+        
+        <div class="log-container">
+            <div class="log-entry log-info">📋 操作日志:</div>
+            <div id="logContainer"></div>
+        </div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script type="module">
+        import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js@2';
+        
+        let supabaseClient = null;
+        
+        // 日志函数
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        // 显示状态
+        function showStatus(message, type = 'info') {
+            const statusElement = document.getElementById('testStatus');
+            statusElement.className = `status-indicator status-${type}`;
+            statusElement.textContent = message;
+            statusElement.style.display = 'block';
+            
+            // 自动隐藏成功和错误消息
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    statusElement.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        // 初始化 Supabase
+        async function initSupabase() {
+            try {
+                if (!window.SUPABASE_CONFIG) {
+                    throw new Error('Supabase配置未找到，请检查 env-config.js 文件');
+                }
+                
+                supabaseClient = createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                
+                // 测试连接
+                const { data, error } = await supabaseClient
+                    .from('commands')
+                    .select('count(*)')
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span style="color: green;">✅ Supabase 连接成功</span>';
+                log('Supabase连接成功', 'success');
+                
+                // 加载初始历史记录
+                await loadTestHistory();
+                
+                return true;
+            } catch (error) {
+                log(`Supabase初始化失败: ${error.message}`, 'error');
+                document.getElementById('connectionStatus').innerHTML = 
+                    `<span style="color: red;">❌ 连接失败: ${error.message}</span>`;
+                return false;
+            }
+        }
+        
+        // 删除历史命令 - 使用修复后的逻辑
+        async function deleteHistoryCommand(command, historyItem) {
+            if (!command || !historyItem) {
+                log('❌ 删除参数不完整', 'error');
+                showStatus('删除参数错误', 'error');
+                return;
+            }
+
+            if (!confirm('确定要删除这条历史记录吗？此操作不可恢复。')) {
+                return;
+            }
+
+            const commandId = historyItem?.dataset?.commandId;
+            
+            if (!commandId || commandId === 'undefined' || commandId === 'null') {
+                log('❌ 无法删除：缺少命令ID', 'error');
+                showStatus('删除失败：缺少命令ID', 'error');
+                return;
+            }
+
+            if (!supabaseClient) {
+                log('❌ Supabase客户端不可用', 'error');
+                showStatus('无法连接到数据库', 'error');
+                return;
+            }
+
+            try {
+                log(`🗑️ 删除命令 ID: ${commandId}`);
+                
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+                
+                if (error) {
+                    log(`❌ 删除失败: ${error.message}`, 'error');
+                    
+                    if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+                        showStatus('删除失败：存在外键约束。请先执行修复脚本！', 'error');
+                    } else {
+                        showStatus(`删除失败: ${error.message}`, 'error');
+                    }
+                    return;
+                }
+                
+                if (!data?.success) {
+                    const errorMsg = data?.error || '删除操作失败';
+                    
+                    if (data?.error_code === '23503') {
+                        showStatus('删除失败：存在外键约束。请先执行修复脚本！', 'error');
+                    } else {
+                        showStatus(`删除失败: ${errorMsg}`, 'error');
+                    }
+                    return;
+                }
+                
+                // 成功删除 - 立即从DOM移除元素
+                log(`✅ 删除成功: ${data.deleted_count} 条命令, ${data.deleted_results_count} 条结果`);
+                
+                // 🔥 关键修复：立即从UI中移除该项目
+                historyItem.remove();
+                log('✅ 已从UI中移除删除的历史记录项目', 'success');
+                
+                // 检查是否还有其他项目，如果没有则显示空消息
+                const historyList = document.getElementById('historyList');
+                const remainingItems = historyList.querySelectorAll('.history-item');
+                if (remainingItems.length === 0) {
+                    historyList.innerHTML = '<div class="empty-message">暂无命令历史</div>';
+                }
+                
+                showStatus('删除成功！项目已从列表中移除', 'success');
+                
+            } catch (error) {
+                log(`❌ 删除操作异常: ${error.message}`, 'error');
+                showStatus(`删除失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 加载测试历史记录
+        async function loadTestHistory() {
+            if (!supabaseClient) {
+                log('❌ Supabase客户端未初始化', 'error');
+                return;
+            }
+            
+            try {
+                log('🔍 正在加载历史记录...');
+                
+                const { data: history, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 20,
+                    search_text: ''
+                });
+                
+                if (error) {
+                    log(`❌ 加载历史记录失败: ${error.message}`, 'error');
+                    document.getElementById('historyList').innerHTML = 
+                        `<div class="empty-message">加载失败: ${error.message}</div>`;
+                    return;
+                }
+                
+                const historyList = document.getElementById('historyList');
+                
+                if (!history || history.length === 0) {
+                    historyList.innerHTML = '<div class="empty-message">暂无命令历史</div>';
+                    log('📋 历史记录为空');
+                    return;
+                }
+                
+                log(`✅ 加载到 ${history.length} 条历史记录`);
+                
+                const historyHTML = history.map(item => {
+                    const command = item.command_text || '';
+                    const itemId = item.id;
+                    const timestamp = new Date(item.created_at).toLocaleString();
+                    
+                    return `
+                        <div class="history-item" data-command-id="${itemId}">
+                            <div class="history-command">${escapeHtml(command)}</div>
+                            <div class="history-meta" style="font-size: 12px; color: #666; margin-top: 4px;">
+                                ${timestamp}
+                            </div>
+                            <div class="history-actions">
+                                <button class="history-action" data-action="delete" 
+                                        onclick="deleteHistoryCommand('${escapeHtml(command)}', this.closest('.history-item'))">
+                                    🗑️ 删除
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                historyList.innerHTML = historyHTML;
+                
+            } catch (error) {
+                log(`❌ 加载历史记录异常: ${error.message}`, 'error');
+                document.getElementById('historyList').innerHTML = 
+                    `<div class="empty-message">加载异常: ${error.message}</div>`;
+            }
+        }
+        
+        // 添加测试命令
+        async function addTestCommand() {
+            if (!supabaseClient) {
+                log('❌ Supabase客户端未初始化', 'error');
+                return;
+            }
+            
+            const testCommands = [
+                '测试删除功能 - 命令1',
+                '测试删除功能 - 命令2',
+                'echo "删除测试"',
+                'ls -la',
+                'pwd'
+            ];
+            
+            const randomCommand = testCommands[Math.floor(Math.random() * testCommands.length)] + 
+                                 ' [' + new Date().getTime() + ']';
+            
+            try {
+                log(`➕ 添加测试命令: ${randomCommand}`);
+                
+                const { data, error } = await supabaseClient
+                    .from('commands')
+                    .insert([{
+                        command_text: randomCommand,
+                        status: 'pending'
+                    }]);
+                
+                if (error) {
+                    log(`❌ 添加命令失败: ${error.message}`, 'error');
+                    showStatus(`添加失败: ${error.message}`, 'error');
+                    return;
+                }
+                
+                log('✅ 测试命令添加成功', 'success');
+                showStatus('测试命令已添加', 'success');
+                
+                // 重新加载历史记录
+                setTimeout(loadTestHistory, 500);
+                
+            } catch (error) {
+                log(`❌ 添加命令异常: ${error.message}`, 'error');
+                showStatus(`添加异常: ${error.message}`, 'error');
+            }
+        }
+        
+        // 清空测试数据
+        async function clearAllTestCommands() {
+            if (!supabaseClient) {
+                log('❌ Supabase客户端未初始化', 'error');
+                return;
+            }
+            
+            if (!confirm('确定要清空所有测试数据吗？这将删除所有包含"测试"的命令记录。')) {
+                return;
+            }
+            
+            try {
+                log('🗑️ 清空测试数据...');
+                
+                // 首先获取所有测试命令
+                const { data: testCommands, error: fetchError } = await supabaseClient
+                    .from('commands')
+                    .select('id')
+                    .ilike('command_text', '%测试%');
+                
+                if (fetchError) {
+                    log(`❌ 获取测试命令失败: ${fetchError.message}`, 'error');
+                    return;
+                }
+                
+                if (!testCommands || testCommands.length === 0) {
+                    log('📋 没有找到测试命令', 'info');
+                    showStatus('没有测试数据需要清空', 'info');
+                    return;
+                }
+                
+                log(`🗑️ 找到 ${testCommands.length} 条测试命令，开始删除...`);
+                
+                // 删除所有测试命令
+                for (const cmd of testCommands) {
+                    const { error: deleteError } = await supabaseClient.rpc('delete_command_by_id', {
+                        p_command_id: cmd.id
+                    });
+                    
+                    if (deleteError) {
+                        log(`❌ 删除命令 ${cmd.id} 失败: ${deleteError.message}`, 'error');
+                    }
+                }
+                
+                log(`✅ 清空完成`, 'success');
+                showStatus('测试数据清空完成', 'success');
+                
+                // 重新加载历史记录
+                setTimeout(loadTestHistory, 500);
+                
+            } catch (error) {
+                log(`❌ 清空异常: ${error.message}`, 'error');
+                showStatus(`清空失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 使函数全局可用
+        window.deleteHistoryCommand = deleteHistoryCommand;
+        window.loadTestHistory = loadTestHistory;
+        window.addTestCommand = addTestCommand;
+        window.clearAllTestCommands = clearAllTestCommands;
+        
+        // 初始化
+        initSupabase();
+    </script>
+</body>
+</html>

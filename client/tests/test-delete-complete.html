@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除功能完整测试 - Cursor Remote Control</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #34495e;
+        }
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        .btn-danger {
+            background: #e74c3c;
+        }
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        .btn-success {
+            background: #27ae60;
+        }
+        .btn-success:hover {
+            background: #229954;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .history-item {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .command-info {
+            flex-grow: 1;
+            margin-right: 15px;
+        }
+        .command-text {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 5px 8px;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+        .command-meta {
+            font-size: 11px;
+            color: #666;
+        }
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 11px;
+            max-height: 250px;
+            overflow-y: auto;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        .progress {
+            background: #ecf0f1;
+            border-radius: 10px;
+            padding: 3px;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            background: #3498db;
+            height: 20px;
+            border-radius: 7px;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 删除功能完整测试</h1>
+        
+        <div class="step">
+            <h3>🔌 步骤 1: 初始化连接</h3>
+            <button class="btn" onclick="initializeConnection()">初始化Supabase连接</button>
+            <div id="init-status"></div>
+        </div>
+
+        <div class="step">
+            <h3>🔍 步骤 2: 验证数据库函数</h3>
+            <button class="btn" onclick="verifyFunctions()">验证删除函数</button>
+            <div id="function-status"></div>
+        </div>
+
+        <div class="step">
+            <h3>📋 步骤 3: 测试数据加载</h3>
+            <button class="btn" onclick="testDataLoading()">测试数据加载函数</button>
+            <div id="data-status"></div>
+        </div>
+
+        <div class="step">
+            <h3>➕ 步骤 4: 添加测试数据</h3>
+            <button class="btn btn-success" onclick="addTestCommands()">添加多条测试命令</button>
+            <div id="add-status"></div>
+        </div>
+
+        <div class="step">
+            <h3>📝 步骤 5: 历史记录列表</h3>
+            <button class="btn" onclick="loadAndDisplayHistory()">刷新历史记录</button>
+            <div id="history-list"></div>
+        </div>
+
+        <div class="step">
+            <h3>🗑️ 步骤 6: 测试删除功能</h3>
+            <div id="delete-test-area">
+                <p>请先加载历史记录，然后点击删除按钮测试</p>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>📊 进度监控</h3>
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar">0%</div>
+            </div>
+            <div id="overall-status"></div>
+        </div>
+
+        <div class="step">
+            <h3>📝 详细日志</h3>
+            <button class="btn" onclick="clearLogs()">清空日志</button>
+            <div id="console-log" class="log"></div>
+        </div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        let supabaseClient = null;
+        let testProgress = 0;
+        const totalSteps = 6;
+        const logDiv = document.getElementById('console-log');
+        const progressBar = document.getElementById('progress-bar');
+
+        // 控制台日志重定向
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+
+        function logToPage(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = {
+                log: 'ℹ️',
+                error: '❌',
+                warn: '⚠️',
+                info: 'ℹ️'
+            }[type] || 'ℹ️';
+            
+            const logLine = `[${timestamp}] ${icon} ${message}\n`;
+            logDiv.textContent += logLine;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            // 也输出到真实控制台
+            originalConsole[type](message);
+        }
+
+        console.log = (msg) => logToPage(msg, 'log');
+        console.error = (msg) => logToPage(msg, 'error');
+        console.warn = (msg) => logToPage(msg, 'warn');
+        console.info = (msg) => logToPage(msg, 'info');
+
+        function clearLogs() {
+            logDiv.textContent = '';
+        }
+
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function updateProgress(step, message) {
+            testProgress = step;
+            const percentage = Math.round((step / totalSteps) * 100);
+            progressBar.style.width = percentage + '%';
+            progressBar.textContent = percentage + '%';
+            
+            if (message) {
+                showStatus('overall-status', message, step === totalSteps ? 'success' : 'info');
+            }
+        }
+
+        async function initializeConnection() {
+            console.log('🔌 开始初始化Supabase连接...');
+            updateProgress(1, '正在初始化连接...');
+            
+            try {
+                if (typeof window.SUPABASE_URL === 'undefined' || typeof window.SUPABASE_ANON_KEY === 'undefined') {
+                    throw new Error('Supabase配置缺失，请检查 env-config.js 文件');
+                }
+                
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                console.log('✅ Supabase客户端初始化成功');
+                console.log('🔗 URL:', window.SUPABASE_URL);
+                console.log('🔑 Key前缀:', window.SUPABASE_ANON_KEY.substring(0, 20) + '...');
+                
+                // 测试基本连接
+                const { data, error } = await supabaseClient
+                    .from('commands')
+                    .select('count')
+                    .limit(1);
+
+                if (error) {
+                    throw new Error(`数据库连接失败: ${error.message}`);
+                }
+
+                showStatus('init-status', '✅ Supabase连接初始化成功', 'success');
+                console.log('✅ 数据库连接验证成功');
+                
+            } catch (error) {
+                console.error('❌ 连接初始化失败:', error.message);
+                showStatus('init-status', `❌ 初始化失败: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function verifyFunctions() {
+            if (!supabaseClient) {
+                showStatus('function-status', '❌ 请先初始化连接', 'error');
+                return;
+            }
+
+            console.log('🔍 开始验证数据库函数...');
+            updateProgress(2, '正在验证数据库函数...');
+            
+            const functions = [
+                'get_command_history_with_ids',
+                'delete_command_by_id',
+                'delete_command_by_text'
+            ];
+
+            let allGood = true;
+
+            for (const funcName of functions) {
+                try {
+                    console.log(`🔍 测试函数: ${funcName}`);
+                    
+                    if (funcName === 'get_command_history_with_ids') {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            limit_count: 1,
+                            search_text: ''
+                        });
+                        if (error) throw error;
+                        console.log(`✅ ${funcName} 测试通过`);
+                    } else if (funcName === 'delete_command_by_id') {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            p_command_id: '00000000-0000-0000-0000-000000000000'
+                        });
+                        if (error) throw error;
+                        console.log(`✅ ${funcName} 测试通过 (返回: ${JSON.stringify(data)})`);
+                    } else if (funcName === 'delete_command_by_text') {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            p_command_text: '不存在的测试命令',
+                            p_user_id: null
+                        });
+                        if (error) throw error;
+                        console.log(`✅ ${funcName} 测试通过 (返回: ${JSON.stringify(data)})`);
+                    }
+                } catch (err) {
+                    console.error(`❌ ${funcName} 测试失败:`, err.message);
+                    allGood = false;
+                }
+            }
+
+            if (allGood) {
+                showStatus('function-status', '✅ 所有数据库函数验证通过', 'success');
+            } else {
+                showStatus('function-status', '❌ 部分函数验证失败', 'error');
+            }
+        }
+
+        async function testDataLoading() {
+            if (!supabaseClient) {
+                showStatus('data-status', '❌ 请先初始化连接', 'error');
+                return;
+            }
+
+            console.log('📋 测试数据加载函数...');
+            updateProgress(3, '正在测试数据加载...');
+
+            try {
+                const { data, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 10,
+                    search_text: ''
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                console.log('✅ 数据加载成功:', data ? data.length : 0, '条记录');
+                console.log('📊 示例数据结构:', data && data.length > 0 ? data[0] : '无数据');
+                
+                showStatus('data-status', `✅ 数据加载成功 (${data ? data.length : 0} 条记录)`, 'success');
+
+            } catch (error) {
+                console.error('❌ 数据加载失败:', error.message);
+                showStatus('data-status', `❌ 数据加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addTestCommands() {
+            if (!supabaseClient) {
+                showStatus('add-status', '❌ 请先初始化连接', 'error');
+                return;
+            }
+
+            console.log('➕ 添加测试命令...');
+            updateProgress(4, '正在添加测试数据...');
+
+            const testCommands = [
+                `测试删除命令A ${new Date().toLocaleTimeString()}`,
+                `测试删除命令B ${new Date().toLocaleTimeString()}`,
+                `测试删除命令C ${new Date().toLocaleTimeString()}`
+            ];
+
+            let successCount = 0;
+
+            for (const command of testCommands) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('commands')
+                        .insert([
+                            {
+                                command_text: command,
+                                status: 'completed'
+                            }
+                        ])
+                        .select();
+
+                    if (error) {
+                        throw error;
+                    }
+
+                    console.log(`✅ 添加成功: ${command}`);
+                    successCount++;
+
+                } catch (error) {
+                    console.error(`❌ 添加失败: ${command}`, error.message);
+                }
+            }
+
+            if (successCount === testCommands.length) {
+                showStatus('add-status', `✅ 成功添加 ${successCount} 条测试命令`, 'success');
+            } else {
+                showStatus('add-status', `⚠️ 添加了 ${successCount}/${testCommands.length} 条测试命令`, 'warning');
+            }
+        }
+
+        async function loadAndDisplayHistory() {
+            if (!supabaseClient) {
+                showStatus('history-list', '❌ 请先初始化连接', 'error');
+                return;
+            }
+
+            console.log('📝 加载并显示历史记录...');
+            updateProgress(5, '正在加载历史记录...');
+
+            try {
+                const { data, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 10,
+                    search_text: ''
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                console.log('✅ 历史记录加载成功:', data ? data.length : 0, '条');
+
+                let html = `<h4>历史记录 (${data ? data.length : 0} 条)</h4>`;
+                
+                if (!data || data.length === 0) {
+                    html += '<p>暂无历史记录，请先添加一些测试数据</p>';
+                } else {
+                    data.forEach((item, index) => {
+                        html += `
+                            <div class="history-item" data-command-id="${item.id}">
+                                <div class="command-info">
+                                    <div class="command-text">${item.command_text}</div>
+                                    <div class="command-meta">
+                                        ID: ${item.id}<br>
+                                        状态: ${item.status || 'unknown'}<br>
+                                        时间: ${new Date(item.created_at).toLocaleString()}
+                                    </div>
+                                </div>
+                                <button class="btn btn-danger" onclick="testDeleteCommand('${item.id}', '${item.command_text.replace(/'/g, "\\'")}', this)">
+                                    🗑️ 删除
+                                </button>
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('history-list').innerHTML = html;
+
+            } catch (error) {
+                console.error('❌ 加载历史记录失败:', error.message);
+                showStatus('history-list', `❌ 加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDeleteCommand(commandId, commandText, buttonElement) {
+            if (!supabaseClient) {
+                alert('请先初始化连接');
+                return;
+            }
+
+            if (!confirm(`确定要删除命令:\n${commandText}\n\nID: ${commandId}`)) {
+                return;
+            }
+
+            console.log('🗑️ 开始删除测试...', { commandId, commandText });
+            updateProgress(6, '正在测试删除功能...');
+            
+            const historyItem = buttonElement.closest('.history-item');
+            
+            try {
+                // 禁用按钮
+                buttonElement.disabled = true;
+                buttonElement.textContent = '删除中...';
+
+                // 调用删除函数
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+
+                if (error) {
+                    throw error;
+                }
+
+                console.log('✅ 删除响应:', data);
+
+                if (data.success && data.deleted_count > 0) {
+                    console.log(`✅ 成功删除 ${data.deleted_count} 条记录`);
+                    
+                    // 从DOM中移除
+                    historyItem.style.opacity = '0.5';
+                    historyItem.style.textDecoration = 'line-through';
+                    
+                    setTimeout(() => {
+                        historyItem.remove();
+                        console.log('✅ 已从页面移除删除的项目');
+                    }, 1000);
+                    
+                    showStatus('delete-test-area', '✅ 删除成功！记录已从数据库和页面移除', 'success');
+                    
+                } else {
+                    console.warn('⚠️ 删除操作返回异常结果:', data);
+                    showStatus('delete-test-area', `⚠️ 删除异常: ${data.message || '未知原因'}`, 'warning');
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = '🗑️ 删除';
+                }
+
+            } catch (error) {
+                console.error('❌ 删除失败:', error.message);
+                console.error('错误详情:', error);
+                showStatus('delete-test-area', `❌ 删除失败: ${error.message}`, 'error');
+                
+                // 恢复按钮
+                buttonElement.disabled = false;
+                buttonElement.textContent = '🗑️ 删除';
+            }
+        }
+
+        // 页面加载时的初始化
+        window.addEventListener('load', () => {
+            console.log('🚀 删除功能完整测试页面已加载');
+            showStatus('overall-status', '请依次执行各个步骤来测试删除功能', 'info');
+        });
+    </script>
+</body>
+</html>

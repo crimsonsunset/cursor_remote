@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证删除函数修复</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .sql-code {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 验证删除函数修复状态</h1>
+        
+        <div class="test-section">
+            <h3>数据库连接状态</h3>
+            <div id="connectionStatus">检查中...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>问题诊断</h3>
+            <p><strong>原因分析：</strong></p>
+            <div class="status warning">
+                可能原因：原始的 <code>delete_command_by_id</code> 函数没有处理外键约束。<br>
+                它直接删除 commands 表记录，但 results 表中仍有引用该命令ID的记录。
+            </div>
+            
+            <h4>需要执行的修复脚本：</h4>
+            <div class="sql-code">CREATE OR REPLACE FUNCTION delete_command_by_id(p_command_id UUID)
+RETURNS JSON AS $$
+DECLARE
+    deleted_results_count INTEGER := 0;
+    deleted_commands_count INTEGER := 0;
+    total_deleted INTEGER := 0;
+BEGIN
+    -- 🔑 关键：首先删除 results 表中的相关记录
+    DELETE FROM results WHERE command_id = p_command_id;
+    GET DIAGNOSTICS deleted_results_count = ROW_COUNT;
+    
+    -- 然后删除 commands 表中的记录
+    DELETE FROM commands WHERE id = p_command_id;
+    GET DIAGNOSTICS deleted_commands_count = ROW_COUNT;
+    
+    total_deleted := deleted_results_count + deleted_commands_count;
+    
+    -- 返回详细结果
+    RETURN json_build_object(
+        'success', true,
+        'deleted_count', deleted_commands_count,
+        'deleted_results_count', deleted_results_count,
+        'total_deleted', total_deleted,
+        'message', 'Command and related results deleted successfully'
+    );
+    
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object(
+        'success', false,
+        'error', SQLERRM,
+        'error_code', SQLSTATE,
+        'deleted_count', 0
+    );
+END;
+$$ LANGUAGE plpgsql;</div>
+        </div>
+
+        <div class="test-section">
+            <h3>函数验证测试</h3>
+            <button onclick="testFunctionExists()">检查函数是否存在</button>
+            <button onclick="testFunctionCall()">测试函数调用</button>
+            <button onclick="testDeleteWithNonExistentId()">测试不存在ID的删除</button>
+            <div id="testResults"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>实际删除测试</h3>
+            <button onclick="loadHistoryForTest()">加载历史记录</button>
+            <button onclick="runDeleteTest()" class="danger">测试删除功能</button>
+            <div id="deleteTestResults"></div>
+            <div id="historyList"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>操作日志</h3>
+            <div id="logOutput" class="log"></div>
+            <button onclick="clearLog()">清空日志</button>
+        </div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script>
+        let supabaseClient = null;
+        let logOutput = '';
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logOutput += logEntry;
+            document.getElementById('logOutput').textContent = logOutput;
+            console.log(message);
+        }
+
+        function clearLog() {
+            logOutput = '';
+            document.getElementById('logOutput').textContent = '';
+        }
+
+        // 显示状态
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // 初始化Supabase
+        async function initSupabase() {
+            try {
+                if (!window.ENV_CONFIG) {
+                    throw new Error('环境配置未加载');
+                }
+
+                const { createClient } = supabase;
+                supabaseClient = createClient(
+                    window.ENV_CONFIG.SUPABASE_URL,
+                    window.ENV_CONFIG.SUPABASE_ANON_KEY
+                );
+
+                log('Supabase客户端初始化成功');
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span style="color: green;">✅ 已连接到Supabase</span>';
+                
+                return true;
+            } catch (error) {
+                log(`Supabase初始化失败: ${error.message}`, 'error');
+                document.getElementById('connectionStatus').innerHTML = 
+                    `<span style="color: red;">❌ 连接失败: ${error.message}</span>`;
+                return false;
+            }
+        }
+
+        // 检查函数是否存在
+        async function testFunctionExists() {
+            try {
+                log('检查 delete_command_by_id 函数是否存在...');
+                
+                // 使用一个不存在的UUID来测试函数
+                const testUuid = '00000000-0000-0000-0000-000000000000';
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: testUuid
+                });
+                
+                if (error) {
+                    if (error.message.includes('function') && error.message.includes('does not exist')) {
+                        log('❌ delete_command_by_id 函数不存在！', 'error');
+                        showStatus('testResults', '❌ 函数不存在，请在 Supabase SQL Editor 中执行修复脚本', 'error');
+                    } else {
+                        log(`✅ 函数存在，但调用出错: ${error.message}`, 'warning');
+                        showStatus('testResults', `⚠️ 函数存在但有错误: ${error.message}`, 'warning');
+                    }
+                } else {
+                    log('✅ delete_command_by_id 函数存在且可调用', 'success');
+                    log(`函数返回结果: ${JSON.stringify(data)}`, 'info');
+                    
+                    // 检查返回结果格式
+                    if (data && typeof data === 'object' && 'success' in data) {
+                        showStatus('testResults', '✅ 函数存在且格式正确', 'success');
+                    } else {
+                        showStatus('testResults', '⚠️ 函数存在但返回格式可能不正确', 'warning');
+                    }
+                }
+            } catch (error) {
+                log(`函数检查异常: ${error.message}`, 'error');
+                showStatus('testResults', `❌ 检查失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试函数调用
+        async function testFunctionCall() {
+            try {
+                log('测试 delete_command_by_id 函数调用...');
+                
+                const testUuid = '12345678-1234-1234-1234-123456789abc';
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: testUuid
+                });
+                
+                if (error) {
+                    log(`❌ 函数调用失败: ${error.message}`, 'error');
+                    showStatus('testResults', `❌ 函数调用失败: ${error.message}`, 'error');
+                } else {
+                    log(`✅ 函数调用成功: ${JSON.stringify(data)}`, 'success');
+                    
+                    // 检查新的修复函数是否包含 deleted_results_count
+                    if (data && 'deleted_results_count' in data) {
+                        showStatus('testResults', '✅ 修复后的函数格式正确！包含 deleted_results_count', 'success');
+                    } else {
+                        showStatus('testResults', '⚠️ 函数可能还是旧版本，缺少 deleted_results_count 字段', 'warning');
+                    }
+                }
+            } catch (error) {
+                log(`函数调用异常: ${error.message}`, 'error');
+                showStatus('testResults', `❌ 调用异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试不存在ID的删除
+        async function testDeleteWithNonExistentId() {
+            try {
+                log('测试删除不存在的ID...');
+                
+                const nonExistentUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: nonExistentUuid
+                });
+                
+                if (error) {
+                    log(`❌ 删除不存在ID时出错: ${error.message}`, 'error');
+                    showStatus('testResults', `❌ 删除不存在ID时出错: ${error.message}`, 'error');
+                } else {
+                    log(`✅ 删除不存在ID的处理: ${JSON.stringify(data)}`, 'success');
+                    
+                    if (data && data.success && data.deleted_count === 0) {
+                        showStatus('testResults', '✅ 正确处理了不存在的ID（没有删除任何记录）', 'success');
+                    } else {
+                        showStatus('testResults', `⚠️ 不存在ID的处理结果: ${JSON.stringify(data)}`, 'warning');
+                    }
+                }
+            } catch (error) {
+                log(`测试删除不存在ID异常: ${error.message}`, 'error');
+                showStatus('testResults', `❌ 测试异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 加载历史记录用于测试
+        async function loadHistoryForTest() {
+            try {
+                log('加载历史记录...');
+                
+                const { data: history, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    p_user_id: 'anonymous',
+                    p_limit: 5
+                });
+                
+                if (error) {
+                    log(`❌ 加载历史记录失败: ${error.message}`, 'error');
+                    showStatus('deleteTestResults', `❌ 加载历史记录失败: ${error.message}`, 'error');
+                    return;
+                }
+                
+                if (!history || history.length === 0) {
+                    log('📋 没有找到历史记录', 'warning');
+                    showStatus('deleteTestResults', '⚠️ 没有历史记录可供测试', 'warning');
+                    return;
+                }
+                
+                log(`✅ 加载了 ${history.length} 条历史记录`, 'success');
+                
+                // 显示历史记录
+                const historyHtml = history.map(item => `
+                    <div style="background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                        <strong>ID:</strong> ${item.id}<br>
+                        <strong>命令:</strong> ${item.command_text}<br>
+                        <strong>时间:</strong> ${new Date(item.created_at).toLocaleString()}
+                        <button onclick="testDeleteSpecificId('${item.id}', '${item.command_text}')">测试删除这条记录</button>
+                    </div>
+                `).join('');
+                
+                document.getElementById('historyList').innerHTML = `
+                    <h4>可测试的历史记录：</h4>
+                    ${historyHtml}
+                `;
+                
+                showStatus('deleteTestResults', `✅ 加载了 ${history.length} 条历史记录，选择一条进行删除测试`, 'success');
+                
+            } catch (error) {
+                log(`加载历史记录异常: ${error.message}`, 'error');
+                showStatus('deleteTestResults', `❌ 加载异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试删除特定ID
+        async function testDeleteSpecificId(commandId, commandText) {
+            if (!confirm(`确定要删除命令 "${commandText}" 吗？这是真实的删除操作！`)) {
+                return;
+            }
+            
+            try {
+                log(`🗑️ 测试删除命令 ID: ${commandId}`);
+                
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+                
+                if (error) {
+                    log(`❌ 删除失败: ${error.message}`, 'error');
+                    
+                    if (error.code === '23503') {
+                        showStatus('deleteTestResults', '❌ 外键约束错误！修复脚本还没有正确执行！', 'error');
+                    } else {
+                        showStatus('deleteTestResults', `❌ 删除失败: ${error.message}`, 'error');
+                    }
+                } else {
+                    log(`✅ 删除成功: ${JSON.stringify(data)}`, 'success');
+                    
+                    if (data && data.success) {
+                        const msg = `✅ 删除成功！删除了 ${data.deleted_count} 条命令和 ${data.deleted_results_count || 0} 条结果`;
+                        showStatus('deleteTestResults', msg, 'success');
+                        
+                        // 重新加载历史记录
+                        setTimeout(() => loadHistoryForTest(), 1000);
+                    } else {
+                        showStatus('deleteTestResults', `⚠️ 删除返回: ${JSON.stringify(data)}`, 'warning');
+                    }
+                }
+            } catch (error) {
+                log(`删除测试异常: ${error.message}`, 'error');
+                showStatus('deleteTestResults', `❌ 删除异常: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', async () => {
+            log('页面加载完成，开始初始化...');
+            await initSupabase();
+        });
+    </script>
+
+    <!-- 引入Supabase -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</body>
+</html>

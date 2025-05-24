@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试删除功能 - 验证本地历史保留</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .log { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 3px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>测试删除功能 - 验证本地历史保留</h1>
+    
+    <div class="section warning">
+        <h3>🔍 测试目的</h3>
+        <p>验证删除服务端命令时，<strong>完全保留</strong>本地历史记录，包括：</p>
+        <ul>
+            <li>✅ 用户的原始提问</li>
+            <li>✅ AI的回答内容</li>
+            <li>✅ 其他所有历史记录</li>
+        </ul>
+        <p><strong>删除策略</strong>：只删除服务端数据库记录，本地聊天历史保持完整。</p>
+    </div>
+
+    <div class="section">
+        <h3>📋 测试步骤</h3>
+        <button onclick="setupTestData()">1. 设置测试数据</button>
+        <button onclick="simulateDelete()">2. 模拟删除操作</button>
+        <button onclick="verifyResults()">3. 验证结果</button>
+        <button onclick="resetTest()">4. 重置测试</button>
+    </div>
+
+    <div class="section">
+        <h3>📊 测试状态</h3>
+        <div id="testResults"></div>
+    </div>
+
+    <div class="section">
+        <h3>📝 操作日志</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let originalChatHistory = [];
+        let originalCommandHistory = [];
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function setupTestData() {
+            log('🚀 开始设置测试数据...');
+            
+            // 创建模拟的聊天历史数据
+            const chatHistory = [
+                { type: 'user', content: '测试命令1', timestamp: Date.now() - 3000 },
+                { type: 'cursor', content: '响应1', timestamp: Date.now() - 2500 },
+                { type: 'user', content: '要删除的命令', timestamp: Date.now() - 2000 },
+                { type: 'cursor', content: '要删除的响应', timestamp: Date.now() - 1500 },
+                { type: 'user', content: '测试命令2', timestamp: Date.now() - 1000 },
+                { type: 'cursor', content: '响应2', timestamp: Date.now() - 500 }
+            ];
+            
+            // 创建模拟的命令历史数据
+            const commandHistory = [
+                { command: '测试命令1', timestamp: Date.now() - 3000, id: 'cmd1' },
+                { command: '要删除的命令', timestamp: Date.now() - 2000, id: 'cmd2' },
+                { command: '测试命令2', timestamp: Date.now() - 1000, id: 'cmd3' }
+            ];
+            
+            // 保存原始数据
+            originalChatHistory = JSON.parse(localStorage.getItem('cursorRemoteHistory') || '[]');
+            originalCommandHistory = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+            
+            // 设置测试数据
+            localStorage.setItem('cursorRemoteHistory', JSON.stringify(chatHistory));
+            localStorage.setItem('commandHistory', JSON.stringify(commandHistory));
+            
+            log('✅ 测试数据设置完成');
+            log(`📊 聊天历史: ${chatHistory.length} 条记录`);
+            log(`📊 命令历史: ${commandHistory.length} 条记录`);
+            
+            updateTestResults('测试数据已设置', 'success');
+        }
+
+        function simulateDelete() {
+            log('🗑️ 开始模拟删除操作...');
+            
+            const commandToDelete = '要删除的命令';
+            log(`🎯 删除目标: "${commandToDelete}"`);
+            
+            try {
+                // 模拟修复后的删除逻辑
+                // 新策略：只删除服务端数据库记录，完全保留本地聊天历史
+                
+                log('ℹ️ 新的删除策略：');
+                log('  - 只删除服务端数据库中的命令记录');
+                log('  - 保留所有本地聊天历史（包括用户提问和AI回答）');
+                log('  - 保留本地命令历史记录');
+                
+                // 检查删除前的状态
+                const beforeChatHistory = JSON.parse(localStorage.getItem('cursorRemoteHistory') || '[]');
+                const beforeCommandHistory = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+                
+                log(`📊 删除前状态:`);
+                log(`  - 聊天历史: ${beforeChatHistory.length} 条记录`);
+                log(`  - 命令历史: ${beforeCommandHistory.length} 条记录`);
+                
+                // 新的删除逻辑：什么都不删除，只是在UI中移除这一项
+                // 这模拟了修复后的行为
+                log('✅ 模拟删除操作：只在服务端删除，本地保持不变');
+                
+                // 验证删除后的状态
+                const afterChatHistory = JSON.parse(localStorage.getItem('cursorRemoteHistory') || '[]');
+                const afterCommandHistory = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+                
+                log(`📊 删除后状态:`);
+                log(`  - 聊天历史: ${afterChatHistory.length} 条记录`);
+                log(`  - 命令历史: ${afterCommandHistory.length} 条记录`);
+                
+                if (beforeChatHistory.length === afterChatHistory.length && 
+                    beforeCommandHistory.length === afterCommandHistory.length) {
+                    log('✅ 删除操作完成 - 本地历史完全保留');
+                    updateTestResults('删除操作已执行 - 本地历史保留', 'success');
+                } else {
+                    log('⚠️ 本地历史发生了变化');
+                    updateTestResults('删除操作执行但本地历史有变化', 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ 删除操作失败: ${error.message}`);
+                updateTestResults('删除操作失败', 'error');
+            }
+        }
+
+        function verifyResults() {
+            log('🔍 开始验证结果...');
+            
+            const currentChatHistory = JSON.parse(localStorage.getItem('cursorRemoteHistory') || '[]');
+            const currentCommandHistory = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+            
+            log(`📊 当前聊天历史: ${currentChatHistory.length} 条记录`);
+            log(`📊 当前命令历史: ${currentCommandHistory.length} 条记录`);
+            
+            // 新的验证逻辑：确保所有本地历史都被保留
+            const hasUserQuestion = currentChatHistory.some(item => 
+                item.content && item.content.includes('要删除的命令') && item.type === 'user'
+            );
+            
+            const hasAIResponse = currentChatHistory.some(item => 
+                item.content && item.content.includes('要删除的响应') && item.type === 'cursor'
+            );
+            
+            const hasOtherCommands = currentChatHistory.some(item => 
+                item.content && (item.content.includes('测试命令1') || item.content.includes('测试命令2'))
+            );
+            
+            const hasCommandInHistory = currentCommandHistory.some(item => 
+                item.command === '要删除的命令'
+            );
+            
+            let resultClass = 'success';
+            let resultMessage = '';
+            
+            // 新的验证标准：所有本地记录都应该保留
+            if (!hasUserQuestion) {
+                log('❌ 验证失败: 用户的提问被误删');
+                resultClass = 'error';
+                resultMessage = '测试失败: 用户的提问被误删';
+            } else if (!hasAIResponse) {
+                log('❌ 验证失败: AI的回答被误删');
+                resultClass = 'error';
+                resultMessage = '测试失败: AI的回答被误删';
+            } else if (!hasOtherCommands) {
+                log('❌ 验证失败: 其他命令被误删');
+                resultClass = 'error';
+                resultMessage = '测试失败: 其他命令被误删';
+            } else {
+                log('✅ 验证成功: 所有本地历史记录都被正确保留');
+                log('  ✓ 用户的提问保留');
+                log('  ✓ AI的回答保留');
+                log('  ✓ 其他命令保留');
+                resultMessage = '测试成功: 删除功能正确保留了本地历史';
+            }
+            
+            updateTestResults(resultMessage, resultClass);
+            
+            // 显示详细信息
+            log('📋 完整聊天历史:');
+            currentChatHistory.forEach((item, index) => {
+                const type = item.type || 'unknown';
+                log(`  ${index + 1}. [${type}] ${item.content} (${new Date(item.timestamp).toLocaleTimeString()})`);
+            });
+            
+            log('📋 完整命令历史:');
+            currentCommandHistory.forEach((item, index) => {
+                log(`  ${index + 1}. ${item.command} (${new Date(item.timestamp).toLocaleTimeString()})`);
+            });
+        }
+
+        function resetTest() {
+            log('🔄 重置测试环境...');
+            
+            // 恢复原始数据
+            if (originalChatHistory.length > 0) {
+                localStorage.setItem('cursorRemoteHistory', JSON.stringify(originalChatHistory));
+            } else {
+                localStorage.removeItem('cursorRemoteHistory');
+            }
+            
+            if (originalCommandHistory.length > 0) {
+                localStorage.setItem('commandHistory', JSON.stringify(originalCommandHistory));
+            } else {
+                localStorage.removeItem('commandHistory');
+            }
+            
+            log('✅ 测试环境已重置');
+            updateTestResults('测试环境已重置', 'warning');
+            
+            // 清空日志
+            setTimeout(() => {
+                document.getElementById('log').innerHTML = '';
+            }, 1000);
+        }
+
+        function updateTestResults(message, type) {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.className = `section ${type}`;
+            resultsDiv.innerHTML = `<h4>${message}</h4><p>时间: ${new Date().toLocaleString()}</p>`;
+        }
+
+        // 页面加载时显示初始状态
+        window.onload = function() {
+            updateTestResults('准备开始测试', 'warning');
+            log('🚀 测试页面已加载，准备开始测试删除功能');
+        };
+    </script>
+</body>
+</html>

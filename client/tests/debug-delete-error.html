@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除错误诊断 - Cursor Remote Control</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #e74c3c;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .error-box {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        .btn-danger {
+            background: #e74c3c;
+        }
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+            white-space: pre-wrap;
+        }
+        .test-item {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .command-preview {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 删除错误诊断器</h1>
+        
+        <div class="error-box">
+            <h3>⚠️ 报告的问题</h3>
+            <p><strong>用户反馈:</strong> "删除还是失败"</p>
+            <p><strong>需要检查:</strong> 具体的错误信息、数据库状态、函数调用过程</p>
+        </div>
+
+        <div class="test-item">
+            <h3>🔧 快速诊断</h3>
+            <button class="btn" onclick="quickDiagnosis()">执行快速诊断</button>
+            <div id="quick-diagnosis-result"></div>
+        </div>
+
+        <div class="test-item">
+            <h3>🔍 具体错误检测</h3>
+            <button class="btn" onclick="checkEnvironment()">检查环境配置</button>
+            <button class="btn" onclick="checkFunctions()">检查数据库函数</button>
+            <button class="btn" onclick="checkData()">检查数据状态</button>
+            <div id="error-details"></div>
+        </div>
+
+        <div class="test-item">
+            <h3>🧪 手动删除测试</h3>
+            <p>模拟主应用的删除流程</p>
+            <button class="btn" onclick="loadTestData()">加载测试数据</button>
+            <div id="test-data-container"></div>
+        </div>
+
+        <div class="test-item">
+            <h3>📝 详细日志</h3>
+            <button class="btn" onclick="clearErrorLog()">清空日志</button>
+            <div id="error-log" class="log"></div>
+        </div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        let supabaseClient = null;
+        const errorLog = document.getElementById('error-log');
+
+        function logError(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            let logMessage = `[${timestamp}] ${message}`;
+            if (data) {
+                logMessage += `\\n${JSON.stringify(data, null, 2)}`;
+            }
+            logMessage += '\\n\\n';
+            
+            errorLog.textContent += logMessage;
+            errorLog.scrollTop = errorLog.scrollHeight;
+            
+            console.error(message, data);
+        }
+
+        function logInfo(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            let logMessage = `[${timestamp}] ℹ️ ${message}`;
+            if (data) {
+                logMessage += `\\n${JSON.stringify(data, null, 2)}`;
+            }
+            logMessage += '\\n';
+            
+            errorLog.textContent += logMessage;
+            errorLog.scrollTop = errorLog.scrollHeight;
+            
+            console.log(message, data);
+        }
+
+        function clearErrorLog() {
+            errorLog.textContent = '';
+        }
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        async function quickDiagnosis() {
+            logInfo('🚀 开始快速诊断...');
+            
+            const issues = [];
+            
+            try {
+                // 1. 检查配置
+                if (typeof window.SUPABASE_URL === 'undefined' || typeof window.SUPABASE_ANON_KEY === 'undefined') {
+                    issues.push('❌ Supabase配置缺失');
+                } else {
+                    logInfo('✅ Supabase配置存在');
+                }
+                
+                // 2. 初始化客户端
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                logInfo('✅ Supabase客户端初始化');
+                
+                // 3. 测试连接
+                const { data: testData, error: testError } = await supabaseClient
+                    .from('commands')
+                    .select('count')
+                    .limit(1);
+                
+                if (testError) {
+                    issues.push(`❌ 数据库连接失败: ${testError.message}`);
+                    logError('数据库连接测试失败', testError);
+                } else {
+                    logInfo('✅ 数据库连接正常');
+                }
+                
+                // 4. 测试删除函数
+                const { data: deleteTest, error: deleteError } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: '00000000-0000-0000-0000-000000000000'
+                });
+                
+                if (deleteError) {
+                    issues.push(`❌ 删除函数测试失败: ${deleteError.message}`);
+                    logError('删除函数测试失败', deleteError);
+                } else {
+                    logInfo('✅ 删除函数正常', deleteTest);
+                }
+                
+                // 5. 测试历史记录函数
+                const { data: historyTest, error: historyError } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 1,
+                    search_text: ''
+                });
+                
+                if (historyError) {
+                    issues.push(`❌ 历史记录函数失败: ${historyError.message}`);
+                    logError('历史记录函数测试失败', historyError);
+                } else {
+                    logInfo('✅ 历史记录函数正常', historyTest);
+                }
+                
+                // 总结
+                if (issues.length === 0) {
+                    showResult('quick-diagnosis-result', '✅ 快速诊断完成：所有基本功能正常', 'success');
+                    logInfo('✅ 快速诊断完成：所有基本功能正常');
+                } else {
+                    const errorMsg = '❌ 发现问题：\\n' + issues.join('\\n');
+                    showResult('quick-diagnosis-result', errorMsg, 'error');
+                    logError('快速诊断发现问题', issues);
+                }
+                
+            } catch (error) {
+                const errorMsg = `❌ 诊断过程中出现异常: ${error.message}`;
+                showResult('quick-diagnosis-result', errorMsg, 'error');
+                logError('诊断异常', error);
+            }
+        }
+
+        async function checkEnvironment() {
+            logInfo('🔍 检查环境配置...');
+            
+            try {
+                const envInfo = {
+                    'SUPABASE_URL': window.SUPABASE_URL || '未配置',
+                    'SUPABASE_ANON_KEY': window.SUPABASE_ANON_KEY ? (window.SUPABASE_ANON_KEY.substring(0, 20) + '...') : '未配置',
+                    'User Agent': navigator.userAgent,
+                    'Current URL': window.location.href
+                };
+                
+                logInfo('环境信息', envInfo);
+                showResult('error-details', '✅ 环境信息已记录到日志', 'success');
+                
+            } catch (error) {
+                logError('检查环境配置失败', error);
+                showResult('error-details', `❌ 检查失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkFunctions() {
+            if (!supabaseClient) {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+            }
+            
+            logInfo('🔍 检查数据库函数...');
+            
+            const functions = ['get_command_history_with_ids', 'delete_command_by_id', 'delete_command_by_text'];
+            const results = {};
+            
+            for (const funcName of functions) {
+                try {
+                    logInfo(`测试函数: ${funcName}`);
+                    
+                    let testResult;
+                    if (funcName === 'get_command_history_with_ids') {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            limit_count: 1,
+                            search_text: ''
+                        });
+                        testResult = { data, error };
+                    } else if (funcName === 'delete_command_by_id') {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            p_command_id: '00000000-0000-0000-0000-000000000000'
+                        });
+                        testResult = { data, error };
+                    } else {
+                        const { data, error } = await supabaseClient.rpc(funcName, {
+                            p_command_text: '不存在的测试命令',
+                            p_user_id: null
+                        });
+                        testResult = { data, error };
+                    }
+                    
+                    if (testResult.error) {
+                        results[funcName] = `❌ 错误: ${testResult.error.message}`;
+                        logError(`函数 ${funcName} 测试失败`, testResult.error);
+                    } else {
+                        results[funcName] = `✅ 正常`;
+                        logInfo(`函数 ${funcName} 测试成功`, testResult.data);
+                    }
+                    
+                } catch (error) {
+                    results[funcName] = `❌ 异常: ${error.message}`;
+                    logError(`函数 ${funcName} 测试异常`, error);
+                }
+            }
+            
+            const resultText = Object.entries(results)
+                .map(([func, status]) => `${func}: ${status}`)
+                .join('\\n');
+            
+            showResult('error-details', `函数检查结果:\\n${resultText}`, 'info');
+        }
+
+        async function checkData() {
+            if (!supabaseClient) {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+            }
+            
+            logInfo('🔍 检查数据状态...');
+            
+            try {
+                // 检查commands表
+                const { data: commandsData, error: commandsError } = await supabaseClient
+                    .from('commands')
+                    .select('*')
+                    .limit(5);
+                
+                if (commandsError) {
+                    logError('查询commands表失败', commandsError);
+                } else {
+                    logInfo(`commands表数据`, {
+                        count: commandsData.length,
+                        sample: commandsData[0] || '无数据'
+                    });
+                }
+                
+                // 检查相关表
+                const { data: resultsData, error: resultsError } = await supabaseClient
+                    .from('results')
+                    .select('count')
+                    .limit(1);
+                
+                if (!resultsError) {
+                    logInfo('results表可访问');
+                }
+                
+                const { data: metricsData, error: metricsError } = await supabaseClient
+                    .from('command_metrics')
+                    .select('count')
+                    .limit(1);
+                
+                if (!metricsError) {
+                    logInfo('command_metrics表可访问');
+                }
+                
+                showResult('error-details', '✅ 数据检查完成，详情见日志', 'success');
+                
+            } catch (error) {
+                logError('检查数据状态失败', error);
+                showResult('error-details', `❌ 数据检查失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadTestData() {
+            if (!supabaseClient) {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+            }
+            
+            logInfo('📋 加载测试数据...');
+            
+            try {
+                const { data, error } = await supabaseClient.rpc('get_command_history_with_ids', {
+                    limit_count: 3,
+                    search_text: ''
+                });
+                
+                if (error) {
+                    throw error;
+                }
+                
+                logInfo('测试数据加载成功', data);
+                
+                let html = '<h4>可用的测试数据:</h4>';
+                
+                if (!data || data.length === 0) {
+                    html += '<p>暂无数据，<button class="btn" onclick="createTestData()">创建测试数据</button></p>';
+                } else {
+                    data.forEach((item, index) => {
+                        html += `
+                            <div class="test-item">
+                                <div class="command-preview">${item.command_text}</div>
+                                <small>ID: ${item.id}</small><br>
+                                <button class="btn btn-danger" onclick="simulateDelete('${item.id}', '${item.command_text.replace(/'/g, "\\'")}')">
+                                    模拟删除
+                                </button>
+                            </div>
+                        `;
+                    });
+                }
+                
+                document.getElementById('test-data-container').innerHTML = html;
+                
+            } catch (error) {
+                logError('加载测试数据失败', error);
+                document.getElementById('test-data-container').innerHTML = `<div class="status error">❌ 加载失败: ${error.message}</div>`;
+            }
+        }
+
+        async function createTestData() {
+            logInfo('➕ 创建测试数据...');
+            
+            const testCommand = `错误诊断测试命令 ${new Date().toLocaleTimeString()}`;
+            
+            try {
+                const { data, error } = await supabaseClient
+                    .from('commands')
+                    .insert([{
+                        command_text: testCommand,
+                        status: 'completed'
+                    }])
+                    .select();
+                
+                if (error) {
+                    throw error;
+                }
+                
+                logInfo('测试数据创建成功', data);
+                await loadTestData(); // 重新加载
+                
+            } catch (error) {
+                logError('创建测试数据失败', error);
+            }
+        }
+
+        async function simulateDelete(commandId, commandText) {
+            logInfo(`🗑️ 模拟删除操作...`, { commandId, commandText });
+            
+            if (!confirm(`确定要删除: ${commandText}?`)) {
+                return;
+            }
+            
+            try {
+                // 模拟主应用的删除逻辑
+                logInfo('步骤1: 调用delete_command_by_id');
+                const { data, error } = await supabaseClient.rpc('delete_command_by_id', {
+                    p_command_id: commandId
+                });
+                
+                if (error) {
+                    throw error;
+                }
+                
+                logInfo('删除函数响应', data);
+                
+                if (data.success && data.deleted_count > 0) {
+                    logInfo(`✅ 删除成功: ${data.deleted_count} 条记录被删除`);
+                    
+                    // 重新加载测试数据
+                    await loadTestData();
+                    
+                    alert('删除成功！');
+                } else {
+                    logError('删除操作返回失败状态', data);
+                    alert(`删除失败: ${data.message || '未知原因'}`);
+                }
+                
+            } catch (error) {
+                logError('删除操作异常', error);
+                alert(`删除出现异常: ${error.message}`);
+            }
+        }
+
+        // 页面加载完成后自动执行诊断
+        window.addEventListener('load', () => {
+            logInfo('🚨 删除错误诊断器已启动');
+            logInfo('请点击"执行快速诊断"开始排查问题');
+        });
+    </script>
+</body>
+</html>

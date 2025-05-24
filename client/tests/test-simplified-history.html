@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简化历史记录过滤测试</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .test-info {
+            background: #e8f5e8;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .change-summary {
+            background: #fff3cd;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .test-button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .test-button:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>✨ 简化历史记录过滤功能测试</h1>
+        
+        <div class="change-summary">
+            <h3>🔧 已完成的修改</h3>
+            <ul>
+                <li>✅ <strong>移除HTML中的时间过滤下拉框</strong>：从 index.html 删除 historyFilter 选择框</li>
+                <li>✅ <strong>简化JavaScript过滤逻辑</strong>：只保留文本搜索，移除时间过滤相关代码</li>
+                <li>✅ <strong>优化CSS样式</strong>：搜索框占据全宽，移除不需要的样式规则</li>
+                <li>✅ <strong>保持50条记录限制</strong>：维持当前的 limit_count: 50 设置</li>
+            </ul>
+        </div>
+        
+        <div class="test-info">
+            <h3>🎯 简化后的功能特点</h3>
+            <ul>
+                <li>📝 <strong>纯文本搜索</strong>：只根据命令内容进行过滤</li>
+                <li>🔢 <strong>显示最近50条</strong>：按时间降序显示最新的50条历史记录</li>
+                <li>🎨 <strong>界面更简洁</strong>：搜索框占据全宽，视觉更清爽</li>
+                <li>⚡ <strong>性能更好</strong>：减少了复杂的时间计算逻辑</li>
+            </ul>
+        </div>
+        
+        <h3>🧪 测试简化后的历史记录功能</h3>
+        <button class="test-button" onclick="openTestModal()">打开历史记录模态窗口</button>
+        
+        <div style="background: #d1ecf1; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #17a2b8;">
+            <h4>🔍 测试说明</h4>
+            <p><strong>搜索功能测试：</strong></p>
+            <ul>
+                <li>输入 "npm" - 显示包含npm的命令</li>
+                <li>输入 "git" - 显示包含git的命令</li>
+                <li>输入 "python" - 显示包含python的命令</li>
+                <li>清空搜索框 - 显示所有命令</li>
+            </ul>
+        </div>
+        
+        <div style="background: #d4edda; padding: 16px; border-radius: 8px; border-left: 4px solid #28a745;">
+            <h4>✅ 预期效果</h4>
+            <ul>
+                <li>✅ 搜索框占据全宽，视觉更整洁</li>
+                <li>✅ 实时搜索，输入即时过滤</li>
+                <li>✅ 大小写不敏感的模糊匹配</li>
+                <li>✅ 显示最近50条记录，无分页</li>
+                <li>✅ 无时间过滤选项，简化用户操作</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 测试模态窗口 -->
+    <div id="testModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>命令历史</h3>
+                <button class="modal-close" onclick="closeTestModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="history-filters">
+                    <input type="text" id="testHistorySearch" placeholder="搜索命令..." class="search-input">
+                </div>
+                <div id="testHistoryList" class="history-list">
+                    <!-- 动态生成的测试历史记录 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openTestModal() {
+            const modal = document.getElementById('testModal');
+            const historyList = document.getElementById('testHistoryList');
+            
+            // 生成测试数据 - 模拟50条记录
+            const commands = [
+                'npm install react',
+                'git commit -m "Update features"',
+                'docker build -t myapp .',
+                'python manage.py migrate',
+                'yarn dev',
+                'curl -X POST https://api.example.com/data',
+                'ssh user@server "systemctl restart nginx"',
+                'find . -name "*.js" -type f',
+                'grep -r "TODO" src/',
+                'tar -czf backup.tar.gz /important/data',
+                'npm run build',
+                'git push origin main',
+                'python app.py',
+                'docker-compose up -d',
+                'pip install django',
+                'node server.js',
+                'git status',
+                'npm test',
+                'python -m pytest',
+                'curl -X GET https://jsonplaceholder.typicode.com/posts'
+            ];
+            
+            let html = '';
+            for (let i = 1; i <= 50; i++) {
+                const date = new Date(Date.now() - i * 60000 * Math.random() * 100);
+                const command = commands[(i - 1) % commands.length] + ` #${i}`;
+                const status = ['completed', 'pending', 'error', 'processing'][i % 4];
+                
+                html += `
+                <div class="history-item" data-command="${command}">
+                    <div class="history-command">${command}</div>
+                    <div class="history-meta">
+                        <span>${formatDate(date)}</span>
+                        <span class="status-badge status-${status}">${status}</span>
+                        <div class="history-actions">
+                            <button class="history-action" title="使用此命令">▶</button>
+                            <button class="history-action" title="复制命令">📋</button>
+                            <button class="history-action" title="删除此命令">🗑</button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+            
+            historyList.innerHTML = html;
+            
+            // 设置搜索功能
+            const searchInput = document.getElementById('testHistorySearch');
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                const historyItems = document.querySelectorAll('#testHistoryList .history-item');
+                
+                historyItems.forEach(item => {
+                    const command = item.dataset.command.toLowerCase();
+                    const matchesSearch = command.includes(searchTerm);
+                    item.style.display = matchesSearch ? 'block' : 'none';
+                });
+            });
+            
+            modal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeTestModal() {
+            const modal = document.getElementById('testModal');
+            modal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+        
+        function formatDate(date) {
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return '刚刚';
+            if (minutes < 60) return `${minutes}分钟前`;
+            if (hours < 24) return `${hours}小时前`;
+            if (days < 7) return `${days}天前`;
+            return date.toLocaleDateString('zh-CN');
+        }
+        
+        // 点击模态窗口外部关闭
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('testModal');
+            if (e.target === modal) {
+                closeTestModal();
+            }
+        });
+        
+        // ESC键关闭模态窗口
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeTestModal();
+            }
+        });
+    </script>
+</body>
+</html>

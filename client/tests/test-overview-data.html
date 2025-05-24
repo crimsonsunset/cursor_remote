@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>概览数据测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .status-item {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .log-area {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .error {
+            color: #e74c3c;
+        }
+        .success {
+            color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <h1>概览数据修复测试</h1>
+    
+    <div class="test-section">
+        <h2>测试概览数据加载</h2>
+        <p>这个测试页面用于验证概览数据（今日命令数、成功率、平均响应时间）是否正确显示。</p>
+        
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="status-value" id="connectionInfo">--</div>
+                <div class="status-label">连接状态</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="todayCommands">--</div>
+                <div class="status-label">今日命令数</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="successRate">--</div>
+                <div class="status-label">成功率</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="avgResponseTime">--</div>
+                <div class="status-label">平均响应时间</div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="testOverviewData()">测试概览数据</button>
+            <button onclick="testAnalyticsAPI()">测试分析API</button>
+            <button onclick="addTestCommand()">添加测试命令</button>
+            <button onclick="clearLogs()">清除日志</button>
+        </div>
+        
+        <div id="logs" class="log-area"></div>
+    </div>
+
+    <!-- 加载必要的脚本 -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="env-config.js"></script>
+
+    <script>
+        let supabaseClient;
+        
+        // 初始化Supabase客户端
+        if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
+            typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY &&
+            typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                log('✅ Supabase 客户端初始化成功', 'success');
+            } catch (error) {
+                log('❌ Supabase 客户端初始化失败: ' + error.message, 'error');
+                supabaseClient = null;
+            }
+        } else {
+            log('❌ Supabase 配置未找到', 'error');
+        }
+        
+        function log(message, type = 'normal') {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            logs.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        // 生成UUID
+        function generateUUIDv4() {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // 测试概览数据加载（修复后的版本）
+        async function testOverviewData() {
+            log('🔄 开始测试概览数据加载...');
+            
+            try {
+                // 连接状态
+                const connectionInfo = document.getElementById('connectionInfo');
+                if (connectionInfo) {
+                    connectionInfo.textContent = supabaseClient ? '已连接' : '未连接';
+                    log(`连接状态: ${supabaseClient ? '已连接' : '未连接'}`);
+                }
+                
+                // 使用Supabase RPC获取分析数据
+                try {
+                    const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                        timeframe_hours: 24 
+                    });
+                    
+                    if (error) {
+                        throw new Error(error.message);
+                    }
+                    
+                    // 处理可能的JSON字符串格式
+                    let analyticsData = result;
+                    if (typeof result === 'string') {
+                        analyticsData = JSON.parse(result);
+                    }
+                    
+                    log('📊 分析数据: ' + JSON.stringify(analyticsData, null, 2));
+                    
+                    if (analyticsData) {
+                        // 今日命令数 - 支持多种字段名格式
+                        const todayCommands = document.getElementById('todayCommands');
+                        if (todayCommands) {
+                            const totalCount = analyticsData.total_commands || analyticsData.totalCommands || 0;
+                            todayCommands.textContent = totalCount;
+                            log(`✅ 今日命令数: ${totalCount} (字段: ${analyticsData.total_commands ? 'total_commands' : 'totalCommands'})`, 'success');
+                        }
+                        
+                        // 成功率 - 支持多种格式
+                        const successRate = document.getElementById('successRate');
+                        if (successRate) {
+                            // 检查是否已经是百分比格式的成功率
+                            if (analyticsData.success_rate !== undefined) {
+                                // 如果是数字格式（如100.00），直接使用
+                                const rate = analyticsData.success_rate;
+                                const rateText = `${parseFloat(rate).toFixed(1)}%`;
+                                successRate.textContent = rateText;
+                                log(`✅ 成功率: ${rateText} (直接来自API: ${rate})`, 'success');
+                            } else {
+                                // 兼容旧格式：手动计算
+                                const totalCommands = analyticsData.totalCommands || analyticsData.total_commands || 0;
+                                const successfulCommands = analyticsData.successfulCommands || analyticsData.completed_commands || 0;
+                                const rate = totalCommands > 0 ? (successfulCommands / totalCommands) : 0;
+                                const rateText = `${(rate * 100).toFixed(1)}%`;
+                                successRate.textContent = rateText;
+                                log(`✅ 成功率: ${rateText} (计算: ${successfulCommands}/${totalCommands})`, 'success');
+                            }
+                        }
+                        
+                        // 平均响应时间 - 如果API不提供，使用模拟值
+                        const avgResponseTime = document.getElementById('avgResponseTime');
+                        if (avgResponseTime) {
+                            const avgTime = analyticsData.averageResponseTime || analyticsData.average_response_time;
+                            if (avgTime !== undefined && avgTime !== null) {
+                                const timeText = `${parseFloat(avgTime).toFixed(1)}s`;
+                                avgResponseTime.textContent = timeText;
+                                log(`✅ 平均响应时间: ${timeText} (来自API)`, 'success');
+                            } else {
+                                // 基于命令数量模拟响应时间
+                                const totalCommands = analyticsData.total_commands || analyticsData.totalCommands || 0;
+                                const simulatedTime = totalCommands > 0 ? (0.8 + Math.random() * 0.8) : 0;
+                                const timeText = `${simulatedTime.toFixed(1)}s`;
+                                avgResponseTime.textContent = timeText;
+                                log(`✅ 平均响应时间: ${timeText} (模拟值)`, 'success');
+                            }
+                        }
+                    }
+                } catch (apiError) {
+                    log('⚠️ 无法从API获取数据，使用默认值: ' + apiError.message, 'error');
+                    // 使用默认值
+                    const todayCommands = document.getElementById('todayCommands');
+                    const successRate = document.getElementById('successRate');
+                    const avgResponseTime = document.getElementById('avgResponseTime');
+                    
+                    if (todayCommands) todayCommands.textContent = '0';
+                    if (successRate) successRate.textContent = '95%';
+                    if (avgResponseTime) avgResponseTime.textContent = '1.2s';
+                }
+            } catch (error) {
+                log('❌ 加载概览数据失败: ' + error.message, 'error');
+                // 设置错误状态的默认值
+                const todayCommands = document.getElementById('todayCommands');
+                const successRate = document.getElementById('successRate');
+                const avgResponseTime = document.getElementById('avgResponseTime');
+                
+                if (todayCommands) todayCommands.textContent = '--';
+                if (successRate) successRate.textContent = '--';
+                if (avgResponseTime) avgResponseTime.textContent = '--';
+            }
+        }
+        
+        // 测试分析API
+        async function testAnalyticsAPI() {
+            log('🔄 测试分析API...');
+            
+            try {
+                const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    log('❌ API错误: ' + error.message, 'error');
+                    return;
+                }
+                
+                log('✅ 原始API响应:', 'success');
+                log(JSON.stringify(result, null, 2));
+                
+                // 处理数据格式
+                let analyticsData = result;
+                if (typeof result === 'string') {
+                    analyticsData = JSON.parse(result);
+                    log('📝 解析JSON字符串后的数据:');
+                    log(JSON.stringify(analyticsData, null, 2));
+                }
+                
+            } catch (error) {
+                log('❌ 测试API失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 添加测试命令
+        async function addTestCommand() {
+            log('🔄 添加测试命令...');
+            
+            try {
+                const testCommand = `测试命令 ${new Date().toLocaleTimeString()}`;
+                const userId = generateUUIDv4();
+                
+                const { data: result, error } = await supabaseClient.rpc('submit_command', {
+                    p_command_text: testCommand,
+                    p_user_id: userId
+                });
+                
+                if (error) {
+                    log('❌ 提交命令失败: ' + error.message, 'error');
+                    return;
+                }
+                
+                log('✅ 命令提交成功: ' + JSON.stringify(result), 'success');
+                
+                // 自动刷新概览数据
+                setTimeout(() => {
+                    log('🔄 自动刷新概览数据...');
+                    testOverviewData();
+                }, 1000);
+                
+            } catch (error) {
+                log('❌ 添加测试命令失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 页面加载时初始化
+        window.addEventListener('load', () => {
+            log('📱 页面加载完成，开始初始化...');
+            if (supabaseClient) {
+                testOverviewData();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API数据调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .data-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .result-item {
+            text-align: center;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 6px;
+        }
+        .result-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #495057;
+        }
+        .result-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>API数据实时调试</h1>
+        <p>这个页面直接调用 <code>get_command_analytics</code> API 并显示数据处理结果。</p>
+        
+        <button onclick="testAPI()">调用API</button>
+        <button onclick="clearResults()">清除结果</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <!-- 加载必要的脚本 -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="env-config.js"></script>
+
+    <script>
+        let supabaseClient;
+        
+        // 初始化Supabase客户端
+        if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
+            typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY &&
+            typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+                addResult('✅ Supabase 客户端初始化成功', 'success');
+            } catch (error) {
+                addResult('❌ Supabase 客户端初始化失败: ' + error.message, 'error');
+                supabaseClient = null;
+            }
+        } else {
+            addResult('❌ Supabase 配置未找到', 'error');
+        }
+        
+        function addResult(message, type = 'normal') {
+            const results = document.getElementById('results');
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            const timestamp = new Date().toLocaleTimeString();
+            results.innerHTML += `<div class="data-display ${className}"><strong>[${timestamp}]</strong> ${message}</div>`;
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testAPI() {
+            if (!supabaseClient) {
+                addResult('❌ Supabase 客户端未初始化', 'error');
+                return;
+            }
+            
+            addResult('🔄 调用 get_command_analytics API...');
+            
+            try {
+                const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    addResult('❌ API 错误: ' + error.message, 'error');
+                    return;
+                }
+                
+                addResult('✅ API 调用成功', 'success');
+                addResult('📡 原始API响应:<pre>' + JSON.stringify(result, null, 2) + '</pre>');
+                
+                // 处理数据格式
+                let analyticsData = result;
+                if (typeof result === 'string') {
+                    analyticsData = JSON.parse(result);
+                    addResult('📝 JSON字符串已解析');
+                }
+                
+                // 显示处理后的数据
+                processAndDisplayData(analyticsData);
+                
+            } catch (error) {
+                addResult('❌ API 调用失败: ' + error.message, 'error');
+            }
+        }
+        
+        function processAndDisplayData(data) {
+            addResult('🔍 开始处理数据...');
+            
+            // 今日命令数处理
+            const totalCount = data.total_commands || data.totalCommands || 0;
+            addResult(`📊 今日命令数: ${totalCount} (字段: ${data.total_commands ? 'total_commands' : data.totalCommands ? 'totalCommands' : '未找到'})`);
+            
+            // 成功率处理
+            let successRateText = '--';
+            if (data.success_rate !== undefined) {
+                const rate = data.success_rate;
+                successRateText = `${parseFloat(rate).toFixed(1)}%`;
+                addResult(`📈 成功率: ${successRateText} (直接来自API: ${rate})`);
+            } else {
+                const totalCommands = data.totalCommands || data.total_commands || 0;
+                const successfulCommands = data.successfulCommands || data.completed_commands || 0;
+                if (totalCommands > 0) {
+                    const rate = (successfulCommands / totalCommands) * 100;
+                    successRateText = `${rate.toFixed(1)}%`;
+                    addResult(`📈 成功率: ${successRateText} (计算得出: ${successfulCommands}/${totalCommands})`);
+                } else {
+                    addResult('📈 成功率: 无法计算 (无命令数据)');
+                }
+            }
+            
+            // 平均响应时间处理
+            let avgTimeText = '--';
+            const avgTime = data.averageResponseTime || data.average_response_time;
+            if (avgTime !== undefined && avgTime !== null) {
+                avgTimeText = `${parseFloat(avgTime).toFixed(1)}s`;
+                addResult(`⏱️ 平均响应时间: ${avgTimeText} (来自API)`);
+            } else {
+                const simulatedTime = totalCount > 0 ? (0.8 + Math.random() * 0.8) : 0;
+                avgTimeText = `${simulatedTime.toFixed(1)}s`;
+                addResult(`⏱️ 平均响应时间: ${avgTimeText} (模拟值)`);
+            }
+            
+            // 显示最终结果
+            const resultsHtml = `
+                <div class="data-display success">
+                    <h3>🎯 最终显示结果</h3>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="result-value">${totalCount}</div>
+                            <div class="result-label">今日命令数</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-value">${successRateText}</div>
+                            <div class="result-label">成功率</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-value">${avgTimeText}</div>
+                            <div class="result-label">平均响应时间</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('results').innerHTML += resultsHtml;
+        }
+        
+        // 页面加载时自动测试
+        window.addEventListener('load', () => {
+            if (supabaseClient) {
+                setTimeout(testAPI, 1000);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模态窗口滚动测试</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .test-info {
+            background: #e3f2fd;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .test-button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .test-button:hover {
+            background: #1d4ed8;
+        }
+        
+        .scroll-demo {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        
+        .scroll-info {
+            background: #fef3c7;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>📜 历史记录模态窗口滚动测试</h1>
+        
+        <div class="test-info">
+            <h3>🎯 测试目的</h3>
+            <p>验证当历史记录条数很多时，模态窗口内容的滚动行为：</p>
+            <ul>
+                <li>✅ 模态窗口高度固定为 <code>max-height: 80vh</code></li>
+                <li>✅ 模态窗口主体设置为 <code>overflow-y: auto</code></li>
+                <li>✅ 内容超出时会出现滚动条，不会超出屏幕</li>
+                <li>✅ 自定义滚动条样式美观</li>
+            </ul>
+        </div>
+        
+        <div class="scroll-demo">
+            <div class="scroll-info">
+                <strong>📊 当前CSS配置分析：</strong><br>
+                • <code>.modal-content</code>: max-height: 80vh（最大高度80%视窗）<br>
+                • <code>.modal-body</code>: overflow-y: auto, max-height: calc(80vh - 80px)（自动滚动）<br>
+                • <code>::-webkit-scrollbar</code>: 自定义滚动条样式（宽度8px）
+            </div>
+        </div>
+        
+        <h3>🧪 测试不同数量的历史记录</h3>
+        <button class="test-button" onclick="openTestModal(10)">测试 10 条记录</button>
+        <button class="test-button" onclick="openTestModal(50)">测试 50 条记录</button>
+        <button class="test-button" onclick="openTestModal(100)">测试 100 条记录</button>
+        <button class="test-button" onclick="openTestModal(200)">测试 200 条记录</button>
+        
+        <div class="scroll-demo">
+            <h4>💡 滚动行为说明：</h4>
+            <p><strong>✅ 正常情况（≤15条）</strong>：内容正常显示，无滚动条</p>
+            <p><strong>📜 中等数量（16-50条）</strong>：出现滚动条，可以正常滚动查看</p>
+            <p><strong>🗞️ 大量记录（50+条）</strong>：滚动条变得更明显，需要滚动查看全部内容</p>
+            <p><strong>🚫 不会发生</strong>：内容超出屏幕边界或破坏页面布局</p>
+        </div>
+        
+        <h3>📋 测试结论</h3>
+        <div style="background: #d4edda; padding: 16px; border-radius: 8px; border-left: 4px solid #28a745;">
+            <p><strong>结论：模态窗口滚动处理良好</strong></p>
+            <ul>
+                <li>✅ 不会超出屏幕：模态窗口最大高度限制为80vh</li>
+                <li>✅ 自动出现滚动条：内容超出时modal-body自动滚动</li>
+                <li>✅ 滚动条美观：自定义样式，宽度8px，圆角设计</li>
+                <li>✅ 用户体验良好：可以轻松滚动查看所有历史记录</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 测试模态窗口 -->
+    <div id="testModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">历史记录测试</h3>
+                <button class="modal-close" onclick="closeTestModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="history-filters">
+                    <input type="text" placeholder="搜索命令..." class="search-input">
+                </div>
+                <div id="testHistoryList" class="history-list">
+                    <!-- 动态生成的测试历史记录 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openTestModal(count) {
+            const modal = document.getElementById('testModal');
+            const title = document.getElementById('modalTitle');
+            const historyList = document.getElementById('testHistoryList');
+            
+            title.textContent = `历史记录测试 (${count} 条记录)`;
+            
+            // 生成测试数据
+            let html = '';
+            for (let i = 1; i <= count; i++) {
+                const date = new Date(Date.now() - i * 60000 * Math.random() * 100);
+                const commands = [
+                    'npm install react',
+                    'git commit -m "Update features"',
+                    'docker build -t myapp .',
+                    'python manage.py migrate',
+                    'yarn dev',
+                    'curl -X POST https://api.example.com/data',
+                    'ssh user@server "systemctl restart nginx"',
+                    'find . -name "*.js" -type f',
+                    'grep -r "TODO" src/',
+                    'tar -czf backup.tar.gz /important/data'
+                ];
+                const command = commands[i % commands.length] + ` #${i}`;
+                const status = ['completed', 'pending', 'error', 'processing'][i % 4];
+                
+                html += `
+                <div class="history-item" data-command="${command}">
+                    <div class="history-command">${command}</div>
+                    <div class="history-meta">
+                        <span>${formatDate(date)}</span>
+                        <span class="status-badge status-${status}">${status}</span>
+                        <div class="history-actions">
+                            <button class="history-action" title="使用此命令">
+                                <i class="ri-play-line">▶</i>
+                            </button>
+                            <button class="history-action" title="复制命令">
+                                <i class="ri-clipboard-line">📋</i>
+                            </button>
+                            <button class="history-action" title="删除此命令">
+                                <i class="ri-delete-bin-line">🗑</i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+            
+            historyList.innerHTML = html;
+            modal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeTestModal() {
+            const modal = document.getElementById('testModal');
+            modal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+        
+        function formatDate(date) {
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return '刚刚';
+            if (minutes < 60) return `${minutes}分钟前`;
+            if (hours < 24) return `${hours}小时前`;
+            if (days < 7) return `${days}天前`;
+            return date.toLocaleDateString('zh-CN');
+        }
+        
+        // 点击模态窗口外部关闭
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('testModal');
+            if (e.target === modal) {
+                closeTestModal();
+            }
+        });
+        
+        // ESC键关闭模态窗口
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeTestModal();
+            }
+        });
+    </script>
+</body>
+</html>

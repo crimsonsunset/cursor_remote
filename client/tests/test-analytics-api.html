@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试分析API调用</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 14px;
+        }
+        .button:hover { background: #0056CC; }
+        .log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        .error { color: #FF3B30; }
+        .success { color: #34C759; }
+        .info { color: #007AFF; }
+        .warning { color: #FF9500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 分析API测试</h1>
+        <p>测试 Supabase 分析数据函数调用和数据格式</p>
+        
+        <div class="controls">
+            <button class="button" onclick="testAnalyticsFunction()">测试 get_command_analytics</button>
+            <button class="button" onclick="testDirectQuery()">测试直接SQL查询</button>
+            <button class="button" onclick="clearLog()">清空日志</button>
+        </div>
+        
+        <div id="log" class="log">点击按钮开始测试...\n</div>
+    </div>
+
+    <script src="env-config.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        let supabaseClient;
+
+        // 初始化 Supabase 客户端
+        async function initSupabase() {
+            try {
+                supabaseClient = supabase.createClient(ENV_CONFIG.SUPABASE_URL, ENV_CONFIG.SUPABASE_ANON_KEY);
+                log('✅ Supabase 客户端初始化成功', 'success');
+                return true;
+            } catch (error) {
+                log(`❌ Supabase 初始化失败: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 测试 get_command_analytics 函数
+        async function testAnalyticsFunction() {
+            if (!supabaseClient) {
+                if (!await initSupabase()) return;
+            }
+
+            log('\n📊 测试 get_command_analytics 函数...', 'info');
+            
+            try {
+                const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                    timeframe_hours: 24 
+                });
+                
+                if (error) {
+                    log(`❌ 函数调用失败: ${error.message}`, 'error');
+                    log(`详细错误: ${JSON.stringify(error, null, 2)}`, 'error');
+                } else {
+                    log('✅ 函数调用成功', 'success');
+                    log(`原始返回数据: ${JSON.stringify(result, null, 2)}`, 'info');
+                    
+                    // 处理可能的JSON字符串格式
+                    let analyticsData = result;
+                    if (typeof result === 'string') {
+                        try {
+                            analyticsData = JSON.parse(result);
+                            log('🔄 已解析JSON字符串格式', 'info');
+                        } catch (parseError) {
+                            log(`❌ JSON解析失败: ${parseError.message}`, 'error');
+                            return;
+                        }
+                    }
+                    
+                    log('\n📋 数据字段分析:', 'info');
+                    log(`- totalCommands: ${analyticsData.totalCommands}`, 'info');
+                    log(`- total_commands: ${analyticsData.total_commands}`, 'info');
+                    log(`- successfulCommands: ${analyticsData.successfulCommands}`, 'info');
+                    log(`- completed_commands: ${analyticsData.completed_commands}`, 'info');
+                    log(`- failedCommands: ${analyticsData.failedCommands}`, 'info');
+                    log(`- error_commands: ${analyticsData.error_commands}`, 'info');
+                    log(`- success_rate: ${analyticsData.success_rate}`, 'info');
+                    log(`- averageResponseTime: ${analyticsData.averageResponseTime}`, 'info');
+                    
+                    // 模拟 displayAnalyticsData 处理
+                    log('\n🎯 模拟数据处理结果:', 'info');
+                    const totalCommands = analyticsData.total_commands || analyticsData.totalCommands || 0;
+                    const completedCommands = analyticsData.completed_commands || analyticsData.successfulCommands || 0;
+                    const errorCommands = analyticsData.error_commands || analyticsData.failedCommands || 0;
+                    
+                    let successRate;
+                    if (analyticsData.success_rate !== undefined) {
+                        successRate = parseFloat(analyticsData.success_rate) / 100;
+                        log(`成功率 (直接从API): ${(successRate * 100).toFixed(1)}%`, 'success');
+                    } else {
+                        successRate = totalCommands > 0 ? (completedCommands / totalCommands) : 0;
+                        log(`成功率 (计算得出): ${(successRate * 100).toFixed(1)}%`, 'warning');
+                    }
+                    
+                    log(`总命令数: ${totalCommands}`, 'success');
+                    log(`成功命令数: ${completedCommands}`, 'success');
+                    log(`失败命令数: ${errorCommands}`, 'success');
+                }
+            } catch (error) {
+                log(`❌ 异常错误: ${error.message}`, 'error');
+                log(`错误堆栈: ${error.stack}`, 'error');
+            }
+        }
+
+        // 测试直接SQL查询
+        async function testDirectQuery() {
+            if (!supabaseClient) {
+                if (!await initSupabase()) return;
+            }
+
+            log('\n🔍 测试直接SQL查询...', 'info');
+            
+            try {
+                // 检查命令表
+                const { data: commands, error: commandError } = await supabaseClient
+                    .from('commands')
+                    .select('*')
+                    .limit(5);
+                
+                if (commandError) {
+                    log(`❌ 查询commands表失败: ${commandError.message}`, 'error');
+                } else {
+                    log(`✅ commands表查询成功，共 ${commands.length} 条记录`, 'success');
+                    log(`示例命令: ${JSON.stringify(commands[0] || {}, null, 2)}`, 'info');
+                }
+
+                // 检查metrics表
+                const { data: metrics, error: metricsError } = await supabaseClient
+                    .from('command_metrics')
+                    .select('*')
+                    .limit(5);
+                
+                if (metricsError) {
+                    log(`❌ 查询command_metrics表失败: ${metricsError.message}`, 'error');
+                } else {
+                    log(`✅ command_metrics表查询成功，共 ${metrics.length} 条记录`, 'success');
+                    log(`示例指标: ${JSON.stringify(metrics[0] || {}, null, 2)}`, 'info');
+                }
+
+                // 手动统计数据
+                log('\n📊 手动统计结果:', 'info');
+                const { data: totalCount } = await supabaseClient
+                    .from('command_metrics')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+                
+                const { data: successCount } = await supabaseClient
+                    .from('command_metrics')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('success', true)
+                    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+                log(`24小时内总命令数: ${totalCount?.count || 0}`, 'success');
+                log(`24小时内成功命令数: ${successCount?.count || 0}`, 'success');
+                
+                if (totalCount?.count > 0) {
+                    const rate = ((successCount?.count || 0) / totalCount.count * 100).toFixed(1);
+                    log(`手动计算成功率: ${rate}%`, 'success');
+                }
+
+            } catch (error) {
+                log(`❌ 直接查询异常: ${error.message}`, 'error');
+            }
+        }
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const line = `[${timestamp}] ${message}\n`;
+            logElement.innerHTML += `<span class="${type}">${line}</span>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '日志已清空，点击按钮开始测试...\n';
+        }
+
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            initSupabase();
+        });
+    </script>
+</body>
+</html>

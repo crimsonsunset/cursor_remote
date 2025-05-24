@@ -1,6 +1,13 @@
 # Cursor Remote Control Project
 > A solution to remotely control Cursor from your mobile phone using Supabase.
 
+## 🚨 First-Time Setup Notice
+If you are setting up this project for the first time, **please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to configure your Supabase database first**, otherwise the client will not be able to connect.
+
+📖 **Quick Start**: Check [Deployment Status](docs/deployment/DEPLOYMENT_STATUS.md) to understand current deployment status and tasks.
+
+📚 **Documentation**: See [Documentation Directory](docs/README.en.md) for complete documentation structure.
+
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -15,6 +22,28 @@
 > Remote control Cursor for UI automation testing
 
 [![Watch the demo](https://img.youtube.com/vi/3SWj7X-4Gzs/0.jpg)](https://youtu.be/3SWj7X-4Gzs)
+
+## ✨ Key Features
+
+### 🎮 Remote Control
+- **Command Sending**: Send text commands from your phone to Cursor/VS Code
+- **Smart Suggestions**: Auto-completion based on command history
+- **Real-time Feedback**: Live display of command execution status
+
+### 📊 System Monitoring
+- **Connection Status**: Real-time Supabase connection status display
+- **System Metrics**: CPU and memory usage monitoring
+- **Performance Analytics**: Response time and success rate statistics
+
+### 📝 History Management
+- **Command History**: View and manage all historical commands
+- **Search & Filter**: Quickly search for specific historical commands
+- **Delete Function**: Clean up unwanted history records
+
+### 🔧 Diagnostic Tools
+- **Connection Testing**: One-click Supabase connection issue detection
+- **Status Dashboard**: Multi-tab detailed system information display
+- **Error Diagnosis**: Automatic detection with solution suggestions
 
 ## Deploy to Vercel (Client)
 
@@ -35,8 +64,11 @@ These keys are used for the client to connect to your Supabase backend.
   - `src/appleScriptRunner.js`: Module for executing AppleScript scripts.
   
 - `client/`: Mobile client code (Web interface).
-  - `index.html`: Web interface.
+  - `index.html`: Web interface with command sending, history management, system monitoring features.
   - `app.js`: Client-side JavaScript code, interacts with Supabase.
+  - `enhancement.js`: Enhancement module providing intelligent suggestions and data management.
+  - `systemMonitor.js`: System monitoring module displaying real-time system status and performance metrics.
+  - `connection-test.js`: Connection testing module for diagnosing Supabase connection issues.
   - `styles.css`: Stylesheet.
   - `env-config.js`: Contains Supabase connection configuration. **Note**: When deploying via Vercel, environment variables will take precedence over hardcoded values in this file.
   
@@ -218,11 +250,38 @@ We believe that with the collective efforts of the community, this project can c
 
 ## How It Works
 
+### Core Process
 1.  The mobile client (Web interface) converts user actions (like button clicks) into commands using the Supabase client library and inserts the command data into the `commands` table in the Supabase database.
 2.  The server program (`server/src/services/supabaseService.js`) deployed on your computer uses Supabase Realtime to listen for new records inserted into the `commands` table with a status of 'pending'.
 3.  When the server receives a new command, `commandController.js` parses the command (including determining the target editor and chat mode) and calls the corresponding AppleScript script (in the `scripts/` directory) via `appleScriptRunner.js` to control the local target editor application.
 4.  The command execution status (e.g., 'completed' or 'error') and any possible error messages are updated back to the corresponding record in the `commands` table by the server.
 5.  (Optional) If the command has execution results that need to be returned to the client, the server can insert the results into the `results` table. The client can listen for changes in the `results` table to receive these results.
+
+### Enhanced Features
+- **Smart Suggestions**: `enhancement.js` analyzes command history to provide auto-completion and intelligent suggestions
+- **System Monitoring**: `systemMonitor.js` collects and displays real-time system performance metrics
+- **Connection Diagnosis**: `connection-test.js` automatically detects connection issues and provides solutions
+- **History Management**: Supports command history search, filtering, and deletion functions
+- **Status Dashboard**: Multi-tab display showing overview, analytics, queue, and system information
+
+## 📚 Documentation and Maintenance
+
+### Documentation Structure
+- [`docs/`](docs/) - Complete documentation directory
+  - [`architecture/`](docs/architecture/) - System architecture documents
+  - [`deployment/`](docs/deployment/) - Deployment and setup guides
+  - [`fixes/`](docs/fixes/) - Issue fix documentation
+  - [`testing/`](docs/testing/) - Testing guides
+
+### Maintenance Tools
+- [`scripts/maintenance/`](scripts/maintenance/) - Maintenance scripts
+  - `check-status.sh` - System status checker
+  - `fix-db.sh` - Database repair tool
+
+### Project Reports
+- [Functionality Completion Report](docs/FUNCTIONALITY_COMPLETION_REPORT.md) - Project completion status
+- [Cleanup Report](docs/CLEANUP_REPORT.md) - Code cleanup details
+- [Final Solution](docs/FINAL_SOLUTION.md) - Key issue solutions
 
 ## License
 
