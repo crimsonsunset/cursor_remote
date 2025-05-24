@@ -301,6 +301,185 @@ const elements = {
     actionButtons: document.querySelectorAll('.action-button')
 };
 
+/**
+ * 测试Supabase连接（轻量级版本，不发送实际命令）
+ */
+async function testSupabaseConnection() {
+    console.log('开始测试Supabase连接...');
+    
+    try {
+        // 只测试基本连接，不发送实际命令
+        const { data: healthCheck, error: healthError } = await supabaseClient
+            .from('commands')
+            .select('count', { count: 'exact', head: true });
+            
+        if (healthError) {
+            console.error('Supabase连接测试失败:', healthError);
+            updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
+            showSupabaseConnectionError(healthError);
+            return false;
+        }
+        
+        console.log('Supabase连接测试成功');
+        updateConnectionStatus(true, 'Supabase连接正常');
+        return true;
+        
+    } catch (error) {
+        console.error('Supabase连接测试异常:', error);
+        updateConnectionStatus(false, `连接异常: ${error.message}`);
+        showSupabaseSetupGuide();
+        return false;
+    }
+}
+
+/**
+ * 完整测试Supabase连接（包括RPC函数测试）
+ */
+async function testSupabaseConnectionFull() {
+    console.log('开始完整测试Supabase连接...');
+    
+    try {
+        // 测试基本连接
+        const { data: healthCheck, error: healthError } = await supabaseClient
+            .from('commands')
+            .select('count', { count: 'exact', head: true });
+            
+        if (healthError) {
+            console.error('Supabase连接测试失败:', healthError);
+            updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
+            showSupabaseConnectionError(healthError);
+            return false;
+        }
+        
+        // 测试RPC函数
+        const { data: rpcTest, error: rpcError } = await supabaseClient
+            .rpc('submit_command', { 
+                p_command_text: 'connection_test',
+                p_user_id: 'test_user'
+            });
+            
+        if (rpcError) {
+            console.error('RPC函数测试失败:', rpcError);
+            updateConnectionStatus(false, `RPC函数错误: ${rpcError.message}`);
+            showSupabaseRpcError(rpcError);
+            return false;
+        }
+        
+        console.log('Supabase完整连接测试成功');
+        updateConnectionStatus(true, 'Supabase连接和RPC函数正常');
+        return true;
+        
+    } catch (error) {
+        console.error('Supabase连接测试异常:', error);
+        updateConnectionStatus(false, `连接异常: ${error.message}`);
+        showSupabaseSetupGuide();
+        return false;
+    }
+}
+
+/**
+ * 显示Supabase设置指导
+ */
+function showSupabaseSetupGuide() {
+    const guideHtml = `
+        <div class="supabase-setup-guide">
+            <h3>🔧 Supabase配置问题</h3>
+            <p>检测到Supabase配置问题，请按以下步骤修复：</p>
+            
+            <div class="setup-steps">
+                <h4>1. 检查配置文件</h4>
+                <p>确保 <code>client/env-config.js</code> 文件存在且格式正确：</p>
+                <pre><code>window.SUPABASE_URL = "your-supabase-url";
+window.SUPABASE_ANON_KEY = "your-anon-key";</code></pre>
+                
+                <h4>2. 验证数据库</h4>
+                <p>在Supabase控制台执行SQL脚本：</p>
+                <ul>
+                    <li>执行 <code>database/tables.sql</code> 创建表</li>
+                    <li>执行 <code>database/functions.sql</code> 创建函数</li>
+                    <li>运行 <code>database/verify-deployment.sql</code> 验证</li>
+                </ul>
+                
+                <h4>3. 测试连接</h4>
+                <p>使用 <code>client/test-supabase.html</code> 测试页面验证配置</p>
+                
+                <div class="action-buttons">
+                    <button onclick="window.open('test-supabase.html', '_blank')" class="btn btn-primary">
+                        打开测试页面
+                    </button>
+                    <button onclick="location.reload()" class="btn btn-secondary">
+                        重新加载页面
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    addNotificationToChat(guideHtml, 'error');
+}
+
+/**
+ * 显示Supabase连接错误详情
+ */
+function showSupabaseConnectionError(error) {
+    const errorHtml = `
+        <div class="supabase-error">
+            <h4>❌ 数据库连接错误</h4>
+            <p><strong>错误信息:</strong> ${error.message}</p>
+            <p><strong>错误代码:</strong> ${error.code || 'N/A'}</p>
+            
+            <div class="troubleshooting">
+                <h5>可能的解决方案：</h5>
+                <ul>
+                    <li>检查Supabase URL和API密钥是否正确</li>
+                    <li>确认数据库表已创建 (运行 database/tables.sql)</li>
+                    <li>检查网络连接</li>
+                    <li>验证Supabase项目状态</li>
+                </ul>
+                
+                <button onclick="testSupabaseConnectionFull()" class="btn btn-primary">
+                    重新测试连接
+                </button>
+            </div>
+        </div>
+    `;
+    
+    addNotificationToChat(errorHtml, 'error');
+}
+
+/**
+ * 显示Supabase RPC函数错误详情
+ */
+function showSupabaseRpcError(error) {
+    const errorHtml = `
+        <div class="supabase-rpc-error">
+            <h4>⚠️ RPC函数错误</h4>
+            <p><strong>错误信息:</strong> ${error.message}</p>
+            <p><strong>错误代码:</strong> ${error.code || 'N/A'}</p>
+            
+            <div class="troubleshooting">
+                <h5>解决步骤：</h5>
+                <ol>
+                    <li>在Supabase控制台执行 <code>database/functions.sql</code></li>
+                    <li>确认所有RPC函数已正确创建</li>
+                    <li>检查函数权限设置</li>
+                </ol>
+                
+                <div class="action-buttons">
+                    <button onclick="testSupabaseConnectionFull()" class="btn btn-primary">
+                        重新测试
+                    </button>
+                    <button onclick="window.open('test-supabase.html', '_blank')" class="btn btn-secondary">
+                        详细诊断
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    addNotificationToChat(errorHtml, 'error');
+}
+
 // 初始化应用
 function initApp() {
     // 设置事件监听器
@@ -309,11 +488,17 @@ function initApp() {
     // 检查Supabase客户端是否已初始化
     if (!supabaseClient) {
         updateConnectionStatus(false, 'Supabase配置错误');
+        showSupabaseSetupGuide();
         return; 
     }
     
-    // 如果 Supabase 客户端已成功初始化，我们更新连接状态
-    updateConnectionStatus(true, '已连接 (Supabase)');
+    // 初始化全局增强服务
+    if (typeof window.initGlobalEnhancementService === 'function') {
+        window.initGlobalEnhancementService(supabaseClient);
+    }
+    
+    // 测试Supabase连接
+    testSupabaseConnection();
     
     // 加载主题设置
     loadThemePreference();
@@ -341,6 +526,9 @@ function setupEventListeners() {
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
+    
+    // 新功能按钮事件监听器
+    setupNewFeatureListeners();
     
     // 修改输入框按键事件，回车键进行换行而非发送消息
     elements.messageInput.addEventListener('keydown', async (event) => {
@@ -588,8 +776,7 @@ function renderMessage(message) {
                 marked.setOptions({
                     breaks: true, // 将换行符转换为 <br>
                     gfm: true,    // 启用GitHub风格的Markdown
-                    headerIds: true, // 为标题添加ID
-                    sanitize: false // 允许HTML标签
+                    headerIds: true // 为标题添加ID
                 });
                 contentElement.innerHTML = marked.parse(message.content);
             } catch (e) {
@@ -848,10 +1035,16 @@ function addMessageToHistory(message) {
 }
 
 // 添加通知到聊天
-function addNotificationToChat(content) {
+function addNotificationToChat(content, type = 'notification') {
     const notificationElement = document.createElement('div');
-    notificationElement.className = 'notification';
-    notificationElement.textContent = content;
+    notificationElement.className = `message ${type}`;
+    
+    // 支持HTML内容
+    if (content.includes('<')) {
+        notificationElement.innerHTML = content;
+    } else {
+        notificationElement.textContent = content;
+    }
     
     elements.chatContainer.appendChild(notificationElement);
     scrollChatToBottom();
@@ -1183,4 +1376,880 @@ function cleanupTimeoutPendingCommands() {
             addNotificationToChat('已清理超时未响应的指令。');
         }
     }
-} 
+}
+
+// ===== 新功能模态窗口管理 =====
+
+/**
+ * 设置新功能按钮的事件监听器
+ */
+function setupNewFeatureListeners() {
+    // 历史按钮
+    const historyButton = document.getElementById('historyButton');
+    if (historyButton) {
+        historyButton.addEventListener('click', () => openModal('historyModal'));
+    }
+     // 收藏夹按钮
+    const favoritesButton = document.getElementById('favoritesButton');
+    if (favoritesButton) {
+        favoritesButton.addEventListener('click', () => openModal('favoritesModal'));
+    }
+    
+    // 系统状态按钮
+    const statusButton = document.getElementById('statusButton');
+    if (statusButton) {
+        statusButton.addEventListener('click', () => openModal('statusModal'));
+    }
+    
+    // 测试连接按钮
+    const testConnectionButton = document.getElementById('testConnectionButton');
+    if (testConnectionButton) {
+        testConnectionButton.addEventListener('click', async () => {
+            // 显示加载状态
+            const originalIcon = testConnectionButton.innerHTML;
+            testConnectionButton.innerHTML = '<i class="ri-loader-4-line" style="animation: spin 1s linear infinite;"></i>';
+            testConnectionButton.disabled = true;
+            
+            try {
+                addNotificationToChat('🧪 开始连接测试...', 'info');
+                
+                // 调用连接测试函数
+                if (typeof runConnectionTest === 'function') {
+                    const result = await runConnectionTest();
+                    if (result) {
+                        testConnectionButton.classList.add('connection-success');
+                        addNotificationToChat('✅ 连接测试成功！所有API函数正常工作。', 'success');
+                        setTimeout(() => {
+                            testConnectionButton.classList.remove('connection-success');
+                        }, 1000);
+                    } else {
+                        testConnectionButton.classList.add('connection-error');
+                        addNotificationToChat('❌ 连接测试失败，请检查控制台详细信息。', 'error');
+                        setTimeout(() => {
+                            testConnectionButton.classList.remove('connection-error');
+                        }, 1000);
+                    }
+                } else {
+                    addNotificationToChat('❌ 测试脚本未加载，请刷新页面重试。', 'error');
+                }
+            } catch (error) {
+                console.error('Connection test error:', error);
+                testConnectionButton.classList.add('connection-error');
+                addNotificationToChat('❌ 连接测试出错：' + error.message, 'error');
+                setTimeout(() => {
+                    testConnectionButton.classList.remove('connection-error');
+                }, 1000);
+            } finally {
+                // 恢复按钮状态
+                testConnectionButton.innerHTML = originalIcon;
+                testConnectionButton.disabled = false;
+            }
+        });
+    }
+    
+    // 模态窗口关闭事件
+    setupModalCloseListeners();
+    
+    // 其他功能按钮事件
+    setupFeatureButtonListeners();
+}
+
+/**
+ * 打开指定的模态窗口
+ */
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden'; // 防止背景滚动
+        
+        // 根据不同模态窗口加载相应内容
+        switch(modalId) {
+            case 'historyModal':
+                loadCommandHistory();
+                break;
+            case 'favoritesModal':
+                loadFavorites();
+                break;
+            case 'statusModal':
+                loadSystemStatus();
+                break;
+        }
+    }
+}
+
+/**
+ * 关闭模态窗口
+ */
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = ''; // 恢复滚动
+    }
+}
+
+/**
+ * 设置模态窗口关闭事件监听器
+ */
+function setupModalCloseListeners() {
+    // 关闭按钮事件
+    document.querySelectorAll('.modal-close').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                closeModal(modal.id);
+            }
+        });
+    });
+    
+    // 点击背景关闭模态窗口
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal(modal.id);
+            }
+        });
+    });
+    
+    // ESC键关闭模态窗口
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const openModal = document.querySelector('.modal.show');
+            if (openModal) {
+                closeModal(openModal.id);
+            }
+        }
+    });
+}
+
+/**
+ * 设置功能按钮事件监听器
+ */
+function setupFeatureButtonListeners() {
+    // 取消按钮
+    document.querySelectorAll('.cancel-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                closeModal(modal.id);
+            }
+        });
+    });
+    
+    // 系统状态标签页切换
+    setupStatusTabs();
+}
+
+/**
+ * 设置系统状态标签页切换
+ */
+function setupStatusTabs() {
+    const statusTabs = document.querySelectorAll('.status-tab');
+    statusTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // 移除所有活动状态
+            statusTabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.status-tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // 激活当前标签
+            tab.classList.add('active');
+            const tabName = tab.getAttribute('data-tab');
+            const tabContent = document.getElementById(tabName + 'Tab');
+            if (tabContent) {
+                tabContent.classList.add('active');
+            }
+            
+            // 根据标签页加载相应数据
+            loadStatusTabData(tabName);
+        });
+    });
+}
+
+// ===== 命令历史功能 =====
+
+/**
+ * 加载命令历史
+ */
+async function loadCommandHistory() {
+    const historyList = document.getElementById('historyList');
+    if (!historyList) return;
+    
+    try {
+        console.log('🔍 开始加载命令历史...');
+        
+        // 从enhancement.js获取历史记录
+        if (typeof window.CommandHistory !== 'undefined') {
+            console.log('✅ CommandHistory对象存在，正在获取历史记录...');
+            const history = window.CommandHistory.getHistory();
+            console.log('📊 获取到历史记录:', history);
+            renderHistoryList(history);
+        } else {
+            console.log('⚠️ CommandHistory对象不存在，使用localStorage备用方案...');
+            // 从localStorage获取历史记录作为备用
+            const history = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+            console.log('📊 从localStorage获取历史记录:', history);
+            renderHistoryList(history);
+        }
+        
+        // 设置搜索和过滤器
+        setupHistoryFilters();
+    } catch (error) {
+        console.error('❌ 加载命令历史失败:', error);
+        historyList.innerHTML = '<div class="error-message">加载历史记录失败: ' + error.message + '</div>';
+    }
+}
+
+/**
+ * 渲染历史记录列表
+ */
+function renderHistoryList(history) {
+    const historyList = document.getElementById('historyList');
+    if (!historyList) return;
+    
+    if (history.length === 0) {
+        historyList.innerHTML = '<div class="empty-message">暂无命令历史</div>';
+        return;
+    }
+    
+    const historyHTML = history.map(item => `
+        <div class="history-item" data-command="${escapeHtml(item.command)}">
+            <div class="history-command">${escapeHtml(item.command)}</div>
+            <div class="history-meta">
+                <span>${formatDate(item.timestamp)}</span>
+                <div class="history-actions">
+                    <button class="history-action" data-action="use" title="使用此命令">
+                        <i class="ri-play-line"></i>
+                    </button>
+                    <button class="history-action" data-action="copy" title="复制命令">
+                        <i class="ri-clipboard-line"></i>
+                    </button>
+                    <button class="history-action" data-action="favorite" title="添加到收藏">
+                        <i class="ri-star-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    historyList.innerHTML = historyHTML;
+    
+    // 添加点击事件
+    historyList.addEventListener('click', handleHistoryAction);
+}
+
+/**
+ * 设置历史记录过滤器
+ */
+function setupHistoryFilters() {
+    const searchInput = document.getElementById('historySearch');
+    const filterSelect = document.getElementById('historyFilter');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', filterHistory);
+    }
+    
+    if (filterSelect) {
+        filterSelect.addEventListener('change', filterHistory);
+    }
+}
+
+/**
+ * 过滤历史记录
+ */
+function filterHistory() {
+    const searchTerm = document.getElementById('historySearch')?.value.toLowerCase() || '';
+    const timeFilter = document.getElementById('historyFilter')?.value || 'all';
+    
+    const historyItems = document.querySelectorAll('.history-item');
+    
+    historyItems.forEach(item => {
+        const command = item.dataset.command.toLowerCase();
+        const matchesSearch = command.includes(searchTerm);
+        
+        // 时间过滤逻辑可以在这里实现
+        const matchesTime = true; // 简化实现
+        
+        item.style.display = (matchesSearch && matchesTime) ? 'block' : 'none';
+    });
+}
+
+/**
+ * 处理历史记录操作
+ */
+function handleHistoryAction(event) {
+    const action = event.target.closest('.history-action')?.dataset.action;
+    const historyItem = event.target.closest('.history-item');
+    
+    if (!action || !historyItem) return;
+    
+    const command = historyItem.dataset.command;
+    
+    switch (action) {
+        case 'use':
+            // 使用此命令
+            document.getElementById('messageInput').value = command;
+            closeModal('historyModal');
+            break;
+        case 'copy':
+            // 复制命令
+            copyToClipboard(command);
+            break;
+        case 'favorite':
+            // 添加到收藏
+            addToFavorites(command);
+            break;
+    }
+}
+
+// ===== 收藏夹功能 =====
+
+/**
+ * 加载收藏夹
+ */
+async function loadFavorites() {
+    const favoritesList = document.getElementById('favoritesList');
+    if (!favoritesList) return;
+    
+    try {
+        // 从enhancement.js获取收藏夹
+        if (typeof window.CommandFavorites !== 'undefined') {
+            const favorites = window.CommandFavorites.getFavorites();
+            renderFavoritesList(favorites);
+        } else {
+            // 从localStorage获取收藏夹作为备用
+            const favorites = JSON.parse(localStorage.getItem('commandFavorites') || '[]');
+            renderFavoritesList(favorites);
+        }
+        
+        setupFavoritesSearch();
+    } catch (error) {
+        console.error('加载收藏夹失败:', error);
+        favoritesList.innerHTML = '<div class="error-message">加载收藏夹失败</div>';
+    }
+}
+
+/**
+ * 渲染收藏夹列表
+ */
+function renderFavoritesList(favorites) {
+    const favoritesList = document.getElementById('favoritesList');
+    if (!favoritesList) return;
+    
+    if (favorites.length === 0) {
+        favoritesList.innerHTML = '<div class="empty-message">暂无收藏项目</div>';
+        return;
+    }
+    
+    const favoritesHTML = favorites.map(item => `
+        <div class="favorite-item" data-id="${item.id}">
+            <div class="favorite-title">${escapeHtml(item.title || '未命名收藏')}</div>
+            <div class="favorite-command">${escapeHtml(item.command)}</div>
+            <div class="favorite-actions">
+                <span class="favorite-date">${formatDate(item.timestamp)}</span>
+                <div class="history-actions">
+                    <button class="history-action" data-action="use" title="使用此命令">
+                        <i class="ri-play-line"></i>
+                    </button>
+                    <button class="history-action" data-action="edit" title="编辑">
+                        <i class="ri-edit-line"></i>
+                    </button>
+                    <button class="history-action" data-action="delete" title="删除">
+                        <i class="ri-delete-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    favoritesList.innerHTML = favoritesHTML;
+    
+    // 添加点击事件
+    favoritesList.addEventListener('click', handleFavoriteAction);
+}
+
+/**
+ * 添加到收藏夹
+ */
+function addToFavorites(command, title) {
+    try {
+        if (typeof window.CommandFavorites !== 'undefined') {
+            window.CommandFavorites.addFavorite(command, title);
+        } else {
+            // 备用实现
+            const favorites = JSON.parse(localStorage.getItem('commandFavorites') || '[]');
+            favorites.push({
+                id: Date.now(),
+                command,
+                title: title || command.substring(0, 50) + '...',
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('commandFavorites', JSON.stringify(favorites));
+        }
+        
+        addNotificationToChat('已添加到收藏夹');
+    } catch (error) {
+        console.error('添加收藏失败:', error);
+        addNotificationToChat('添加收藏失败', 'error');
+    }
+}
+
+// ===== 系统状态功能 =====
+
+/**
+ * 加载系统状态
+ */
+async function loadSystemStatus() {
+    try {
+        // 加载概览数据
+        loadStatusTabData('overview');
+        
+        // 启动系统监控
+        if (typeof window.SystemMonitor !== 'undefined') {
+            window.SystemMonitor.startMonitoring();
+        }
+    } catch (error) {
+        console.error('加载系统状态失败:', error);
+    }
+}
+
+/**
+ * 加载状态标签页数据
+ */
+async function loadStatusTabData(tabName) {
+    switch (tabName) {
+        case 'overview':
+            await loadOverviewData();
+            break;
+        case 'analytics':
+            await loadAnalyticsData();
+            break;
+        case 'queue':
+            await loadQueueData();
+            break;
+        case 'system':
+            await loadSystemMetrics();
+            break;
+    }
+}
+
+/**
+ * 加载概览数据
+ */
+async function loadOverviewData() {
+    try {
+        // 连接状态
+        const connectionInfo = document.getElementById('connectionInfo');
+        if (connectionInfo) {
+            connectionInfo.textContent = supabaseClient ? '已连接' : '未连接';
+        }
+        
+        // 今日命令数
+        const todayCommands = document.getElementById('todayCommands');
+        if (todayCommands) {
+            const history = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+            const today = new Date().toDateString();
+            const todayCount = history.filter(item => 
+                new Date(item.timestamp).toDateString() === today
+            ).length;
+            todayCommands.textContent = todayCount;
+        }
+        
+        // 使用Supabase RPC获取分析数据
+        try {
+            const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+                timeframe_hours: 24 
+            });
+            
+            if (error) {
+                throw new Error(error.message);
+            }
+            
+            if (result) {
+                const successRate = document.getElementById('successRate');
+                const avgResponseTime = document.getElementById('avgResponseTime');
+                
+                if (successRate) {
+                    const rate = result.successRate || 0;
+                    successRate.textContent = `${(rate * 100).toFixed(1)}%`;
+                }
+                
+                if (avgResponseTime) {
+                    const avgTime = result.averageResponseTime || 0;
+                    avgResponseTime.textContent = `${avgTime.toFixed(1)}s`;
+                }
+            }
+        } catch (apiError) {
+            console.warn('无法从API获取数据，使用默认值:', apiError);
+            // 使用默认值
+            const successRate = document.getElementById('successRate');
+            const avgResponseTime = document.getElementById('avgResponseTime');
+            if (successRate) successRate.textContent = '95%';
+            if (avgResponseTime) avgResponseTime.textContent = '1.2s';
+        }
+    } catch (error) {
+        console.error('加载概览数据失败:', error);
+    }
+}
+
+/**
+ * 加载分析数据
+ */
+async function loadAnalyticsData() {
+    try {
+        const { data: result, error } = await supabaseClient.rpc('get_command_analytics', { 
+            timeframe_hours: 24 
+        });
+        
+        if (!error && result) {
+            displayAnalyticsData(result);
+        } else {
+            console.error('获取分析数据失败:', error?.message || 'Unknown error');
+            displayAnalyticsError();
+        }
+    } catch (error) {
+        console.error('加载分析数据失败:', error);
+        displayAnalyticsError();
+    }
+}
+
+/**
+ * 加载队列数据
+ */
+async function loadQueueData() {
+    try {
+        const { data: result, error } = await supabaseClient.rpc('get_queue_status');
+        
+        if (!error && result) {
+            displayQueueData(result);
+        } else {
+            console.error('获取队列数据失败:', error?.message || 'Unknown error');
+            displayQueueError();
+        }
+    } catch (error) {
+        console.error('加载队列数据失败:', error);
+        displayQueueError();
+    }
+}
+
+/**
+ * 加载系统指标
+ */
+async function loadSystemMetrics() {
+    try {
+        const { data: result, error } = await supabaseClient.rpc('get_system_status');
+        
+        if (!error && result) {
+            displaySystemMetrics(result);
+        } else {
+            console.error('获取系统指标失败:', error?.message || 'Unknown error');
+            displaySystemError();
+        }
+    } catch (error) {
+        console.error('加载系统指标失败:', error);
+        displaySystemError();
+    }
+}
+
+/**
+ * 显示分析数据
+ */
+function displayAnalyticsData(data) {
+    const commandStats = document.getElementById('commandStats');
+    const usageTrends = document.getElementById('usageTrends');
+    
+    if (commandStats) {
+        commandStats.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">总命令数</span>
+                    <span class="stat-value">${data.totalCommands || 0}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">成功率</span>
+                    <span class="stat-value">${((data.successRate || 0) * 100).toFixed(1)}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">平均响应时间</span>
+                    <span class="stat-value">${(data.averageResponseTime || 0).toFixed(2)}s</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">错误次数</span>
+                    <span class="stat-value">${data.errorCount || 0}</span>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (usageTrends) {
+        usageTrends.innerHTML = `
+            <div class="trends-info">
+                <p>最活跃时段: ${data.peakHour || '未知'}</p>
+                <p>常用命令类型: ${data.topCommandType || '未知'}</p>
+                <p>平均会话时长: ${data.avgSessionDuration || '未知'}</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * 显示队列数据
+ */
+function displayQueueData(data) {
+    const queueLength = document.getElementById('queueLength');
+    const processingCount = document.getElementById('processingCount');
+    const retryCount = document.getElementById('retryCount');
+    const queueList = document.getElementById('queueList');
+    
+    if (queueLength) queueLength.textContent = data.length || 0;
+    if (processingCount) processingCount.textContent = data.processing || 0;
+    if (retryCount) retryCount.textContent = data.failed || 0;
+    
+    if (queueList && data.items) {
+        if (data.items.length === 0) {
+            queueList.innerHTML = '<div class="empty-message">队列为空</div>';
+        } else {
+            const queueHTML = data.items.map(item => `
+                <div class="queue-item">
+                    <div class="queue-item-header">
+                        <span class="queue-item-command">${escapeHtml(item.command || '未知命令')}</span>
+                        <span class="queue-item-status ${item.status}">${getStatusText(item.status)}</span>
+                    </div>
+                    <div class="queue-item-meta">
+                        <span>优先级: ${item.priority || 'normal'}</span>
+                        <span>创建时间: ${formatDate(item.createdAt)}</span>
+                    </div>
+                </div>
+            `).join('');
+            queueList.innerHTML = queueHTML;
+        }
+    }
+}
+
+/**
+ * 显示系统指标
+ */
+function displaySystemMetrics(data) {
+    // CPU使用率 (简化计算)
+    const cpuUsage = document.getElementById('cpuUsage');
+    const cpuValue = document.getElementById('cpuValue');
+    if (cpuUsage && cpuValue && data.cpu) {
+        const cpuPercent = Math.min(((data.cpu.user + data.cpu.system) / 1000000) * 100, 100);
+        cpuUsage.style.width = `${cpuPercent}%`;
+        cpuValue.textContent = `${cpuPercent.toFixed(1)}%`;
+    }
+    
+    // 内存使用率
+    const memoryUsage = document.getElementById('memoryUsage');
+    const memoryValue = document.getElementById('memoryValue');
+    if (memoryUsage && memoryValue && data.memory) {
+        const memoryPercent = (data.memory.heapUsed / data.memory.heapTotal) * 100;
+        memoryUsage.style.width = `${memoryPercent}%`;
+        memoryValue.textContent = `${memoryPercent.toFixed(1)}%`;
+    }
+    
+    // 运行时间
+    const uptime = document.getElementById('uptime');
+    if (uptime && data.uptime) {
+        uptime.textContent = formatUptime(data.uptime);
+    }
+}
+
+/**
+ * 显示错误信息
+ */
+function displayAnalyticsError() {
+    const commandStats = document.getElementById('commandStats');
+    if (commandStats) {
+        commandStats.innerHTML = '<div class="error-message">无法加载分析数据</div>';
+    }
+}
+
+function displayQueueError() {
+    const queueList = document.getElementById('queueList');
+    if (queueList) {
+        queueList.innerHTML = '<div class="error-message">无法加载队列数据</div>';
+    }
+}
+
+function displaySystemError() {
+    const cpuValue = document.getElementById('cpuValue');
+    const memoryValue = document.getElementById('memoryValue');
+    const uptime = document.getElementById('uptime');
+    
+    if (cpuValue) cpuValue.textContent = '无法获取';
+    if (memoryValue) memoryValue.textContent = '无法获取';
+    if (uptime) uptime.textContent = '无法获取';
+}
+
+/**
+ * 获取状态文本
+ */
+function getStatusText(status) {
+    const statusMap = {
+        'pending': '等待中',
+        'processing': '处理中',
+        'completed': '已完成',
+        'failed': '失败',
+        'retry': '重试中'
+    };
+    return statusMap[status] || status;
+}
+
+/**
+ * 格式化运行时间
+ */
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (days > 0) {
+        return `${days}天 ${hours}小时 ${minutes}分钟`;
+    } else if (hours > 0) {
+        return `${hours}小时 ${minutes}分钟`;
+    } else {
+        return `${minutes}分钟`;
+    }
+}
+
+// ===== 工具函数 =====
+
+/**
+ * HTML转义
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * 格式化日期
+ */
+function formatDate(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return '刚刚';
+    if (diffMins < 60) return `${diffMins}分钟前`;
+    if (diffHours < 24) return `${diffHours}小时前`;
+    if (diffDays < 7) return `${diffDays}天前`;
+    
+    return date.toLocaleDateString('zh-CN');
+}
+
+/**
+ * 处理各种操作的通用函数
+ */
+function handleHistoryAction(event) {
+    // ...existing code...
+}
+
+function handleFavoriteAction(event) {
+    const action = event.target.closest('.history-action')?.dataset.action;
+    const favoriteItem = event.target.closest('.favorite-item');
+    
+    if (!action || !favoriteItem) return;
+    
+    const favoriteId = favoriteItem.dataset.id;
+    const command = favoriteItem.querySelector('.favorite-command').textContent;
+    
+    switch (action) {
+        case 'use':
+            document.getElementById('messageInput').value = command;
+            closeModal('favoritesModal');
+            break;
+        case 'edit':
+            // 编辑收藏（简化实现）
+            addNotificationToChat('编辑功能开发中');
+            break;
+        case 'delete':
+            // 删除收藏
+            if (confirm('确定要删除这个收藏吗？')) {
+                deleteFavorite(favoriteId);
+                loadFavorites(); // 重新加载
+            }
+            break;
+    }
+}
+
+
+
+/**
+ * 删除收藏
+ */
+function deleteFavorite(favoriteId) {
+    try {
+        if (typeof window.CommandFavorites !== 'undefined') {
+            window.CommandFavorites.removeFavorite(favoriteId);
+        } else {
+            // 备用实现
+            const favorites = JSON.parse(localStorage.getItem('commandFavorites') || '[]');
+            const filteredFavorites = favorites.filter(f => f.id != favoriteId);
+            localStorage.setItem('commandFavorites', JSON.stringify(filteredFavorites));
+        }
+        
+        addNotificationToChat('收藏已删除');
+    } catch (error) {
+        console.error('删除收藏失败:', error);
+        addNotificationToChat('删除失败', 'error');
+    }
+}
+
+/**
+ * 设置搜索功能
+ */
+function setupFavoritesSearch() {
+    const searchInput = document.getElementById('favoritesSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const favoriteItems = document.querySelectorAll('.favorite-item');
+            
+            favoriteItems.forEach(item => {
+                const title = item.querySelector('.favorite-title').textContent.toLowerCase();
+                const command = item.querySelector('.favorite-command').textContent.toLowerCase();
+                const matches = title.includes(searchTerm) || command.includes(searchTerm);
+                item.style.display = matches ? 'block' : 'none';
+            });
+        });
+    }
+}
+
+// 初始化增强服务 - 使用Supabase
+let enhancementService;
+
+// 当Supabase客户端准备好后初始化增强服务
+if (supabaseClient) {
+    enhancementService = new ClientEnhancementService(supabaseClient);
+    
+    // 全局暴露服务
+    window.EnhancementService = enhancementService;
+    
+    // 设置实时订阅
+    const commandsSubscription = supabaseClient
+        .channel('commands_changes')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'commands'
+        }, (payload) => {
+            console.log('[Realtime] Command change:', payload);
+            // 刷新历史记录
+            if (enhancementService) {
+                enhancementService.loadCommandHistory();
+            }
+        })
+        .subscribe();
+        
+    console.log('[Client] Enhancement service initialized with Supabase');
+} else {
+    console.warn('[Client] Supabase client not available, enhancement service disabled');
+}

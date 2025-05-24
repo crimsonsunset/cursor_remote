@@ -209,3 +209,11 @@ function createStatusPage() {
 
 // 实例化监控服务
 window.systemMonitorService = new SystemMonitorService();
+
+// 为了便于使用，也暴露一个简化的接口
+window.SystemMonitor = {
+  startMonitoring: () => window.systemMonitorService.startMonitoring(),
+  stopMonitoring: () => window.systemMonitorService.stopMonitoring(),
+  getMetrics: () => window.systemMonitorService.getMetrics(),
+  updateMetrics: (metrics) => window.systemMonitorService.updateMetrics(metrics)
+};

@@ -1,6 +1,11 @@
 # Cursor远程控制项目
 > 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
 
+## 🚨 首次使用须知
+如果您是第一次设置此项目，**请先按照 [SETUP_DATABASE.md](SETUP_DATABASE.md) 指南配置Supabase数据库**，否则客户端将无法连接。
+
+📖 **快速开始**: 查看 [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
+
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

@@ -26,9 +26,8 @@ export const addCommandToQueue = async (commandData) => {
     // 添加到队列
     await queueManager.addCommand({
       ...commandData,
-      priority,
       handler: async () => await executeCommand(commandData, startTime)
-    });
+    }, priority);
     
     console.log(`[CommandController] Added command ${commandId} to queue with priority ${priority}`);
   } catch (error) {
@@ -205,36 +204,6 @@ const executeCommand = async (commandData, startTime) => {
 // 保持向后兼容的processCommand函数
 export const processCommand = async (commandData) => {
   await addCommandToQueue(commandData);
-};
-
-// 获取命令分析数据
-export const getAnalytics = async (timeframe = '24h') => {
-  try {
-    return await analyticsService.getCommandStats(timeframe);
-  } catch (error) {
-    console.error('[CommandController] Error getting analytics:', error);
-    throw error;
-  }
-};
-
-// 获取队列状态
-export const getQueueStatus = () => {
-  try {
-    return queueManager.getStatus();
-  } catch (error) {
-    console.error('[CommandController] Error getting queue status:', error);
-    throw error;
-  }
-};
-
-// 获取错误恢复报告
-export const getErrorRecoveryReport = async (timeframe = '24h') => {
-  try {
-    return await errorRecoveryService.getRecoveryReport(timeframe);
-  } catch (error) {
-    console.error('[CommandController] Error getting error recovery report:', error);
-    throw error;
-  }
 };
 
 // 清理和关闭服务（优雅关闭）

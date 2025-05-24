@@ -1,0 +1,30 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "启动客户端开发服务器",
+			"type": "shell",
+			"command": "cd client && python3 -m http.server 8080",
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "启动服务端",
+			"type": "shell",
+			"command": "cd server && node src/services/supabaseService.js",
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "同时启动前后端",
+			"dependsOrder": "parallel",
+			"dependsOn": [
+				"启动客户端开发服务器",
+				"启动服务端"
+			],
+			"group": "build"
+		}
+	]
+}

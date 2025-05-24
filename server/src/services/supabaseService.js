@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import { processCommand } from '../controllers/commandController.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -229,7 +228,8 @@ const processNextCommand = async () => {
       throw new Error('Failed to establish Supabase connection before processing command');
     }
     
-    // 处理命令
+    // 处理命令 - 使用动态导入避免循环依赖
+    const { processCommand } = await import('../controllers/commandController.js');
     await processCommand(nextCommand);
     // 减少成功处理的日志输出
   } catch (error) {
@@ -421,5 +421,7 @@ startConnectionHealthCheck();
 
 // 命令订阅立即启动
 subscribeToCommands();
+
+// API服务器已移除 - 现在只通过Supabase RPC函数提供服务
 
 export default supabase; // Exporting the client itself might be useful for direct use elsewhere if needed but primarily controller uses exported functions.

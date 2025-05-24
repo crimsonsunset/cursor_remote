@@ -42,11 +42,11 @@
                 <button id="favoritesButton" class="tool-button" title="收藏夹">
                     <i class="ri-star-line"></i>
                 </button>
-                <button id="templatesButton" class="tool-button" title="模板">
-                    <i class="ri-file-list-line"></i>
-                </button>
                 <button id="statusButton" class="tool-button" title="系统状态">
                     <i class="ri-dashboard-line"></i>
+                </button>
+                <button id="testConnectionButton" class="tool-button" title="测试连接">
+                    <i class="ri-wifi-line"></i>
                 </button>
                 <button id="themeToggle" class="theme-toggle-button" title="切换主题">
                     <i class="ri-moon-line"></i>
@@ -55,7 +55,7 @@
                     <span class="status-dot" id="connectionStatus"></span>
                     <span id="statusText">未连接</span>
                 </div>
-                <a href="https://github.com/terryso/cursor_remote" target="_blank" rel="noopener noreferrer" class="github-link">
+                <a href="https://github.com/terryso/cursor_remote" target="_blank" rel="noopener noreferrer" class="github-link" title="查看项目源码">
                     <i class="ri-github-fill"></i>
                 </a>
             </div>
@@ -137,7 +137,149 @@
         </div>
     </template>
     
+    <!-- 命令历史模态窗口 -->
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>命令历史</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="history-filters">
+                    <input type="text" id="historySearch" placeholder="搜索命令..." class="search-input">
+                    <select id="historyFilter" class="filter-select" title="时间过滤">
+                        <option value="all">全部</option>
+                        <option value="today">今天</option>
+                        <option value="week">本周</option>
+                        <option value="month">本月</option>
+                    </select>
+                </div>
+                <div id="historyList" class="history-list">
+                    <!-- 历史记录将在这里动态加载 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 收藏夹模态窗口 -->
+    <div id="favoritesModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>收藏夹</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="favorites-header">
+                    <input type="text" id="favoritesSearch" placeholder="搜索收藏..." class="search-input">
+                    <button id="addFavoriteBtn" class="action-button">添加收藏</button>
+                </div>
+                <div id="favoritesList" class="favorites-list">
+                    <!-- 收藏项目将在这里动态加载 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统状态模态窗口 -->
+    <div id="statusModal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3>系统状态</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="status-tabs">
+                    <button class="status-tab active" data-tab="overview">概览</button>
+                    <button class="status-tab" data-tab="analytics">分析</button>
+                    <button class="status-tab" data-tab="queue">队列</button>
+                    <button class="status-tab" data-tab="system">系统</button>
+                </div>
+                
+                <div class="status-content">
+                    <!-- 概览标签页 -->
+                    <div id="overviewTab" class="status-tab-content active">
+                        <div class="status-cards">
+                            <div class="status-card">
+                                <h4>连接状态</h4>
+                                <div id="connectionInfo" class="status-value">检查中...</div>
+                            </div>
+                            <div class="status-card">
+                                <h4>今日命令</h4>
+                                <div id="todayCommands" class="status-value">0</div>
+                            </div>
+                            <div class="status-card">
+                                <h4>成功率</h4>
+                                <div id="successRate" class="status-value">--</div>
+                            </div>
+                            <div class="status-card">
+                                <h4>平均响应时间</h4>
+                                <div id="avgResponseTime" class="status-value">--</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 分析标签页 -->
+                    <div id="analyticsTab" class="status-tab-content">
+                        <div class="analytics-section">
+                            <h4>命令统计</h4>
+                            <div id="commandStats" class="stats-container">
+                                <!-- 统计图表将在这里渲染 -->
+                            </div>
+                        </div>
+                        <div class="analytics-section">
+                            <h4>使用趋势</h4>
+                            <div id="usageTrends" class="trends-container">
+                                <!-- 趋势图表将在这里渲染 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 队列标签页 -->
+                    <div id="queueTab" class="status-tab-content">
+                        <div class="queue-info">
+                            <div class="queue-stats">
+                                <span>队列长度: <strong id="queueLength">0</strong></span>
+                                <span>处理中: <strong id="processingCount">0</strong></span>
+                                <span>失败重试: <strong id="retryCount">0</strong></span>
+                            </div>
+                            <div id="queueList" class="queue-list">
+                                <!-- 队列项目将在这里显示 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 系统标签页 -->
+                    <div id="systemTab" class="status-tab-content">
+                        <div class="system-metrics">
+                            <div class="metric-row">
+                                <span>CPU使用率:</span>
+                                <div class="progress-bar">
+                                    <div id="cpuUsage" class="progress-fill"></div>
+                                </div>
+                                <span id="cpuValue">0%</span>
+                            </div>
+                            <div class="metric-row">
+                                <span>内存使用率:</span>
+                                <div class="progress-bar">
+                                    <div id="memoryUsage" class="progress-fill"></div>
+                                </div>
+                                <span id="memoryValue">0%</span>
+                            </div>
+                            <div class="metric-row">
+                                <span>运行时间:</span>
+                                <span id="uptime">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="env-config.js"></script>
+    <script src="enhancement.js"></script>
+    <script src="systemMonitor.js"></script>
     <script src="app.js"></script>
+    <script src="connection-test.js"></script>
 </body>
-</html> 
+</html>

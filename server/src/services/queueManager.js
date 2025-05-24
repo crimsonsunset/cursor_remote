@@ -6,9 +6,12 @@ export class CommandQueueManager {
     this.lowPriorityQueue = [];
     this.isProcessing = false;
     this.maxConcurrentCommands = 1; // 目前保持单线程处理
+    
+    // 启动队列处理器
+    this.startQueueProcessor();
   }
 
-  addCommand(command, priority = 'normal') {
+  async addCommand(command, priority = 'normal') {
     const enrichedCommand = {
       ...command,
       priority,
@@ -28,6 +31,9 @@ export class CommandQueueManager {
     }
 
     console.log(`[QueueManager] Command ${command.id} added with ${priority} priority. Queue sizes: H:${this.highPriorityQueue.length}, N:${this.normalPriorityQueue.length}, L:${this.lowPriorityQueue.length}`);
+    
+    // 触发队列处理
+    this.processQueue();
   }
 
   getNextCommand() {
@@ -42,6 +48,54 @@ export class CommandQueueManager {
       return this.lowPriorityQueue.shift();
     }
     return null;
+  }
+
+  // 新增：队列处理器
+  async processQueue() {
+    if (this.isProcessing) {
+      return; // 避免重复处理
+    }
+
+    this.isProcessing = true;
+    
+    try {
+      while (this.hasCommands()) {
+        const command = this.getNextCommand();
+        if (command && command.handler) {
+          console.log(`[QueueManager] Processing command ${command.id}`);
+          
+          // 异步执行命令，不等待完成
+          command.handler().then(() => {
+            console.log(`[QueueManager] Completed command ${command.id}`);
+          }).catch((error) => {
+            console.error(`[QueueManager] Error executing command ${command.id}:`, error);
+          });
+          
+          // 短暂延迟后处理下一个命令
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    } catch (error) {
+      console.error('[QueueManager] Error processing queue:', error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  // 新增：启动队列处理器
+  startQueueProcessor() {
+    setInterval(() => {
+      if (!this.isProcessing && this.hasCommands()) {
+        this.processQueue();
+      }
+    }, 1000); // 每秒检查一次队列
+  }
+
+  // 新增：检查是否有待处理命令
+  hasCommands() {
+    return this.highPriorityQueue.length > 0 || 
+           this.normalPriorityQueue.length > 0 || 
+           this.lowPriorityQueue.length > 0;
   }
 
   estimateCommandDuration(commandText) {

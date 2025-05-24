@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase连接测试</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { border-color: #4CAF50; background-color: #f1f8e9; }
+        .error { border-color: #f44336; background-color: #fce4ec; }
+        .pending { border-color: #ff9800; background-color: #fff3e0; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            background-color: #2196F3;
+            color: white;
+        }
+        button:hover { background-color: #1976D2; }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        .log {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Supabase连接测试</h1>
+    
+    <div id="configSection" class="test-section pending">
+        <h3>1. 配置检查</h3>
+        <p>状态: <span id="configStatus">检查中...</span></p>
+        <pre id="configDetails"></pre>
+    </div>
+    
+    <div id="clientSection" class="test-section pending">
+        <h3>2. 客户端初始化</h3>
+        <p>状态: <span id="clientStatus">等待配置...</span></p>
+        <pre id="clientDetails"></pre>
+    </div>
+    
+    <div id="connectionSection" class="test-section pending">
+        <h3>3. 连接测试</h3>
+        <p>状态: <span id="connectionStatus">等待客户端...</span></p>
+        <button onclick="testConnection()">测试连接</button>
+        <pre id="connectionDetails"></pre>
+    </div>
+    
+    <div id="rpcSection" class="test-section pending">
+        <h3>4. RPC函数测试</h3>
+        <p>状态: <span id="rpcStatus">等待连接...</span></p>
+        <button onclick="testSystemStatus()">测试 get_system_status</button>
+        <button onclick="testAnalytics()">测试 get_command_analytics</button>
+        <button onclick="testQueueStatus()">测试 get_queue_status</button>
+        <pre id="rpcDetails"></pre>
+    </div>
+    
+    <div class="test-section">
+        <h3>实时日志</h3>
+        <button onclick="clearLog()">清空日志</button>
+        <div id="logOutput" class="log"></div>
+    </div>
+
+    <script>
+        // 日志输出函数
+        function log(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logOutput.textContent += logMessage;
+            logOutput.scrollTop = logOutput.scrollHeight;
+            console.log(logMessage);
+        }
+
+        function clearLog() {
+            document.getElementById('logOutput').textContent = '';
+        }
+
+        function updateStatus(sectionId, status, details = '', isSuccess = false) {
+            const section = document.getElementById(sectionId);
+            const statusSpan = document.getElementById(status);
+            const detailsPre = document.getElementById(details);
+            
+            if (statusSpan) {
+                statusSpan.textContent = status;
+            }
+            if (detailsPre && details) {
+                detailsPre.textContent = details;
+            }
+            
+            section.className = `test-section ${isSuccess ? 'success' : 'error'}`;
+        }
+
+        // 全局变量
+        let supabaseClient = null;
+        const SUPABASE_URL = "https://rzsupavqzxhyrgcexrpx.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6c3VwYXZxenhoeXJnY2V4cnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc0NzI4MTMsImV4cCI6MjA2MzA0ODgxM30.6S5s7ruZA6x3JRc6d9Oq8USOBxoDlJCXOXTOaJKimPA";
+
+        // 1. 配置检查
+        function checkConfig() {
+            log('开始检查配置...');
+            
+            const configDetails = document.getElementById('configDetails');
+            const configStatus = document.getElementById('configStatus');
+            const configSection = document.getElementById('configSection');
+            
+            const details = {
+                url: SUPABASE_URL,
+                keyLength: SUPABASE_ANON_KEY.length,
+                supabaseSDK: typeof supabase !== 'undefined'
+            };
+            
+            configDetails.textContent = JSON.stringify(details, null, 2);
+            
+            if (SUPABASE_URL && SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
+                configStatus.textContent = '✅ 配置正常';
+                configSection.className = 'test-section success';
+                log('配置检查通过');
+                initializeClient();
+            } else {
+                configStatus.textContent = '❌ 配置缺失';
+                configSection.className = 'test-section error';
+                log('配置检查失败: ' + JSON.stringify(details), 'error');
+            }
+        }
+
+        // 2. 客户端初始化
+        function initializeClient() {
+            log('开始初始化Supabase客户端...');
+            
+            const clientStatus = document.getElementById('clientStatus');
+            const clientDetails = document.getElementById('clientDetails');
+            const clientSection = document.getElementById('clientSection');
+            
+            try {
+                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                const details = {
+                    clientExists: !!supabaseClient,
+                    clientType: typeof supabaseClient,
+                    methods: supabaseClient ? Object.keys(supabaseClient) : []
+                };
+                
+                clientDetails.textContent = JSON.stringify(details, null, 2);
+                clientStatus.textContent = '✅ 客户端初始化成功';
+                clientSection.className = 'test-section success';
+                log('Supabase客户端初始化成功');
+                
+                enableConnectionTest();
+            } catch (error) {
+                clientStatus.textContent = '❌ 客户端初始化失败';
+                clientDetails.textContent = error.toString();
+                clientSection.className = 'test-section error';
+                log('客户端初始化失败: ' + error.message, 'error');
+            }
+        }
+
+        function enableConnectionTest() {
+            const connectionStatus = document.getElementById('connectionStatus');
+            connectionStatus.textContent = '等待测试';
+            document.getElementById('connectionSection').className = 'test-section pending';
+        }
+
+        // 3. 连接测试
+        async function testConnection() {
+            log('开始测试连接...');
+            
+            const connectionStatus = document.getElementById('connectionStatus');
+            const connectionDetails = document.getElementById('connectionDetails');
+            const connectionSection = document.getElementById('connectionSection');
+            
+            if (!supabaseClient) {
+                connectionStatus.textContent = '❌ 客户端未初始化';
+                connectionSection.className = 'test-section error';
+                return;
+            }
+            
+            try {
+                // 简单的连接测试 - 尝试查询一个系统表
+                const { data, error } = await supabaseClient
+                    .from('information_schema.tables')
+                    .select('table_name')
+                    .limit(1);
+                
+                if (error) {
+                    throw error;
+                }
+                
+                connectionStatus.textContent = '✅ 连接成功';
+                connectionDetails.textContent = `连接正常，能够访问数据库\n返回数据: ${JSON.stringify(data, null, 2)}`;
+                connectionSection.className = 'test-section success';
+                log('Supabase连接测试成功');
+                
+                enableRPCTest();
+            } catch (error) {
+                connectionStatus.textContent = '❌ 连接失败';
+                connectionDetails.textContent = `错误详情:\n${JSON.stringify(error, null, 2)}`;
+                connectionSection.className = 'test-section error';
+                log('连接测试失败: ' + error.message, 'error');
+            }
+        }
+
+        function enableRPCTest() {
+            const rpcStatus = document.getElementById('rpcStatus');
+            rpcStatus.textContent = '等待测试';
+            document.getElementById('rpcSection').className = 'test-section pending';
+        }
+
+        // 4. RPC函数测试
+        async function testSystemStatus() {
+            await testRPCFunction('get_system_status', {});
+        }
+
+        async function testAnalytics() {
+            await testRPCFunction('get_command_analytics', { timeframe_hours: 24 });
+        }
+
+        async function testQueueStatus() {
+            await testRPCFunction('get_queue_status', {});
+        }
+
+        async function testRPCFunction(functionName, params) {
+            log(`开始测试RPC函数: ${functionName}`);
+            
+            const rpcStatus = document.getElementById('rpcStatus');
+            const rpcDetails = document.getElementById('rpcDetails');
+            const rpcSection = document.getElementById('rpcSection');
+            
+            if (!supabaseClient) {
+                rpcStatus.textContent = '❌ 客户端未初始化';
+                rpcSection.className = 'test-section error';
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabaseClient.rpc(functionName, params);
+                
+                if (error) {
+                    throw error;
+                }
+                
+                rpcStatus.textContent = `✅ ${functionName} 成功`;
+                rpcDetails.textContent += `\n=== ${functionName} 结果 ===\n${JSON.stringify(data, null, 2)}\n`;
+                rpcSection.className = 'test-section success';
+                log(`RPC函数 ${functionName} 调用成功`);
+            } catch (error) {
+                rpcStatus.textContent = `❌ ${functionName} 失败`;
+                rpcDetails.textContent += `\n=== ${functionName} 错误 ===\n${JSON.stringify(error, null, 2)}\n`;
+                rpcSection.className = 'test-section error';
+                log(`RPC函数 ${functionName} 调用失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时开始测试
+        window.addEventListener('load', function() {
+            log('页面加载完成，开始测试...');
+            checkConfig();
+        });
+    </script>
+</body>
+</html>
