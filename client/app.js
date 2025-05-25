@@ -1402,52 +1402,6 @@ function setupNewFeatureListeners() {
         statusButton.addEventListener('click', () => openModal('statusModal'));
     }
     
-    // 测试连接按钮
-    const testConnectionButton = document.getElementById('testConnectionButton');
-    if (testConnectionButton) {
-        testConnectionButton.addEventListener('click', async () => {
-            // 显示加载状态
-            const originalIcon = testConnectionButton.innerHTML;
-            testConnectionButton.innerHTML = '<i class="ri-loader-4-line" style="animation: spin 1s linear infinite;"></i>';
-            testConnectionButton.disabled = true;
-            
-            try {
-                addNotificationToChat('🧪 开始连接测试...', 'info');
-                
-                // 调用连接测试函数
-                if (typeof runConnectionTest === 'function') {
-                    const result = await runConnectionTest();
-                    if (result) {
-                        testConnectionButton.classList.add('connection-success');
-                        addNotificationToChat('✅ 连接测试成功！所有API函数正常工作。', 'success');
-                        setTimeout(() => {
-                            testConnectionButton.classList.remove('connection-success');
-                        }, 1000);
-                    } else {
-                        testConnectionButton.classList.add('connection-error');
-                        addNotificationToChat('❌ 连接测试失败，请检查控制台详细信息。', 'error');
-                        setTimeout(() => {
-                            testConnectionButton.classList.remove('connection-error');
-                        }, 1000);
-                    }
-                } else {
-                    addNotificationToChat('❌ 测试脚本未加载，请刷新页面重试。', 'error');
-                }
-            } catch (error) {
-                console.error('Connection test error:', error);
-                testConnectionButton.classList.add('connection-error');
-                addNotificationToChat('❌ 连接测试出错：' + error.message, 'error');
-                setTimeout(() => {
-                    testConnectionButton.classList.remove('connection-error');
-                }, 1000);
-            } finally {
-                // 恢复按钮状态
-                testConnectionButton.innerHTML = originalIcon;
-                testConnectionButton.disabled = false;
-            }
-        });
-    }
-    
     // 模态窗口关闭事件
     setupModalCloseListeners();
     
