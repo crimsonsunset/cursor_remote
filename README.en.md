@@ -18,6 +18,16 @@ If you are setting up this project for the first time, **please follow the [Data
 ## Live Demo
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
 
+### 🔍 **New Feature: Integrated Tavily MCP Search Service**
+The demo server now includes Tavily MCP search functionality, allowing you to test real-time search capabilities directly!
+
+**Test Suggestions**:
+- Try asking: "Latest trends and breakthroughs in global AI development for 2025"
+- Or: "Application cases and effectiveness analysis of quantum computing in the financial industry"
+- Or: "Key technological breakthroughs of ChatGPT-5 and differences from previous generations"
+
+The system will automatically use Tavily search to fetch the latest information and return results.
+
 ## Demo Video 🎬
 > Remote control Cursor for UI automation testing
 
@@ -86,64 +96,13 @@ These keys are used for the client to connect to your Supabase backend.
     - **VS Code**: You might need to configure shortcuts for GitHub Copilot Chat or other AI assistants to match the actions in the AppleScript.
 - **Default Editor Configuration**: You can set the `DEFAULT_EDITOR` variable in the `.env` file in the project root (e.g., `DEFAULT_EDITOR=VSCode` or `DEFAULT_EDITOR=Cursor`) to specify the default editor the service controls on startup. If the command includes a `target_editor` parameter, it will take precedence.
 
-## Supabase Configuration
+## Supabase Database Configuration
 
-You need to perform the following configurations in your Supabase project:
-
-1.  **Database Tables**:
-    *   Create the `commands` and `results` tables. Below are the recommended SQL DDL statements:
-
-        ```sql
-        CREATE TABLE public.commands (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ DEFAULT now(),
-            command_text TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            user_id UUID,
-            raw_command JSONB,
-            attempts INTEGER DEFAULT 0,
-            last_error TEXT
-        );
-
-        COMMENT ON COLUMN public.commands.id IS 'Primary key, unique identifier';
-        COMMENT ON COLUMN public.commands.created_at IS 'Creation timestamp';
-        COMMENT ON COLUMN public.commands.command_text IS 'Command content (natural language from user)';
-        COMMENT ON COLUMN public.commands.status IS 'Command status (e.g., ''pending'', ''processing'', ''completed'', ''error'')';
-        COMMENT ON COLUMN public.commands.user_id IS 'User identifier (optional)';
-        COMMENT ON COLUMN public.commands.raw_command IS 'Structured raw command data (optional)';
-        COMMENT ON COLUMN public.commands.attempts IS 'Retry attempts (optional)';
-        COMMENT ON COLUMN public.commands.last_error IS 'Last error message (optional)';
-
-        CREATE TABLE public.results (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ DEFAULT now(),
-            command_id UUID NOT NULL REFERENCES public.commands(id),
-            result_text TEXT,
-            error_message TEXT,
-            is_error BOOLEAN NOT NULL DEFAULT FALSE,
-            raw_result JSONB
-        );
-
-        COMMENT ON COLUMN public.results.id IS 'Primary key, unique identifier';
-        COMMENT ON COLUMN public.results.created_at IS 'Creation timestamp';
-        COMMENT ON COLUMN public.results.command_id IS 'Associated command ID from the commands table';
-        COMMENT ON COLUMN public.results.result_text IS 'Execution result content (direct output from Cursor)';
-        COMMENT ON COLUMN public.results.error_message IS 'Error message (if an error occurred)';
-        COMMENT ON COLUMN public.results.is_error IS 'Flag indicating if it is an error result';
-        COMMENT ON COLUMN public.results.raw_result IS 'Structured raw result data (optional)';
-        ```
-
-2.  **Realtime**:
-    *   Ensure Supabase Realtime is enabled for the `commands` and `results` tables. The server will listen for insert events on the `commands` table, and the client might listen for insert events on the `results` table.
-
-3.  **RLS (Row Level Security) Policies**:
-    *   **`commands` Table**:
-        *   The client should have `INSERT` permission.
-        *   The server (using `SERVICE_KEY`) should have `SELECT` and `UPDATE` permissions.
-    *   **`results` Table**:
-        *   The server (using `SERVICE_KEY`) should have `INSERT` permission.
-        *   The client should have `SELECT` permission, usually based on the `command_id` associated with the command they sent.
-    *   Configure appropriate RLS policies according to your security needs.
+⚠️ **Important Note**: Please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to complete detailed Supabase database configuration, including:
+- Creating necessary data tables (`commands`, `results`, etc.)
+- Configuring RPC functions
+- Setting up Realtime subscriptions
+- Configuring RLS (Row Level Security) policies
 
 ## Cursor MCP Configuration (for Result Return)
 

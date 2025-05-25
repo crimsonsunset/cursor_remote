@@ -18,6 +18,16 @@
 ## Demo 体验
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
 
+### 🔍 **新功能：集成 Tavily MCP 搜索服务**
+Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜索能力！
+
+**测试建议**：
+- 尝试询问："2025年全球AI发展的最新趋势和突破"
+- 或者："量子计算在金融行业的应用案例和效果分析"
+- 或者："ChatGPT-5的主要技术突破和与前代产品的区别"
+
+系统会自动使用 Tavily 搜索获取最新信息并返回结果。
+
 ## 演示视频 🎬
 > 远程控制 Cursor 进行UI自动化测试
 
@@ -86,64 +96,13 @@
     - **VS Code**: 您可能需要配置 GitHub Copilot Chat 或其他 AI 助手的快捷键以匹配 AppleScript 中的操作。
 - **默认编辑器配置**: 您可以在项目根目录的 `.env` 文件中设置 `DEFAULT_EDITOR` 变量 (例如 `DEFAULT_EDITOR=VSCode` 或 `DEFAULT_EDITOR=Cursor`) 来指定服务启动时默认控制的编辑器。如果命令中包含 `target_editor` 参数，则会优先使用该参数指定的编辑器。
 
-## Supabase 配置
+## Supabase 数据库配置
 
-您需要在您的 Supabase 项目中进行以下配置：
-
-1.  **数据库表**:
-    *   创建 `commands` 和 `results` 表。以下是推荐的 SQL DDL 语句：
-
-        ```sql
-        CREATE TABLE public.commands (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ DEFAULT now(),
-            command_text TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            user_id UUID,
-            raw_command JSONB,
-            attempts INTEGER DEFAULT 0,
-            last_error TEXT
-        );
-
-        COMMENT ON COLUMN public.commands.id IS '主键，唯一标识';
-        COMMENT ON COLUMN public.commands.created_at IS '创建时间戳';
-        COMMENT ON COLUMN public.commands.command_text IS '命令内容 (用户输入的自然语言)';
-        COMMENT ON COLUMN public.commands.status IS '命令状态 (''pending'', ''processing'', ''completed'', ''error'')';
-        COMMENT ON COLUMN public.commands.user_id IS '(可选) 用户标识';
-        COMMENT ON COLUMN public.commands.raw_command IS '(可选) 结构化的原始命令数据';
-        COMMENT ON COLUMN public.commands.attempts IS '(可选) 重试次数';
-        COMMENT ON COLUMN public.commands.last_error IS '(可选) 最后一次错误信息';
-
-        CREATE TABLE public.results (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ DEFAULT now(),
-            command_id UUID NOT NULL REFERENCES public.commands(id),
-            result_text TEXT,
-            error_message TEXT,
-            is_error BOOLEAN NOT NULL DEFAULT FALSE,
-            raw_result JSONB
-        );
-
-        COMMENT ON COLUMN public.results.id IS '主键，唯一标识';
-        COMMENT ON COLUMN public.results.created_at IS '创建时间戳';
-        COMMENT ON COLUMN public.results.command_id IS '关联的commands表中的指令ID';
-        COMMENT ON COLUMN public.results.result_text IS '执行结果内容 (Cursor的直接输出)';
-        COMMENT ON COLUMN public.results.error_message IS '错误信息 (如果发生错误)';
-        COMMENT ON COLUMN public.results.is_error IS '标记是否为错误结果';
-        COMMENT ON COLUMN public.results.raw_result IS '(可选) 结构化的原始结果数据';
-        ```
-
-2.  **实时 (Realtime)**:
-    *   确保为 `commands` 表和 `results` 表启用了 Supabase Realtime。服务器将监听 `commands` 表的插入事件，客户端可能监听 `results` 表的插入事件。
-
-3.  **RLS (Row Level Security) 策略**:
-    *   **`commands` 表**:
-        *   客户端应具有写入 (`INSERT`) 权限。
-        *   服务器（使用 `SERVICE_KEY`）应具有读取 (`SELECT`) 和更新 (`UPDATE`) 权限。
-    *   **`results` 表**:
-        *   服务器（使用 `SERVICE_KEY`）应具有写入 (`INSERT`) 权限。
-        *   客户端应具有读取 (`SELECT`) 权限，通常基于与其发送的命令相关联的 `command_id`。
-    *   请根据您的安全需求配置适当的 RLS 策略。
+⚠️ **重要提示**: 请按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 完成Supabase数据库的详细配置，包括：
+- 创建必要的数据表 (`commands`, `results` 等)
+- 配置RPC函数
+- 设置Realtime订阅
+- 配置RLS (Row Level Security) 策略
 
 ## Cursor MCP 配置 (用于结果返回)
 
