@@ -5,6 +5,7 @@
 用户反馈：
 1. 恢复丢失结果功能生效了，但是恢复之后，消息不是按之前的时间顺序展示的，乱了。
 2. 恢复的时候不是根据本地历史发送的消息来恢复的，有可能恢复到了另外的设备上发送的消息。
+3. 恢复的时候，有可能恢复重复的结果。一条命令应该只有一个结果。
 
 ## 问题分析
 
@@ -13,11 +14,13 @@
 2. **消息添加方式**: `addMessageToHistory` 函数只是简单地将消息推入数组末尾，没有考虑时间戳排序
 3. **渲染时机**: 每次添加消息都立即渲染，导致消息按添加顺序而非时间顺序显示
 4. **跨设备恢复问题**: 恢复功能从数据库获取所有已完成命令，没有验证是否为本地发送的命令
+5. **重复恢复问题**: 没有有效机制防止同一命令的结果被多次恢复
 
 ### 技术细节
 - 原来的恢复流程：获取命令 → 立即添加到历史 → 立即渲染
 - 问题1：新恢复的消息总是出现在聊天记录的最底部，不管它们的实际时间戳
 - 问题2：恢复功能会获取数据库中所有已完成的命令，包括其他设备发送的命令
+- 问题3：缺乏有效的重复检测机制，可能导致同一结果被多次恢复
 
 ## 修复方案
 
@@ -79,12 +82,14 @@ renderMessageHistory();
 - ❌ 消息顺序混乱，不符合时间逻辑
 - ❌ 用户体验差，难以理解对话流程
 - ❌ 可能恢复其他设备发送的命令结果
+- ❌ 可能重复恢复同一命令的结果
 
 ### 修复后
 - ✅ 恢复的消息按照原始时间戳正确插入
 - ✅ 整个聊天历史按时间顺序排列
 - ✅ 用户可以看到完整、有序的对话历史
 - ✅ 只恢复本地历史中存在的用户消息对应的结果
+- ✅ 双重检测机制防止重复恢复
 - ✅ 提供明确的恢复反馈信息
 
 ## 技术改进
@@ -98,11 +103,51 @@ renderMessageHistory();
 - 统一添加到历史数组
 - 最后进行排序和渲染
 
-### 3. 时间戳处理
+### 3. 重复检测机制
+```javascript
+// 双重检测机制防止重复恢复
+// 方法1: 通过时间戳匹配（在用户消息之后的5分钟内）
+const existingResultByTime = appState.messageHistory.find(msg => 
+    (msg.type === 'cursor' || msg.type === 'error') && 
+    msg.content && 
+    msg.timestamp > (existingUserMessage.timestamp || 0) &&
+    Math.abs(msg.timestamp - (existingUserMessage.timestamp || 0)) < 300000
+);
+
+// 方法2: 通过commandId匹配（如果之前恢复过，会有这个标记）
+const existingResultByCommandId = appState.messageHistory.find(msg => 
+    (msg.type === 'cursor' || msg.type === 'error') && 
+    msg.commandId === command.id
+);
+
+const existingResult = existingResultByTime || existingResultByCommandId;
+```
+
+### 4. 时间戳处理
 - 用户消息使用命令创建时间
 - 结果消息使用命令时间 + 1秒，确保顺序正确
 
-### 4. 用户反馈改进
+### 5. CommandId 标记机制
+```javascript
+// 正常处理的结果添加 commandId 标记
+addMessageToHistory({
+    type: 'cursor',
+    content: resultRecord.result_text, 
+    timestamp: Date.now(),
+    commandId: commandDbId  // 添加命令ID标记
+});
+
+// 恢复的结果也添加 commandId 和 isRecovered 标记
+messagesToRecover.push({
+    type: result.is_error ? 'error' : 'cursor',
+    content: resultContent,
+    timestamp: commandTimestamp + 1000,
+    commandId: command.id,
+    isRecovered: true  // 标记为恢复的消息
+});
+```
+
+### 6. 用户反馈改进
 ```javascript
 addNotificationToChat(`✅ 成功恢复了 ${recoveredCount} 个命令结果，消息已按时间顺序重新排列`);
 ```

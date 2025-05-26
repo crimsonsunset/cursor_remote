@@ -105,13 +105,15 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     addMessageToHistory({
                         type: 'error',
                         content: resultRecord.error_message || '指令执行发生未知错误 (来自results表)',
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        commandId: commandDbId
                     });
                 } else {
                     addMessageToHistory({
                         type: 'cursor',
                         content: resultRecord.result_text, 
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        commandId: commandDbId
                     });
                 }
                 break; // 成功处理，退出重试循环
@@ -2950,11 +2952,21 @@ async function checkAndRecoverMissingResults() {
             }
             
             // 检查这个命令的结果是否已经在聊天历史中
-            const existingResult = appState.messageHistory.find(msg => 
+            // 方法1: 通过时间戳匹配（在用户消息之后的5分钟内）
+            const existingResultByTime = appState.messageHistory.find(msg => 
                 (msg.type === 'cursor' || msg.type === 'error') && 
                 msg.content && 
-                Math.abs(new Date(command.created_at).getTime() - (existingUserMessage.timestamp || 0)) < 300000 // 5分钟内
+                msg.timestamp > (existingUserMessage.timestamp || 0) &&
+                Math.abs(msg.timestamp - (existingUserMessage.timestamp || 0)) < 300000 // 5分钟内
             );
+            
+            // 方法2: 通过commandId匹配（如果之前恢复过，会有这个标记）
+            const existingResultByCommandId = appState.messageHistory.find(msg => 
+                (msg.type === 'cursor' || msg.type === 'error') && 
+                msg.commandId === command.id
+            );
+            
+            const existingResult = existingResultByTime || existingResultByCommandId;
             
             // 只有当结果不存在时才恢复
             if (!existingResult) {
@@ -2977,7 +2989,8 @@ async function checkAndRecoverMissingResults() {
                         content: resultContent,
                         timestamp: commandTimestamp + 1000, // 结果比命令晚1秒
                         commandId: command.id,
-                        relatedUserMessage: existingUserMessage.content
+                        relatedUserMessage: existingUserMessage.content,
+                        isRecovered: true // 标记为恢复的消息
                     });
                     
                     recoveredCount++;
