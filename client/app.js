@@ -1107,6 +1107,8 @@ async function processPendingCommandsOnLoad() {
         return;
     }
 
+    console.log(`🔄 页面加载时发现 ${pendingCommands.length} 个待处理命令，开始恢复状态...`);
+
     for (const command of pendingCommands) {
         if (!command.id || !command.text) {
             continue; 
@@ -1121,15 +1123,32 @@ async function processPendingCommandsOnLoad() {
 
             if (cmdError) {
                 console.error(`Error fetching status for pending command ${command.id} on load. Message:`, cmdError.message || 'No message property', 'Full error object:', cmdError);
-                // 如果获取状态失败，可以选择暂时保留或移除，这里暂时跳过
+                // 如果获取状态失败，可能命令已被删除，从待处理列表中移除
+                cleanupPendingCommand(command.id);
                 continue;
             }
 
             if (commandData) {
+                console.log(`📋 命令 ${command.id} 状态: ${commandData.status}`);
+                
                 if (commandData.status === 'completed' || commandData.status === 'error') {
+                    // 首先恢复用户消息到聊天历史
+                    addMessageToHistory({
+                        type: 'user',
+                        content: command.text,
+                        timestamp: command.timestamp || Date.now()
+                    });
+                    
+                    // 然后处理完成的命令结果
                     await handleCompletedCommand(command.id, command.text, null); 
-                    // handleCompletedCommand will remove it from localStorage and display message
+                    console.log(`✅ 已恢复完成命令的结果: ${command.text}`);
                 } else if (commandData.status === 'pending' || commandData.status === 'processing') {
+                    // 恢复用户消息
+                    addMessageToHistory({
+                        type: 'user',
+                        content: command.text,
+                        timestamp: command.timestamp || Date.now()
+                    });
                     
                     // 添加加载动画，表示正在处理中
                     const loadingTemplate = document.getElementById('loadingTemplate');
@@ -1141,22 +1160,25 @@ async function processPendingCommandsOnLoad() {
                     const loadingMessage = elements.chatContainer.lastElementChild;
                     
                     subscribeToCommandUpdates(command.id, command.text, loadingMessage);
+                    console.log(`🔄 已恢复处理中命令的订阅: ${command.text}`);
                 } else {
-                    // Unknown status, maybe remove it to prevent clutter
-                    const currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-                    const filtered = currentPending.filter(pCmd => pCmd.id !== command.id);
-                    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filtered));
+                    // Unknown status, remove it to prevent clutter
+                    console.log(`⚠️ 未知状态 ${commandData.status}，移除命令: ${command.text}`);
+                    cleanupPendingCommand(command.id);
                 }
             } else {
                  // Command not found in DB, might have been deleted or an issue. Remove from pending.
-                const currentPending = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-                const filtered = currentPending.filter(pCmd => pCmd.id !== command.id);
-                localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filtered));
+                console.log(`❌ 数据库中未找到命令，移除: ${command.text}`);
+                cleanupPendingCommand(command.id);
             }
         } catch (error) {
             console.error(`Unexpected error processing pending command ${command.id} on load:`, error);
+            // 发生异常时也清理该命令
+            cleanupPendingCommand(command.id);
         }
     }
+    
+    console.log(`✅ 待处理命令状态恢复完成`);
 }
 
 // 新增：处理发送消息并清空输入框的辅助函数

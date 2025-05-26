@@ -1318,12 +1318,27 @@ message-content td {
     margin: 12px 0;
   }
   
+  /* 修复移动端复制按钮样式 - 保持水平排列 */
   .action-buttons {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  /* 只对特定的按钮组使用垂直排列 */
+  .action-buttons.vertical {
     flex-direction: column;
   }
   
   .action-buttons .btn {
     justify-content: center;
+  }
+  
+  /* 复制按钮在移动端保持合适的大小 */
+  .copy-button {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 8px;
   }
 }
 
