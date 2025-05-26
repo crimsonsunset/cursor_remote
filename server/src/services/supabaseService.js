@@ -24,8 +24,8 @@ if (!supabaseServiceKey) {
 let supabase = null;
 let connectionAttempts = 0;
 const MAX_CONNECTION_ATTEMPTS = 10;
-const CONNECTION_RETRY_DELAY = 5000; // 5秒
-const CONNECTION_RESET_INTERVAL = 5 * 60 * 1000; // 5分钟重置连接尝试计数器
+const CONNECTION_RETRY_DELAY = 3000; // 3秒，减少重试延迟
+const CONNECTION_RESET_INTERVAL = 3 * 60 * 1000; // 3分钟重置连接尝试计数器，缩短重置间隔
 
 // 服务状态跟踪
 const serviceStatus = {
@@ -117,11 +117,29 @@ const testConnection = async () => {
     const { data, error } = await supabase.from('commands').select('id').limit(1);
     if (error) {
       console.error('[SupabaseService] Connection test failed:', error.message);
+      // 如果是网络相关错误，标记需要重置客户端
+      if (error.message.includes('fetch failed') || error.message.includes('Network')) {
+        console.warn('[SupabaseService] Network error detected, will reset client on next connection attempt');
+        serviceStatus.isConnected = false;
+        serviceStatus.consecutiveFailures++;
+      }
       return false;
     }
     return true;
   } catch (error) {
     console.error('[SupabaseService] Connection test exception:', error.message);
+    // 检测常见的网络错误模式
+    if (error.message.includes('fetch failed') || 
+        error.message.includes('Network') || 
+        error.message.includes('ENOTFOUND') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('timeout')) {
+      console.warn('[SupabaseService] Network connectivity issue detected, forcing client reset');
+      serviceStatus.isConnected = false;
+      serviceStatus.consecutiveFailures++;
+      // 强制重置客户端以便下次重新初始化
+      supabase = null;
+    }
     return false;
   }
 };
@@ -167,18 +185,36 @@ const initializeSupabase = async () => {
           fetch: (...args) => {
             return fetch(...args).catch(err => {
               console.error('[SupabaseService] Fetch error in Supabase client:', err.message);
+              // 标记连接状态为不健康
+              serviceStatus.isConnected = false;
+              serviceStatus.consecutiveFailures++;
+              
+              // 如果是严重的网络错误，立即触发重连
+              if (err.message.includes('fetch failed') || 
+                  err.message.includes('ENOTFOUND') ||
+                  err.message.includes('ECONNREFUSED')) {
+                console.warn('[SupabaseService] Critical network error detected, forcing immediate reconnection attempt');
+                // 异步触发重连，不阻塞当前调用
+                setTimeout(async () => {
+                  supabase = null;
+                  await ensureSupabaseConnection();
+                }, 1000);
+              }
+              
               throw err;
             });
           },
           headers: {
             'x-custom-app-name': 'CursorRemote',
-            'x-client-info': 'NodeJS Server'
+            'x-client-info': 'NodeJS Server',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
           }
         },
         realtime: {
-          timeout: 60000,  // 60秒超时
-          heartbeatIntervalMs: 30000, // 30秒心跳
-          reconnectAfterMs: (tries) => Math.min(tries * 1000, 30000), // 指数退避，最大30秒
+          timeout: 30000,  // 减少到30秒超时，更快发现问题
+          heartbeatIntervalMs: 15000, // 减少到15秒心跳，更频繁检测
+          reconnectAfterMs: (tries) => Math.min(tries * 500, 10000), // 更快的重连，最大10秒
           params: {
             eventsPerSecond: 10
           }
@@ -509,7 +545,7 @@ const handleSubscriptionError = async (status, error, retryDelay) => {
   await ensureSupabaseConnection();
   
   // 指数退避重试策略
-  const nextRetryDelay = Math.min(retryDelay * Math.pow(1.5, subscriptionRetryAttempts - 1), 60000);
+  const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
   setTimeout(() => subscribeToCommands(3, nextRetryDelay), nextRetryDelay);
 };
 
@@ -539,7 +575,7 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
     console.error('[SupabaseService] Failed to ensure Supabase connection. Will retry command subscription later.');
     
     // 指数退避重试策略
-    const nextRetryDelay = Math.min(retryDelay * Math.pow(1.5, subscriptionRetryAttempts - 1), 60000);
+    const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
     setTimeout(() => subscribeToCommands(retryCount, nextRetryDelay), nextRetryDelay);
     return null;
   }
@@ -610,7 +646,7 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
     currentSubscription = null;
     
     // 指数退避重试策略
-    const nextRetryDelay = Math.min(retryDelay * Math.pow(1.5, subscriptionRetryAttempts - 1), 60000);
+    const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
     setTimeout(() => subscribeToCommands(retryCount, nextRetryDelay), nextRetryDelay);
     return null;
   }
@@ -620,7 +656,7 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
 let connectionHealthCheckInterval = null;
 
 // 启动定期连接健康检查
-export const startConnectionHealthCheck = (checkInterval = 15 * 60 * 1000) => {
+export const startConnectionHealthCheck = (checkInterval = 2 * 60 * 1000) => {
   if (connectionHealthCheckInterval) {
     clearInterval(connectionHealthCheckInterval);
   }
@@ -660,6 +696,30 @@ export const stopConnectionHealthCheck = () => {
   }
 };
 
+// 添加智能重连机制
+const startIntelligentReconnect = () => {
+  // 更频繁的重连尝试，在网络问题时
+  setInterval(async () => {
+    if (serviceStatus.consecutiveFailures >= 2 && !serviceStatus.isConnected && !serviceStatus.isShuttingDown) {
+      console.log('[SupabaseService] Intelligent reconnect: Attempting to recover from connection issues...');
+      
+      // 强制重置所有状态
+      supabase = null;
+      currentSubscription = null;
+      connectionAttempts = 0;
+      subscriptionRetryAttempts = 0;
+      
+      // 尝试重新建立连接
+      const reconnected = await ensureSupabaseConnection();
+      if (reconnected) {
+        console.log('[SupabaseService] Intelligent reconnect: Successfully restored connection!');
+        // 重新启动订阅
+        await subscribeToCommands();
+      }
+    }
+  }, 30000); // 每30秒检查一次
+};
+
 // 服务初始化
 const initializeService = async () => {
   console.log('[SupabaseService] Starting service initialization...');
@@ -671,8 +731,11 @@ const initializeService = async () => {
       console.error('[SupabaseService] Failed to establish initial connection. Service will continue trying to reconnect.');
     }
     
-    // 启动健康检查
+    // 启动健康检查（缩短到2分钟间隔）
     startConnectionHealthCheck();
+    
+    // 启动智能重连机制
+    startIntelligentReconnect();
     
     // 启动命令订阅
     await subscribeToCommands();
