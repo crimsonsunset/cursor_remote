@@ -1132,23 +1132,41 @@ async function processPendingCommandsOnLoad() {
                 console.log(`📋 命令 ${command.id} 状态: ${commandData.status}`);
                 
                 if (commandData.status === 'completed' || commandData.status === 'error') {
-                    // 首先恢复用户消息到聊天历史
-                    addMessageToHistory({
-                        type: 'user',
-                        content: command.text,
-                        timestamp: command.timestamp || Date.now()
-                    });
+                    // 检查用户消息是否已经在历史中存在，避免重复添加
+                    const existingUserMessage = appState.messageHistory.find(msg => 
+                        msg.type === 'user' && 
+                        msg.content === command.text && 
+                        Math.abs((msg.timestamp || 0) - (command.timestamp || 0)) < 5000 // 5秒内的消息认为是同一条
+                    );
+                    
+                    if (!existingUserMessage) {
+                        // 只有当用户消息不存在时才添加
+                        addMessageToHistory({
+                            type: 'user',
+                            content: command.text,
+                            timestamp: command.timestamp || Date.now()
+                        });
+                    }
                     
                     // 然后处理完成的命令结果
                     await handleCompletedCommand(command.id, command.text, null); 
                     console.log(`✅ 已恢复完成命令的结果: ${command.text}`);
                 } else if (commandData.status === 'pending' || commandData.status === 'processing') {
-                    // 恢复用户消息
-                    addMessageToHistory({
-                        type: 'user',
-                        content: command.text,
-                        timestamp: command.timestamp || Date.now()
-                    });
+                    // 检查用户消息是否已经在历史中存在，避免重复添加
+                    const existingUserMessage = appState.messageHistory.find(msg => 
+                        msg.type === 'user' && 
+                        msg.content === command.text && 
+                        Math.abs((msg.timestamp || 0) - (command.timestamp || 0)) < 5000 // 5秒内的消息认为是同一条
+                    );
+                    
+                    if (!existingUserMessage) {
+                        // 只有当用户消息不存在时才添加
+                        addMessageToHistory({
+                            type: 'user',
+                            content: command.text,
+                            timestamp: command.timestamp || Date.now()
+                        });
+                    }
                     
                     // 添加加载动画，表示正在处理中
                     const loadingTemplate = document.getElementById('loadingTemplate');
