@@ -64,12 +64,30 @@ function buildSupabaseCommandPayload(commandText) {
  * @param {HTMLElement} [loadingMessage] - 加载消息元素的引用，用于完成后移除。
  */
 async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
-    const maxRetries = 3;
-    const retryDelay = 1000; // 1秒
+    // 首先检查是否已经有这个命令的结果
+    const existingResult = appState.messageHistory.find(msg => 
+        (msg.type === 'cursor' || msg.type === 'error') && 
+        msg.commandId === commandDbId
+    );
+    
+    if (existingResult) {
+        console.log(`⏭️ 命令 ${commandDbId} 的结果已存在，跳过处理`);
+        // 移除加载动画（如果存在）
+        if (loadingMessage?.classList.contains('loading-message')) {
+            loadingMessage.remove();
+        }
+        return;
+    }
+    
+    const maxRetries = 5; // 增加重试次数
+    const baseRetryDelay = 1000; // 基础延迟1秒
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`[Result Fetch] Attempting to fetch result for command ${commandDbId} (attempt ${attempt}/${maxRetries})`);
+            
+            // 使用指数退避策略
+            const retryDelay = baseRetryDelay * Math.pow(1.5, attempt - 1);
             
             // 修改查询方式，不使用.single()方法
             const { data: resultsData, error: resultsError } = await supabaseClient
@@ -86,12 +104,39 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     continue;
                 }
                 
-                // 最后一次尝试失败
-                addMessageToHistory({
-                    type: 'error',
-                    content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
-                    timestamp: Date.now()
-                });
+                // 最后一次尝试失败，尝试从commands表获取错误信息
+                try {
+                    const { data: commandData, error: cmdError } = await supabaseClient
+                        .from('commands')
+                        .select('status, last_error')
+                        .eq('id', commandDbId)
+                        .single();
+                    
+                    if (!cmdError && commandData) {
+                        const errorMsg = commandData.last_error || `获取指令结果失败: ${resultsError.message}`;
+                        addMessageToHistory({
+                            type: 'error',
+                            content: `指令 "${originalCommandText}" 执行出错: ${errorMsg}`,
+                            timestamp: Date.now(),
+                            commandId: commandDbId
+                        });
+                    } else {
+                        addMessageToHistory({
+                            type: 'error',
+                            content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
+                            timestamp: Date.now(),
+                            commandId: commandDbId
+                        });
+                    }
+                } catch (fallbackError) {
+                    console.error(`[Result Fetch] Fallback error fetch failed:`, fallbackError);
+                    addMessageToHistory({
+                        type: 'error',
+                        content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
+                        timestamp: Date.now(),
+                        commandId: commandDbId
+                    });
+                }
                 break;
             }
 
@@ -127,17 +172,54 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     continue;
                 }
                 
-                // 最后一次尝试仍然没有找到结果
-                addMessageToHistory({
-                    type: 'error',
-                    content: `指令 "${originalCommandText}" 已完成，但未在结果表中找到记录。可能是处理过程中出现错误。`,
-                    timestamp: Date.now()
-                });
+                // 最后一次尝试仍然没有找到结果，检查命令状态
+                try {
+                    const { data: commandData, error: cmdError } = await supabaseClient
+                        .from('commands')
+                        .select('status, last_error')
+                        .eq('id', commandDbId)
+                        .single();
+                    
+                    if (!cmdError && commandData) {
+                        if (commandData.status === 'error') {
+                            const errorMsg = commandData.last_error || '指令执行失败，但未找到详细错误信息';
+                            addMessageToHistory({
+                                type: 'error',
+                                content: `指令 "${originalCommandText}" 执行出错: ${errorMsg}`,
+                                timestamp: Date.now(),
+                                commandId: commandDbId
+                            });
+                        } else {
+                            addMessageToHistory({
+                                type: 'error',
+                                content: `指令 "${originalCommandText}" 已完成，但未在结果表中找到记录。可能是处理过程中出现错误。`,
+                                timestamp: Date.now(),
+                                commandId: commandDbId
+                            });
+                        }
+                    } else {
+                        addMessageToHistory({
+                            type: 'error',
+                            content: `指令 "${originalCommandText}" 已完成，但无法获取结果详情。`,
+                            timestamp: Date.now(),
+                            commandId: commandDbId
+                        });
+                    }
+                } catch (fallbackError) {
+                    console.error(`[Result Fetch] Fallback command status check failed:`, fallbackError);
+                    addMessageToHistory({
+                        type: 'error',
+                        content: `指令 "${originalCommandText}" 已完成，但未在结果表中找到记录。可能是处理过程中出现错误。`,
+                        timestamp: Date.now(),
+                        commandId: commandDbId
+                    });
+                }
             }
         } catch (fetchErr) {
             console.error(`[Result Fetch] Unexpected error fetching result for command ${commandDbId} (attempt ${attempt}):`, fetchErr);
             
             if (attempt < maxRetries) {
+                const retryDelay = baseRetryDelay * Math.pow(1.5, attempt - 1);
                 console.log(`[Result Fetch] Retrying after unexpected error in ${retryDelay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
                 continue;
@@ -146,8 +228,9 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
             // 最后一次尝试失败
             addMessageToHistory({
                 type: 'error',
-                content: `获取指令 "${originalCommandText}" 结果时发生意外错误。`,
-                timestamp: Date.now()
+                content: `获取指令 "${originalCommandText}" 结果时发生意外错误: ${fetchErr.message}`,
+                timestamp: Date.now(),
+                commandId: commandDbId
             });
         }
     }
@@ -190,6 +273,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
     let retryAttempts = 0;
     const maxRetryAttempts = 3;
     const retryDelay = 2000; // 2秒重试延迟
+    let isCompleted = false; // 防止重复处理
 
     // 创建订阅的函数
     const createSubscription = () => {
@@ -214,6 +298,8 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                     filter: `id=eq.${commandDbId}`
                 },
                 async (payload) => {
+                    if (isCompleted) return; // 防止重复处理
+                    
                     const updatedCommand = payload.new;
                     
                     // 收到更新，清除所有计时器
@@ -227,6 +313,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                     }
 
                     if (updatedCommand.status === 'completed' || updatedCommand.status === 'error') {
+                        isCompleted = true;
                         await handleCompletedCommand(updatedCommand.id, originalCommandText, loadingMessage); 
                         supabaseClient.removeChannel(channel);
                         activeSubscriptions.delete(channelName);
@@ -243,21 +330,10 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                     // 清理当前订阅
                     activeSubscriptions.delete(channelName);
                     
-                    // 如果还有重试机会，尝试重新订阅
-                    if (retryAttempts < maxRetryAttempts) {
-                        retryAttempts++;
-                        console.log(`[Subscription Retry] Attempting to resubscribe to command ${commandDbId} (attempt ${retryAttempts}/${maxRetryAttempts})`);
-                        
-                        setTimeout(() => {
-                            createSubscription();
-                        }, retryDelay * retryAttempts); // 递增延迟
-                    } else {
-                        console.warn(`[Subscription Failed] Max retry attempts reached for command ${commandDbId}, relying on fallback mechanism`);
-                        addNotificationToChat(`订阅重试失败，已启用备用查询机制: ${err?.message || status}`);
-                    }
-                    
-                    // 立即执行一次fallback查询
+                    // 立即执行一次状态检查
                     setTimeout(async () => {
+                        if (isCompleted) return; // 如果已经完成，不再处理
+                        
                         try {
                             const { data: commandData, error } = await supabaseClient
                                 .from('commands')
@@ -267,6 +343,9 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                             
                             if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
                                 console.log(`[Immediate Fallback] Command ${commandDbId} already completed, status: ${commandData.status}`);
+                                isCompleted = true;
+                                
+                                // 清理所有计时器
                                 if (fallbackInterval) {
                                     clearInterval(fallbackInterval);
                                     fallbackInterval = null;
@@ -275,12 +354,76 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                                     clearTimeout(subscriptionTimeout);
                                     subscriptionTimeout = null;
                                 }
+                                
                                 await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
+                                return;
                             }
                         } catch (immediateError) {
                             console.warn(`[Immediate Fallback] Error:`, immediateError);
                         }
+                        
+                        // 如果命令还未完成，启动fallback查询
+                        if (!fallbackInterval && !isCompleted) {
+                            console.log(`[Fallback] Starting periodic status check for command ${commandDbId}`);
+                            addNotificationToChat(`订阅连接中断，已启用备用查询机制确保结果不丢失 🔄`);
+                            
+                            fallbackInterval = setInterval(async () => {
+                                if (isCompleted) {
+                                    clearInterval(fallbackInterval);
+                                    fallbackInterval = null;
+                                    return;
+                                }
+                                
+                                try {
+                                    const { data: commandData, error } = await supabaseClient
+                                        .from('commands')
+                                        .select('status')
+                                        .eq('id', commandDbId)
+                                        .single();
+                                    
+                                    if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
+                                        console.log(`[Fallback] Command ${commandDbId} completed via fallback, status: ${commandData.status}`);
+                                        isCompleted = true;
+                                        
+                                        // 清理所有计时器
+                                        if (fallbackInterval) {
+                                            clearInterval(fallbackInterval);
+                                            fallbackInterval = null;
+                                        }
+                                        if (subscriptionTimeout) {
+                                            clearTimeout(subscriptionTimeout);
+                                            subscriptionTimeout = null;
+                                        }
+                                        
+                                        // 清理订阅
+                                        if (activeSubscriptions.has(channelName)) {
+                                            supabaseClient.removeChannel(channel);
+                                            activeSubscriptions.delete(channelName);
+                                        }
+                                        
+                                        // 处理完成的命令
+                                        await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
+                                    }
+                                } catch (fallbackError) {
+                                    console.warn(`[Fallback] Error checking command ${commandDbId} status:`, fallbackError);
+                                }
+                            }, 5000); // 每5秒检查一次
+                        }
                     }, 1000);
+                    
+                    // 如果还有重试机会，尝试重新订阅
+                    if (retryAttempts < maxRetryAttempts) {
+                        retryAttempts++;
+                        console.log(`[Subscription Retry] Attempting to resubscribe to command ${commandDbId} (attempt ${retryAttempts}/${maxRetryAttempts})`);
+                        
+                        setTimeout(() => {
+                            if (!isCompleted) {
+                                createSubscription();
+                            }
+                        }, retryDelay * retryAttempts); // 递增延迟
+                    } else {
+                        console.warn(`[Subscription Failed] Max retry attempts reached for command ${commandDbId}, relying on fallback mechanism`);
+                    }
                 }
             });
     };
@@ -290,11 +433,19 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
     
     // 添加超时处理
     subscriptionTimeout = setTimeout(() => {
-        handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage);
+        if (!isCompleted) {
+            handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage);
+        }
     }, PENDING_COMMAND_TIMEOUT);
 
-    // 添加fallback查询机制 - 定期检查命令状态
+    // 启动定期fallback查询机制 - 作为保险措施
     fallbackInterval = setInterval(async () => {
+        if (isCompleted) {
+            clearInterval(fallbackInterval);
+            fallbackInterval = null;
+            return;
+        }
+        
         try {
             const { data: commandData, error } = await supabaseClient
                 .from('commands')
@@ -304,6 +455,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
             
             if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
                 console.log(`[Fallback] Command ${commandDbId} completed, status: ${commandData.status}`);
+                isCompleted = true;
                 
                 // 清理所有计时器
                 if (fallbackInterval) {
@@ -327,7 +479,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
         } catch (fallbackError) {
             console.warn(`[Fallback] Error checking command ${commandDbId} status:`, fallbackError);
         }
-    }, 3000); // 每3秒检查一次，更频繁的检查
+    }, 8000); // 每8秒检查一次，作为保险措施
 }
 
 /**
@@ -1239,13 +1391,81 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
+// 全局状态：防止重复处理
+let isProcessingPendingCommands = false;
+
+/**
+ * 对本地历史记录进行去重处理
+ * 确保同一个 commandId 只有一条处理结果
+ */
+function deduplicateMessageHistory() {
+    if (!appState.messageHistory || appState.messageHistory.length === 0) {
+        return;
+    }
+    
+    console.log('🧹 开始对本地历史记录进行去重处理...');
+    const originalLength = appState.messageHistory.length;
+    
+    // 用于跟踪已见过的 commandId
+    const seenCommandIds = new Set();
+    const deduplicatedHistory = [];
+    
+    // 按时间顺序遍历，保留最早的结果
+    for (const message of appState.messageHistory) {
+        // 用户消息总是保留
+        if (message.type === 'user') {
+            deduplicatedHistory.push(message);
+            continue;
+        }
+        
+        // 对于结果消息（cursor 或 error），检查 commandId
+        if ((message.type === 'cursor' || message.type === 'error') && message.commandId) {
+            if (!seenCommandIds.has(message.commandId)) {
+                // 第一次见到这个 commandId，保留
+                seenCommandIds.add(message.commandId);
+                deduplicatedHistory.push(message);
+            } else {
+                // 重复的 commandId，跳过
+                console.log(`🗑️ 移除重复结果: commandId=${message.commandId}`);
+            }
+        } else {
+            // 没有 commandId 的消息（通知等），直接保留
+            deduplicatedHistory.push(message);
+        }
+    }
+    
+    // 更新历史记录
+    appState.messageHistory = deduplicatedHistory;
+    
+    // 保存到本地存储
+    localStorage.setItem('cursorRemoteHistory', JSON.stringify(appState.messageHistory));
+    
+    const removedCount = originalLength - deduplicatedHistory.length;
+    if (removedCount > 0) {
+        console.log(`✅ 去重完成，移除了 ${removedCount} 条重复记录`);
+        addNotificationToChat(`🧹 已清理 ${removedCount} 条重复结果`);
+        
+        // 重新渲染消息历史
+        renderMessageHistory();
+    } else {
+        console.log('✅ 去重完成，未发现重复记录');
+    }
+}
+
 // 新增函数：在应用加载时处理之前待处理的指令
 async function processPendingCommandsOnLoad() {
+    // 防止重复处理
+    if (isProcessingPendingCommands) {
+        console.log('⏸️ 正在处理待处理命令，跳过重复调用');
+        return;
+    }
+    
     const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
     if (pendingCommands.length === 0) {
         return;
     }
 
+    isProcessingPendingCommands = true;
     console.log(`🔄 页面加载时发现 ${pendingCommands.length} 个待处理命令，开始恢复状态...`);
 
     for (const command of pendingCommands) {
@@ -1256,11 +1476,30 @@ async function processPendingCommandsOnLoad() {
         try {
             console.log(`📋 检查命令 ${command.id} 状态...`);
             
-            const { data: commandData, error: cmdError } = await supabaseClient
-                .from('commands')
-                .select('status')
-                .eq('id', command.id)
-                .single();
+            // 增加重试机制
+            let commandData = null;
+            let cmdError = null;
+            const maxRetries = 3;
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                const result = await supabaseClient
+                    .from('commands')
+                    .select('status, last_error')
+                    .eq('id', command.id)
+                    .single();
+                
+                commandData = result.data;
+                cmdError = result.error;
+                
+                if (!cmdError) {
+                    break; // 成功获取，退出重试循环
+                }
+                
+                if (attempt < maxRetries) {
+                    console.log(`[Recovery] Retrying command status fetch for ${command.id} (attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                }
+            }
 
             if (cmdError) {
                 console.error(`Error fetching status for pending command ${command.id} on load:`, cmdError.message || 'No message property');
@@ -1289,9 +1528,37 @@ async function processPendingCommandsOnLoad() {
                 }
                 
                 if (commandData.status === 'completed' || commandData.status === 'error') {
-                    // 对于已完成的命令，直接处理结果，不需要加载动画
-                    console.log(`✅ 恢复已完成命令的结果: ${command.text}`);
-                    await handleCompletedCommand(command.id, command.text, null);
+                    // 检查是否已经有结果消息存在
+                    const existingResult = appState.messageHistory.find(msg => 
+                        (msg.type === 'cursor' || msg.type === 'error') && 
+                        (msg.commandId === command.id || 
+                         (msg.timestamp > (command.timestamp || 0) && 
+                          Math.abs(msg.timestamp - (command.timestamp || 0)) < 300000)) // 5分钟内
+                    );
+                    
+                    if (!existingResult) {
+                        // 只有当结果不存在时才处理
+                        console.log(`✅ 恢复已完成命令的结果: ${command.text}`);
+                        
+                        // 如果命令状态是error但没有结果记录，直接从commands表获取错误信息
+                        if (commandData.status === 'error') {
+                            const errorMsg = commandData.last_error || '指令执行失败，但未找到详细错误信息';
+                            addMessageToHistory({
+                                type: 'error',
+                                content: `指令 "${command.text}" 执行出错: ${errorMsg}`,
+                                timestamp: (command.timestamp || Date.now()) + 1000,
+                                commandId: command.id
+                            });
+                        } else {
+                            // 对于completed状态，尝试获取结果
+                            await handleCompletedCommand(command.id, command.text, null);
+                        }
+                    } else {
+                        console.log(`⏭️ 命令 ${command.id} 的结果已存在，跳过恢复`);
+                    }
+                    
+                    // 无论是否恢复结果，都要清理待处理命令
+                    cleanupPendingCommand(command.id);
                 } else if (commandData.status === 'pending' || commandData.status === 'processing') {
                     // 添加加载动画，表示正在处理中
                     const loadingTemplate = document.getElementById('loadingTemplate');
@@ -1323,6 +1590,11 @@ async function processPendingCommandsOnLoad() {
     }
     
     console.log(`✅ 待处理命令状态恢复完成`);
+    
+    // 恢复完成后进行去重处理
+    deduplicateMessageHistory();
+    
+    isProcessingPendingCommands = false;
 }
 
 // 新增：处理发送消息并清空输入框的辅助函数
@@ -1358,6 +1630,16 @@ async function handleAndClearInput() {
 
 // 页面加载时初始化应用
 document.addEventListener('DOMContentLoaded', initApp);
+
+// 页面可见性变化处理 - 防止后台恢复时重复处理
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        // 页面从后台恢复到前台
+        console.log('📱 页面恢复到前台');
+        // 这里不自动调用 processPendingCommandsOnLoad，避免重复处理
+        // 用户可以手动使用恢复按钮
+    }
+});
 
 // 确保页面完全加载后滚动到底部
 window.onload = function() {

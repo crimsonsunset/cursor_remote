@@ -6,6 +6,7 @@
 1. 恢复丢失结果功能生效了，但是恢复之后，消息不是按之前的时间顺序展示的，乱了。
 2. 恢复的时候不是根据本地历史发送的消息来恢复的，有可能恢复到了另外的设备上发送的消息。
 3. 恢复的时候，有可能恢复重复的结果。一条命令应该只有一个结果。
+4. 在手机浏览器发送消息后切换到后台，任务完成后恢复到前台时，会不断添加重复结果到本地历史记录。
 
 ## 问题分析
 
@@ -15,12 +16,14 @@
 3. **渲染时机**: 每次添加消息都立即渲染，导致消息按添加顺序而非时间顺序显示
 4. **跨设备恢复问题**: 恢复功能从数据库获取所有已完成命令，没有验证是否为本地发送的命令
 5. **重复恢复问题**: 没有有效机制防止同一命令的结果被多次恢复
+6. **后台恢复问题**: 页面从后台恢复到前台时，可能触发多次恢复处理，导致重复添加结果
 
 ### 技术细节
 - 原来的恢复流程：获取命令 → 立即添加到历史 → 立即渲染
 - 问题1：新恢复的消息总是出现在聊天记录的最底部，不管它们的实际时间戳
 - 问题2：恢复功能会获取数据库中所有已完成的命令，包括其他设备发送的命令
 - 问题3：缺乏有效的重复检测机制，可能导致同一结果被多次恢复
+- 问题4：页面可见性变化时缺乏状态管理，后台恢复时可能重复处理
 
 ## 修复方案
 
@@ -90,6 +93,8 @@ renderMessageHistory();
 - ✅ 用户可以看到完整、有序的对话历史
 - ✅ 只恢复本地历史中存在的用户消息对应的结果
 - ✅ 双重检测机制防止重复恢复
+- ✅ 后台恢复状态管理，防止重复处理
+- ✅ 函数级重复检测，确保结果唯一性
 - ✅ 提供明确的恢复反馈信息
 
 ## 技术改进
@@ -147,7 +152,50 @@ messagesToRecover.push({
 });
 ```
 
-### 6. 用户反馈改进
+### 6. 后台恢复状态管理
+```javascript
+// 全局状态：防止重复处理
+let isProcessingPendingCommands = false;
+
+async function processPendingCommandsOnLoad() {
+    // 防止重复处理
+    if (isProcessingPendingCommands) {
+        console.log('⏸️ 正在处理待处理命令，跳过重复调用');
+        return;
+    }
+    
+    isProcessingPendingCommands = true;
+    // ... 处理逻辑 ...
+    isProcessingPendingCommands = false;
+}
+
+// 页面可见性变化处理 - 防止后台恢复时重复处理
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        console.log('📱 页面恢复到前台');
+        // 不自动调用恢复，避免重复处理
+    }
+});
+```
+
+### 7. 函数级重复检测
+```javascript
+async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
+    // 首先检查是否已经有这个命令的结果
+    const existingResult = appState.messageHistory.find(msg => 
+        (msg.type === 'cursor' || msg.type === 'error') && 
+        msg.commandId === commandDbId
+    );
+    
+    if (existingResult) {
+        console.log(`⏭️ 命令 ${commandDbId} 的结果已存在，跳过处理`);
+        return;
+    }
+    // ... 继续处理 ...
+}
+```
+
+### 8. 用户反馈改进
 ```javascript
 addNotificationToChat(`✅ 成功恢复了 ${recoveredCount} 个命令结果，消息已按时间顺序重新排列`);
 ```

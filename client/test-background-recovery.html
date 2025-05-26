@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>后台恢复测试 - CursorRemote</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .test-step {
+            background: #f8f9fa;
+            border-left: 4px solid #007acc;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .test-result {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .test-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .test-error {
+            background: #f8d7da;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #005a9e;
+        }
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1 class="test-title">🔄 后台恢复重复结果测试</h1>
+        
+        <div class="test-warning">
+            <h3>⚠️ 测试场景</h3>
+            <p>模拟用户在手机浏览器发送消息后，将浏览器切换到后台，等任务完成后再恢复到前台的场景。</p>
+        </div>
+
+        <div class="test-step">
+            <h3>📋 测试步骤</h3>
+            <ol>
+                <li>发送一个命令</li>
+                <li>模拟页面切换到后台（触发 visibilitychange）</li>
+                <li>等待命令完成</li>
+                <li>模拟页面恢复到前台</li>
+                <li>检查是否出现重复结果</li>
+            </ol>
+        </div>
+
+        <div class="test-container">
+            <h3>🧪 测试控制</h3>
+            <button class="button" onclick="startTest()">开始测试</button>
+            <button class="button" onclick="simulateBackground()">模拟切换到后台</button>
+            <button class="button" onclick="simulateForeground()">模拟恢复到前台</button>
+            <button class="button" onclick="checkDuplicates()">检查重复结果</button>
+            <button class="button" onclick="clearTestLog()">清空日志</button>
+        </div>
+
+        <div class="test-container">
+            <h3>📊 测试状态</h3>
+            <div id="testStatus">等待开始测试...</div>
+            <div id="duplicateCount">重复结果数量: 0</div>
+        </div>
+
+        <div class="test-container">
+            <h3>📝 测试日志</h3>
+            <div id="testLog" class="log">测试日志将在这里显示...</div>
+        </div>
+
+        <div class="test-container">
+            <h3>🔍 消息历史检查</h3>
+            <div id="messageHistory" class="log">消息历史将在这里显示...</div>
+        </div>
+    </div>
+
+    <script>
+        let testStartTime = null;
+        let testCommandId = null;
+        let backgroundSimulated = false;
+
+        function log(message) {
+            const logElement = document.getElementById('testLog');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[Background Test] ${message}`);
+        }
+
+        function updateStatus(status) {
+            document.getElementById('testStatus').innerHTML = status;
+        }
+
+        function startTest() {
+            testStartTime = Date.now();
+            testCommandId = generateTestId();
+            backgroundSimulated = false;
+            
+            log('🚀 开始后台恢复测试');
+            updateStatus('<span class="status processing">测试进行中</span>');
+            
+            // 模拟发送命令
+            simulateCommand();
+            
+            // 2秒后自动模拟切换到后台
+            setTimeout(() => {
+                simulateBackground();
+            }, 2000);
+            
+            // 5秒后模拟命令完成
+            setTimeout(() => {
+                simulateCommandCompletion();
+            }, 5000);
+            
+            // 7秒后模拟恢复到前台
+            setTimeout(() => {
+                simulateForeground();
+            }, 7000);
+            
+            // 10秒后检查结果
+            setTimeout(() => {
+                checkDuplicates();
+            }, 10000);
+        }
+
+        function simulateCommand() {
+            log('📤 模拟发送命令: test-background-recovery');
+            
+            // 模拟添加用户消息到历史
+            if (typeof addMessageToHistory === 'function') {
+                addMessageToHistory({
+                    type: 'user',
+                    content: 'test-background-recovery',
+                    timestamp: Date.now()
+                });
+            }
+            
+            // 模拟添加到待处理命令
+            const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+            pendingCommands.push({
+                id: testCommandId,
+                text: 'test-background-recovery',
+                timestamp: Date.now()
+            });
+            localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
+            
+            log(`📋 命令ID: ${testCommandId}`);
+        }
+
+        function simulateBackground() {
+            if (backgroundSimulated) {
+                log('⚠️ 已经在后台状态');
+                return;
+            }
+            
+            backgroundSimulated = true;
+            log('📱 模拟页面切换到后台');
+            
+            // 模拟 visibilitychange 事件
+            Object.defineProperty(document, 'hidden', {
+                value: true,
+                writable: true
+            });
+            
+            const event = new Event('visibilitychange');
+            document.dispatchEvent(event);
+        }
+
+        function simulateForeground() {
+            if (!backgroundSimulated) {
+                log('⚠️ 页面不在后台状态');
+                return;
+            }
+            
+            backgroundSimulated = false;
+            log('📱 模拟页面恢复到前台');
+            
+            // 模拟 visibilitychange 事件
+            Object.defineProperty(document, 'hidden', {
+                value: false,
+                writable: true
+            });
+            
+            const event = new Event('visibilitychange');
+            document.dispatchEvent(event);
+            
+            // 模拟可能的重复处理
+            setTimeout(() => {
+                if (typeof processPendingCommandsOnLoad === 'function') {
+                    log('🔄 触发待处理命令恢复');
+                    processPendingCommandsOnLoad();
+                }
+            }, 500);
+        }
+
+        function simulateCommandCompletion() {
+            log('✅ 模拟命令完成');
+            
+            // 模拟添加结果消息
+            if (typeof addMessageToHistory === 'function') {
+                addMessageToHistory({
+                    type: 'cursor',
+                    content: 'Background recovery test completed successfully',
+                    timestamp: Date.now(),
+                    commandId: testCommandId
+                });
+            }
+            
+            // 从待处理命令中移除
+            const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+            const filteredCommands = pendingCommands.filter(cmd => cmd.id !== testCommandId);
+            localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
+        }
+
+        function checkDuplicates() {
+            log('🔍 检查重复结果...');
+            
+            // 检查消息历史中的重复结果
+            if (typeof appState !== 'undefined' && appState.messageHistory) {
+                const testResults = appState.messageHistory.filter(msg => 
+                    (msg.type === 'cursor' || msg.type === 'error') && 
+                    (msg.commandId === testCommandId || 
+                     msg.content.includes('Background recovery test'))
+                );
+                
+                const duplicateCount = testResults.length > 1 ? testResults.length - 1 : 0;
+                
+                document.getElementById('duplicateCount').innerHTML = `重复结果数量: ${duplicateCount}`;
+                
+                if (duplicateCount > 0) {
+                    log(`❌ 发现 ${duplicateCount} 个重复结果！`);
+                    updateStatus('<span class="status error">测试失败 - 发现重复结果</span>');
+                } else {
+                    log('✅ 未发现重复结果');
+                    updateStatus('<span class="status completed">测试通过 - 无重复结果</span>');
+                }
+                
+                // 显示消息历史
+                displayMessageHistory(testResults);
+            } else {
+                log('⚠️ 无法访问消息历史');
+                updateStatus('<span class="status error">测试失败 - 无法访问消息历史</span>');
+            }
+        }
+
+        function displayMessageHistory(messages) {
+            const historyElement = document.getElementById('messageHistory');
+            historyElement.innerHTML = '';
+            
+            if (messages.length === 0) {
+                historyElement.innerHTML = '没有找到相关消息';
+                return;
+            }
+            
+            messages.forEach((msg, index) => {
+                const time = new Date(msg.timestamp).toLocaleTimeString();
+                historyElement.innerHTML += `[${index + 1}] ${time} - ${msg.type}: ${msg.content} (commandId: ${msg.commandId || 'N/A'})\n`;
+            });
+        }
+
+        function clearTestLog() {
+            document.getElementById('testLog').innerHTML = '测试日志已清空...\n';
+            document.getElementById('messageHistory').innerHTML = '消息历史已清空...\n';
+            document.getElementById('duplicateCount').innerHTML = '重复结果数量: 0';
+            updateStatus('等待开始测试...');
+        }
+
+        function generateTestId() {
+            return 'test-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            log('📱 后台恢复测试页面已加载');
+            
+            // 检查是否有主应用的函数可用
+            setTimeout(() => {
+                if (typeof appState !== 'undefined') {
+                    log('✅ 检测到主应用状态');
+                } else {
+                    log('⚠️ 未检测到主应用状态，某些功能可能不可用');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html> 
