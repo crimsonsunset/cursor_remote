@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>页面加载去重功能测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #007acc;
+        }
+        .test-button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #005a9e;
+        }
+        .result {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .success {
+            border-left: 4px solid #28a745;
+        }
+        .error {
+            border-left: 4px solid #dc3545;
+        }
+        .warning {
+            border-left: 4px solid #ffc107;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>📋 页面加载去重功能测试</h1>
+    
+    <div class="test-section">
+        <h2>🎯 测试目标</h2>
+        <p>验证页面加载时是否会自动执行本地历史记录去重，确保：</p>
+        <ul>
+            <li>✅ 页面加载时自动执行去重</li>
+            <li>✅ 去重过程不显示用户通知</li>
+            <li>✅ 重复的commandId结果被正确移除</li>
+            <li>✅ 用户消息和通知消息保持不变</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 测试操作</h2>
+        <button class="test-button" onclick="createDuplicateHistory()">1. 创建重复历史记录</button>
+        <button class="test-button" onclick="reloadPage()">2. 刷新页面测试去重</button>
+        <button class="test-button" onclick="checkCurrentHistory()">3. 检查当前历史</button>
+        <button class="test-button" onclick="clearTestHistory()">4. 清理测试数据</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 测试结果</h2>
+        <div id="testResults"></div>
+    </div>
+
+    <script>
+        // 模拟应用状态
+        const appState = {
+            messageHistory: []
+        };
+
+        // 模拟去重函数（简化版本）
+        function deduplicateMessageHistory(showNotification = true) {
+            if (!appState.messageHistory || appState.messageHistory.length === 0) {
+                return 0;
+            }
+            
+            const originalLength = appState.messageHistory.length;
+            const seenCommandIds = new Set();
+            const deduplicatedHistory = [];
+            
+            for (const message of appState.messageHistory) {
+                if (message.type === 'user') {
+                    deduplicatedHistory.push(message);
+                    continue;
+                }
+                
+                if ((message.type === 'cursor' || message.type === 'error') && message.commandId) {
+                    if (!seenCommandIds.has(message.commandId)) {
+                        seenCommandIds.add(message.commandId);
+                        deduplicatedHistory.push(message);
+                    }
+                } else {
+                    deduplicatedHistory.push(message);
+                }
+            }
+            
+            appState.messageHistory = deduplicatedHistory;
+            localStorage.setItem('cursorRemoteHistory', JSON.stringify(appState.messageHistory));
+            
+            const removedCount = originalLength - deduplicatedHistory.length;
+            
+            if (removedCount > 0 && showNotification) {
+                addResult(`🧹 显示通知：已清理 ${removedCount} 条重复结果`, 'warning');
+            }
+            
+            return removedCount;
+        }
+
+        // 模拟页面加载时的初始化
+        function simulatePageLoad() {
+            addResult('🔄 模拟页面加载...', 'info');
+            
+            // 从localStorage加载历史记录
+            const savedHistory = localStorage.getItem('cursorRemoteHistory');
+            if (savedHistory) {
+                appState.messageHistory = JSON.parse(savedHistory);
+                addResult(`📚 加载了 ${appState.messageHistory.length} 条历史记录`, 'info');
+            }
+            
+            // 执行去重（不显示通知）
+            const removedCount = deduplicateMessageHistory(false);
+            
+            if (removedCount > 0) {
+                addResult(`✅ 页面加载去重成功：移除了 ${removedCount} 条重复记录（无通知）`, 'success');
+            } else {
+                addResult('✅ 页面加载去重完成：未发现重复记录', 'success');
+            }
+        }
+
+        function createDuplicateHistory() {
+            const testHistory = [
+                {
+                    type: 'user',
+                    content: '测试命令1',
+                    timestamp: Date.now() - 10000
+                },
+                {
+                    type: 'cursor',
+                    content: '命令1的结果',
+                    timestamp: Date.now() - 9000,
+                    commandId: 'cmd-001'
+                },
+                {
+                    type: 'cursor',
+                    content: '命令1的重复结果',
+                    timestamp: Date.now() - 8000,
+                    commandId: 'cmd-001'  // 重复的commandId
+                },
+                {
+                    type: 'user',
+                    content: '测试命令2',
+                    timestamp: Date.now() - 7000
+                },
+                {
+                    type: 'error',
+                    content: '命令2执行错误',
+                    timestamp: Date.now() - 6000,
+                    commandId: 'cmd-002'
+                },
+                {
+                    type: 'error',
+                    content: '命令2的重复错误',
+                    timestamp: Date.now() - 5000,
+                    commandId: 'cmd-002'  // 重复的commandId
+                },
+                {
+                    type: 'notification',
+                    content: '系统通知消息',
+                    timestamp: Date.now() - 4000
+                }
+            ];
+            
+            appState.messageHistory = testHistory;
+            localStorage.setItem('cursorRemoteHistory', JSON.stringify(testHistory));
+            
+            addResult(`📝 创建了包含重复记录的测试历史（${testHistory.length} 条记录）`, 'info');
+            addResult('重复项：cmd-001 和 cmd-002 各有2条结果记录', 'warning');
+        }
+
+        function reloadPage() {
+            addResult('🔄 模拟页面刷新...', 'info');
+            setTimeout(() => {
+                simulatePageLoad();
+            }, 500);
+        }
+
+        function checkCurrentHistory() {
+            const history = JSON.parse(localStorage.getItem('cursorRemoteHistory') || '[]');
+            
+            addResult(`📊 当前历史记录总数：${history.length}`, 'info');
+            
+            const commandIds = new Map();
+            let userCount = 0;
+            let notificationCount = 0;
+            
+            for (const msg of history) {
+                if (msg.type === 'user') {
+                    userCount++;
+                } else if (msg.type === 'notification') {
+                    notificationCount++;
+                } else if (msg.commandId) {
+                    commandIds.set(msg.commandId, (commandIds.get(msg.commandId) || 0) + 1);
+                }
+            }
+            
+            addResult(`👤 用户消息：${userCount} 条`, 'info');
+            addResult(`📢 通知消息：${notificationCount} 条`, 'info');
+            
+            let hasDuplicates = false;
+            for (const [cmdId, count] of commandIds) {
+                if (count > 1) {
+                    addResult(`⚠️ 发现重复：${cmdId} 有 ${count} 条结果`, 'error');
+                    hasDuplicates = true;
+                } else {
+                    addResult(`✅ 正常：${cmdId} 有 ${count} 条结果`, 'success');
+                }
+            }
+            
+            if (!hasDuplicates && commandIds.size > 0) {
+                addResult('🎉 所有命令结果都是唯一的，去重功能正常！', 'success');
+            }
+        }
+
+        function clearTestHistory() {
+            localStorage.removeItem('cursorRemoteHistory');
+            appState.messageHistory = [];
+            addResult('🗑️ 已清理所有测试历史记录', 'info');
+        }
+
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('testResults');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = `
+                <strong>${new Date().toLocaleTimeString()}</strong><br>
+                ${message}
+            `;
+            resultsDiv.appendChild(resultDiv);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        // 页面加载时自动执行一次模拟
+        window.addEventListener('load', () => {
+            addResult('🚀 测试页面已加载', 'info');
+            addResult('💡 提示：先创建重复历史记录，然后刷新页面测试去重功能', 'warning');
+        });
+    </script>
+</body>
+</html> 

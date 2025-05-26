@@ -778,6 +778,10 @@ function initApp() {
     // 加载主题设置
     loadThemePreference();
     
+    // 页面加载时先进行本地历史记录去重（不显示通知）
+    console.log('🧹 页面加载时执行历史记录去重...');
+    deduplicateMessageHistory(false);
+    
     // 显示历史消息
     renderMessageHistory();
     
@@ -1397,8 +1401,9 @@ let isProcessingPendingCommands = false;
 /**
  * 对本地历史记录进行去重处理
  * 确保同一个 commandId 只有一条处理结果
+ * @param {boolean} showNotification - 是否显示去重通知消息，默认为true
  */
-function deduplicateMessageHistory() {
+function deduplicateMessageHistory(showNotification = true) {
     if (!appState.messageHistory || appState.messageHistory.length === 0) {
         return;
     }
@@ -1443,7 +1448,11 @@ function deduplicateMessageHistory() {
     const removedCount = originalLength - deduplicatedHistory.length;
     if (removedCount > 0) {
         console.log(`✅ 去重完成，移除了 ${removedCount} 条重复记录`);
-        addNotificationToChat(`🧹 已清理 ${removedCount} 条重复结果`);
+        
+        // 只有在需要显示通知时才显示
+        if (showNotification) {
+            addNotificationToChat(`🧹 已清理 ${removedCount} 条重复结果`);
+        }
         
         // 重新渲染消息历史
         renderMessageHistory();
@@ -1591,8 +1600,8 @@ async function processPendingCommandsOnLoad() {
     
     console.log(`✅ 待处理命令状态恢复完成`);
     
-    // 恢复完成后进行去重处理
-    deduplicateMessageHistory();
+    // 恢复完成后进行去重处理（不显示通知）
+    deduplicateMessageHistory(false);
     
     isProcessingPendingCommands = false;
 }

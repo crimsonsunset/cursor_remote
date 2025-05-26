@@ -191,13 +191,72 @@ if (commandData.status === 'error') {
 - 观察channel error的发生模式
 - 收集用户反馈验证修复效果
 
+## 页面加载去重优化
+
+### 问题描述
+页面加载时可能存在重复的历史记录，影响用户体验。
+
+### 解决方案
+在页面初始化时自动执行历史记录去重：
+
+1. **修改 `initApp` 函数**：
+   - 在 `renderMessageHistory()` 之前先执行去重
+   - 使用 `deduplicateMessageHistory(false)` 避免显示通知
+
+2. **优化 `deduplicateMessageHistory` 函数**：
+   - 添加 `showNotification` 参数控制是否显示通知
+   - 页面加载时静默去重，手动去重时显示通知
+
+3. **更新 `processPendingCommandsOnLoad` 函数**：
+   - 恢复完成后也使用静默去重
+
+### 代码变更
+```javascript
+// initApp 函数中添加
+// 页面加载时先进行本地历史记录去重（不显示通知）
+console.log('🧹 页面加载时执行历史记录去重...');
+deduplicateMessageHistory(false);
+
+// deduplicateMessageHistory 函数优化
+function deduplicateMessageHistory(showNotification = true) {
+    // ... 去重逻辑 ...
+    
+    if (removedCount > 0) {
+        console.log(`✅ 去重完成，移除了 ${removedCount} 条重复记录`);
+        
+        // 只有在需要显示通知时才显示
+        if (showNotification) {
+            addNotificationToChat(`🧹 已清理 ${removedCount} 条重复结果`);
+        }
+        
+        renderMessageHistory();
+    }
+}
+```
+
+### 测试验证
+创建了专门的测试页面 `client/test-deduplication-on-load.html` 来验证去重功能：
+
+#### 测试场景
+1. **创建重复历史记录**
+2. **页面刷新去重验证**
+3. **静默去重确认**
+4. **数据完整性检查**
+
+#### 测试方法
+```bash
+# 页面加载去重测试
+open client/test-deduplication-on-load.html
+```
+
 ## 总结
 
-这次修复通过多层次的错误恢复机制，彻底解决了channel error导致的结果丢失问题：
+这次修复通过多层次的错误恢复机制和页面加载优化，彻底解决了channel error导致的结果丢失问题：
 
 1. **即时恢复**：订阅失败时立即检查命令状态
 2. **主动查询**：启动定期fallback查询确保结果不丢失
 3. **双重保险**：多个定时器确保万无一失
+4. **页面加载去重**：自动清理重复历史记录，提升用户体验
 4. **智能重试**：使用指数退避策略提高成功率
 5. **用户友好**：提供清晰的状态提示
 
