@@ -41,9 +41,7 @@ const serviceStatus = {
   connectionCreatedAt: null
 };
 
-// 命令队列和处理状态
-const commandQueue = [];
-let isProcessing = false;
+// 移除旧的队列处理逻辑，现在使用 CommandQueueManager
 
 // 订阅状态跟踪
 let currentSubscription = null;
@@ -83,24 +81,11 @@ const gracefulShutdown = () => {
     }
   }
   
-  // 等待队列处理完成或超时
-  const shutdownTimeout = setTimeout(() => {
-    console.log('[SupabaseService] Force shutdown after timeout');
+  // 等待一段时间后强制退出
+  setTimeout(() => {
+    console.log('[SupabaseService] Graceful shutdown completed');
     process.exit(0);
-  }, 30000); // 30秒超时
-  
-  const checkQueue = () => {
-    if (commandQueue.length === 0 && !isProcessing) {
-      clearTimeout(shutdownTimeout);
-      console.log('[SupabaseService] Graceful shutdown completed');
-      process.exit(0);
-    } else {
-      console.log(`[SupabaseService] Waiting for ${commandQueue.length} commands to complete...`);
-      setTimeout(checkQueue, 1000);
-    }
-  };
-  
-  checkQueue();
+  }, 5000); // 5秒后退出
 };
 
 // 注册信号处理器
@@ -433,7 +418,7 @@ export const updateCommandStatus = async (commandId, status, errorMessage = null
   return { data: null, error: lastError };
 };
 
-// MODIFIED: handleNewCommand now adds commands to queue instead of processing immediately
+// MODIFIED: handleNewCommand now uses the new queue manager
 const handleNewCommand = async (payload) => {
   const newCommand = payload.new;
   console.log('[SupabaseService] New command received:', newCommand.id);
@@ -443,85 +428,23 @@ const handleNewCommand = async (payload) => {
     return;
   }
   
-  // 将新命令添加到队列
-  commandQueue.push(newCommand);
-  // 减少队列长度的日志输出频率
-  if (commandQueue.length > 1) {
-    console.log(`[SupabaseService] Command ${newCommand.id} queued (${commandQueue.length} total)`);
-  }
-  
-  // 如果没有正在处理的命令，开始处理队列
-  if (!isProcessing) {
-    processNextCommand();
+  try {
+    // 使用新的命令控制器处理命令
+    const { processCommand } = await import('../controllers/commandController.js');
+    await processCommand(newCommand);
+  } catch (error) {
+    console.error(`[SupabaseService] Error processing command ${newCommand.id}:`, error.message);
+    
+    // 尝试更新命令状态为错误
+    try {
+      await updateCommandStatus(newCommand.id, 'error', `Service error: ${error.message}`);
+    } catch (updateError) {
+      console.error(`[SupabaseService] Failed to update error status for command ${newCommand.id}:`, updateError.message);
+    }
   }
 };
 
-// NEW: Function to process next command in queue
-const processNextCommand = async () => {
-  // 如果队列为空或服务正在关闭，结束处理
-  if (commandQueue.length === 0 || serviceStatus.isShuttingDown) {
-    isProcessing = false;
-    return;
-  }
-  
-  // 设置处理标志
-  isProcessing = true;
-  
-  // 获取队列中的第一个命令
-  const nextCommand = commandQueue.shift();
-  console.log(`[SupabaseService] Processing command ${nextCommand.id}. Queue: ${commandQueue.length} remaining`);
-  
-  let hasError = false;
-  let retryCount = 0;
-  const maxRetries = 2;
-  
-  while (retryCount <= maxRetries) {
-    try {
-      // 确保Supabase连接有效
-      if (!await ensureSupabaseConnection()) {
-        throw new Error('Failed to establish Supabase connection before processing command');
-      }
-      
-      // 处理命令 - 使用动态导入避免循环依赖
-      const { processCommand } = await import('../controllers/commandController.js');
-      await processCommand(nextCommand);
-      
-      // 如果成功处理，跳出重试循环
-      hasError = false;
-      break;
-      
-    } catch (error) {
-      retryCount++;
-      hasError = true;
-      console.error(`[SupabaseService] Error processing command ${nextCommand.id} (attempt ${retryCount}/${maxRetries + 1}):`, error.message);
-      
-      // 如果还有重试机会，等待一段时间再重试
-      if (retryCount <= maxRetries) {
-        console.log(`[SupabaseService] Retrying command ${nextCommand.id} in 3 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        continue;
-      }
-      
-      // 所有重试都失败了，确保连接有效后再尝试更新状态
-      await ensureSupabaseConnection();
-      
-      // 尝试将命令标记为错误
-      try {
-        await updateCommandStatus(nextCommand.id, 'error', `处理失败 (${retryCount}次尝试): ${error.message}`);
-      } catch (updateError) {
-        console.error(`[SupabaseService] Failed to update error status for command ${nextCommand.id}:`, updateError.message);
-      }
-    }
-  }
-  
-  // 根据是否有错误决定延迟时间
-  const delay = hasError ? 5000 : 1000; // 错误时延迟5秒，正常时延迟1秒
-  
-  setTimeout(() => {
-    // 无论成功还是失败，继续处理下一个命令
-    processNextCommand();
-  }, delay);
-};
+// 旧的队列处理函数已移除，现在使用 CommandQueueManager
 
 // NEW: Function to subscribe to results for a specific command_id with improved error handling
 export const subscribeToResultForCommand = async (commandId, callback) => {
@@ -816,6 +739,85 @@ const startIntelligentReconnect = () => {
   }, 30000); // 每30秒检查一次
 };
 
+// 定期检查卡住命令的机制
+const startStuckCommandMonitor = () => {
+  setInterval(async () => {
+    if (serviceStatus.isShuttingDown || !serviceStatus.isConnected) {
+      return;
+    }
+    
+    // 每15分钟检查一次卡住的命令
+    await recoverStuckCommands();
+  }, 15 * 60 * 1000); // 15分钟间隔
+};
+
+// 自动恢复卡住的命令
+const recoverStuckCommands = async () => {
+  if (!await ensureSupabaseConnection()) {
+    console.warn('[SupabaseService] Cannot recover stuck commands - no database connection');
+    return;
+  }
+  
+  try {
+    console.log('[SupabaseService] Checking for stuck commands...');
+    
+    // 查找超过10分钟的 pending 命令
+    const pendingCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: stuckPending, error: pendingError } = await supabase
+      .from('commands')
+      .select('id, command_text, created_at')
+      .eq('status', 'pending')
+      .lt('created_at', pendingCutoff);
+    
+    // 查找超过30分钟的 processing 命令
+    const processingCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: stuckProcessing, error: processingError } = await supabase
+      .from('commands')
+      .select('id, command_text, created_at')
+      .eq('status', 'processing')
+      .lt('created_at', processingCutoff);
+    
+    if (pendingError || processingError) {
+      console.error('[SupabaseService] Error checking stuck commands:', pendingError || processingError);
+      return;
+    }
+    
+    const totalStuck = (stuckPending?.length || 0) + (stuckProcessing?.length || 0);
+    
+    if (totalStuck === 0) {
+      console.log('[SupabaseService] No stuck commands found');
+      return;
+    }
+    
+    console.log(`[SupabaseService] Found ${totalStuck} stuck commands, recovering...`);
+    
+    // 重置卡住的 pending 命令
+    if (stuckPending && stuckPending.length > 0) {
+      for (const cmd of stuckPending) {
+        const ageMinutes = Math.floor((Date.now() - new Date(cmd.created_at).getTime()) / 60000);
+        console.log(`[SupabaseService] Resetting stuck pending command ${cmd.id} (age: ${ageMinutes}min)`);
+        
+        await updateCommandStatus(cmd.id, 'pending');
+      }
+    }
+    
+    // 将卡住的 processing 命令标记为错误
+    if (stuckProcessing && stuckProcessing.length > 0) {
+      for (const cmd of stuckProcessing) {
+        const ageMinutes = Math.floor((Date.now() - new Date(cmd.created_at).getTime()) / 60000);
+        console.log(`[SupabaseService] Marking stuck processing command ${cmd.id} as error (age: ${ageMinutes}min)`);
+        
+        await updateCommandStatus(cmd.id, 'error', `命令处理超时 (${ageMinutes}分钟) - 服务重启时自动标记为错误`);
+      }
+    }
+    
+    console.log(`[SupabaseService] Successfully recovered ${totalStuck} stuck commands`);
+    
+  } catch (error) {
+    console.error('[SupabaseService] Error during stuck command recovery:', error);
+  }
+};
+
 // 服务初始化
 const initializeService = async () => {
   console.log('[SupabaseService] Starting service initialization...');
@@ -825,6 +827,9 @@ const initializeService = async () => {
     const connected = await ensureSupabaseConnection();
     if (!connected) {
       console.error('[SupabaseService] Failed to establish initial connection. Service will continue trying to reconnect.');
+    } else {
+      // 连接成功后，恢复卡住的命令
+      await recoverStuckCommands();
     }
     
     // 启动健康检查（缩短到2分钟间隔）
@@ -832,6 +837,9 @@ const initializeService = async () => {
     
     // 启动智能重连机制
     startIntelligentReconnect();
+    
+    // 启动卡住命令监控
+    startStuckCommandMonitor();
     
     // 启动命令订阅
     await subscribeToCommands();

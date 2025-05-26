@@ -9,7 +9,8 @@
     "dev": "nodemon src/services/supabaseService.js",
     "monitor": "node connection-monitor.js",
     "auto-restart": "node auto-restart.js",
-    "production": "node auto-restart.js"
+    "production": "node auto-restart.js",
+    "fix-stuck": "node fix-stuck-commands.js"
   },
   "author": "",
   "license": "MIT",

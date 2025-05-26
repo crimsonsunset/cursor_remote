@@ -50,7 +50,7 @@ export class CommandQueueManager {
     return null;
   }
 
-  // 新增：队列处理器
+  // 新增：队列处理器 - 修复为同步处理，确保命令按顺序完成
   async processQueue() {
     if (this.isProcessing) {
       return; // 避免重复处理
@@ -59,25 +59,29 @@ export class CommandQueueManager {
     this.isProcessing = true;
     
     try {
-      while (this.hasCommands()) {
-        const command = this.getNextCommand();
-        if (command && command.handler) {
-          console.log(`[QueueManager] Processing command ${command.id}`);
-          
-          // 异步执行命令，不等待完成
-          command.handler().then(() => {
-            console.log(`[QueueManager] Completed command ${command.id}`);
-          }).catch((error) => {
-            console.error(`[QueueManager] Error executing command ${command.id}:`, error);
-          });
-          
-          // 短暂延迟后处理下一个命令
-          await new Promise(resolve => setTimeout(resolve, 500));
+      // 一次只处理一个命令，等待完成后再处理下一个
+      const command = this.getNextCommand();
+      if (command && command.handler) {
+        console.log(`[QueueManager] Processing command ${command.id}`);
+        
+        try {
+          // 同步等待命令完成
+          await command.handler();
+          console.log(`[QueueManager] Completed command ${command.id}`);
+        } catch (error) {
+          console.error(`[QueueManager] Error executing command ${command.id}:`, error);
         }
+        
+        // 短暂延迟后继续处理下一个命令
+        setTimeout(() => {
+          this.isProcessing = false;
+          this.processQueue(); // 递归处理下一个命令
+        }, 1000);
+      } else {
+        this.isProcessing = false;
       }
     } catch (error) {
       console.error('[QueueManager] Error processing queue:', error);
-    } finally {
       this.isProcessing = false;
     }
   }

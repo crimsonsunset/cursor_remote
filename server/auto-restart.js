@@ -2,7 +2,7 @@
 
 // 自动重启监控脚本 - 检测服务状态并在需要时重启
 import { createClient } from '@supabase/supabase-js';
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,7 +128,7 @@ const startService = () => {
       detached: false
     });
     
-    let startupTimeout = setTimeout(() => {
+    const startupTimeout = setTimeout(() => {
       console.error('❌ 服务启动超时');
       serviceProcess.kill();
       reject(new Error('Service startup timeout'));
