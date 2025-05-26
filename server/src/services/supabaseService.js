@@ -580,15 +580,31 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
     }
 
     currentSubscription = supabase
-      .channel('public_commands_insert')
+      .channel('public_commands_changes')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
         (payload) => {
           try {
+            console.log('[SupabaseService] New command inserted:', payload.new.id);
             handleNewCommand(payload);
           } catch (error) {
             console.error('[SupabaseService] Error handling new command:', error);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
+        (payload) => {
+          try {
+            // 只处理状态变为 pending 的命令（从其他状态更新而来）
+            if (payload.old.status !== 'pending' && payload.new.status === 'pending') {
+              console.log('[SupabaseService] Command status updated to pending:', payload.new.id);
+              handleNewCommand(payload);
+            }
+          } catch (error) {
+            console.error('[SupabaseService] Error handling updated command:', error);
           }
         }
       )
@@ -791,13 +807,21 @@ const recoverStuckCommands = async () => {
     
     console.log(`[SupabaseService] Found ${totalStuck} stuck commands, recovering...`);
     
-    // 重置卡住的 pending 命令
+    // 重置卡住的 pending 命令并手动触发处理
     if (stuckPending && stuckPending.length > 0) {
       for (const cmd of stuckPending) {
         const ageMinutes = Math.floor((Date.now() - new Date(cmd.created_at).getTime()) / 60000);
         console.log(`[SupabaseService] Resetting stuck pending command ${cmd.id} (age: ${ageMinutes}min)`);
         
         await updateCommandStatus(cmd.id, 'pending');
+        
+        // 手动触发命令处理
+        try {
+          console.log(`[SupabaseService] Manually triggering processing for recovered command ${cmd.id}`);
+          await handleNewCommand({ new: cmd });
+        } catch (error) {
+          console.error(`[SupabaseService] Error manually processing recovered command ${cmd.id}:`, error);
+        }
       }
     }
     
