@@ -8,7 +8,7 @@ const appleScriptTimeoutDuration = 600000; // 10 minutes for AppleScript/Cursor 
 
 // 初始化服务实例
 const analyticsService = new AnalyticsService();
-const errorRecoveryService = new ErrorRecoveryService();
+// ErrorRecoveryService 使用静态方法，不需要实例化
 const queueManager = new CommandQueueManager();
 
 // 添加命令到队列的入口函数
@@ -154,7 +154,7 @@ const executeCommand = async (commandData, startTime) => {
       }
       
       // 尝试错误恢复
-      await errorRecoveryService.handleError(commandId, new Error(errorMsg), { commandData, originalCommandText });
+      await ErrorRecoveryService.handleErrorWithRecovery(commandId, new Error(errorMsg));
       return;
     }
 
@@ -178,7 +178,7 @@ const executeCommand = async (commandData, startTime) => {
       await analyticsService.recordCommandEnd(commandId, false, Date.now() - startTime, resultError.message);
       
       // 尝试错误恢复
-      await errorRecoveryService.handleError(commandId, resultError, { commandData, originalCommandText });
+      await ErrorRecoveryService.handleErrorWithRecovery(commandId, resultError);
     }
 
   } catch (error) {
@@ -197,7 +197,7 @@ const executeCommand = async (commandData, startTime) => {
     }
     
     // 尝试错误恢复
-    await errorRecoveryService.handleError(commandId, error, { commandData, originalCommandText });
+    await ErrorRecoveryService.handleErrorWithRecovery(commandId, error);
   }
 };
 

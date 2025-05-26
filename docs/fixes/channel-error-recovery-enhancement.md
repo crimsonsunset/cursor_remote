@@ -260,4 +260,34 @@ open client/test-deduplication-on-load.html
 4. **智能重试**：使用指数退避策略提高成功率
 5. **用户友好**：提供清晰的状态提示
 
+## 服务端错误修复
+
+### 问题描述
+服务端在调用错误恢复服务时出现 `errorRecoveryService.handleError is not a function` 错误。
+
+### 根本原因
+错误恢复服务 `ErrorRecoveryService` 使用静态方法，但在命令控制器中被错误地实例化并调用实例方法。
+
+### 解决方案
+1. **移除错误的实例化**：
+   ```javascript
+   // 删除：const errorRecoveryService = new ErrorRecoveryService();
+   // ErrorRecoveryService 使用静态方法，不需要实例化
+   ```
+
+2. **修正方法调用**：
+   ```javascript
+   // 修改前：await errorRecoveryService.handleError(commandId, error, { commandData, originalCommandText });
+   // 修改后：await ErrorRecoveryService.handleErrorWithRecovery(commandId, error);
+   ```
+
+3. **测试验证**：
+   - 创建测试脚本验证修复效果
+   - 服务端成功启动并正常处理错误恢复
+
+### 修复结果
+✅ 服务端错误恢复功能正常工作  
+✅ 错误统计和分类功能正常  
+✅ 服务端稳定运行  
+
 通过这些改进，系统在网络不稳定或Supabase服务出现问题时仍能可靠地为用户提供服务 🚀 
