@@ -1167,6 +1167,16 @@ function addMessageToHistory(message) {
     scrollChatToBottom();
 }
 
+// 添加消息到历史但不立即渲染（用于批量恢复时）
+function addMessageToHistoryWithTimestamp(message) {
+    appState.messageHistory.push(message);
+    
+    // 限制历史长度
+    if (appState.messageHistory.length > MAX_HISTORY_LENGTH) {
+        appState.messageHistory.shift();
+    }
+}
+
 // 添加通知到聊天
 function addNotificationToChat(content, type = 'notification') {
     const notificationElement = document.createElement('div');
@@ -2902,13 +2912,13 @@ async function checkAndRecoverMissingResults() {
         console.log('[Recovery] Starting manual result recovery check...');
         addNotificationToChat('🔍 正在检查可能丢失的命令结果...');
         
-        // 获取最近的已完成命令
+        // 获取最近的已完成命令，按时间正序排列
         const { data: completedCommands, error: commandsError } = await supabaseClient
             .from('commands')
             .select('id, command_text, status, created_at')
             .in('status', ['completed', 'error'])
             .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // 最近24小时
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: true }) // 改为正序，按时间从早到晚
             .limit(20);
         
         if (commandsError) {
@@ -2923,46 +2933,82 @@ async function checkAndRecoverMissingResults() {
         }
         
         let recoveredCount = 0;
+        const messagesToRecover = [];
         
+        // 先收集需要恢复的消息，只恢复本地历史中存在的用户消息对应的结果
         for (const command of completedCommands) {
+            // 首先检查是否有对应的用户消息在本地历史中
+            const existingUserMessage = appState.messageHistory.find(msg => 
+                msg.type === 'user' && 
+                msg.content === command.command_text
+            );
+            
+            // 只有当本地历史中存在对应的用户消息时，才考虑恢复
+            if (!existingUserMessage) {
+                console.log(`[Recovery] Skipping command ${command.id} - no matching user message in local history`);
+                continue;
+            }
+            
             // 检查这个命令的结果是否已经在聊天历史中
             const existingResult = appState.messageHistory.find(msg => 
                 (msg.type === 'cursor' || msg.type === 'error') && 
                 msg.content && 
-                Math.abs(new Date(command.created_at).getTime() - (msg.timestamp || 0)) < 300000 // 5分钟内
+                Math.abs(new Date(command.created_at).getTime() - (existingUserMessage.timestamp || 0)) < 300000 // 5分钟内
             );
             
-            // 检查是否有对应的用户消息
-            const existingUserMessage = appState.messageHistory.find(msg => 
-                msg.type === 'user' && 
-                msg.content === command.command_text &&
-                Math.abs(new Date(command.created_at).getTime() - (msg.timestamp || 0)) < 300000 // 5分钟内
-            );
-            
+            // 只有当结果不存在时才恢复
             if (!existingResult) {
-                console.log(`[Recovery] Recovering result for command: ${command.id}`);
+                console.log(`[Recovery] Preparing to recover result for command: ${command.id} (matches local user message)`);
                 
-                // 如果没有用户消息，先添加用户消息
-                if (!existingUserMessage) {
-                    addMessageToHistory({
-                        type: 'user',
-                        content: command.command_text,
-                        timestamp: new Date(command.created_at).getTime()
+                const commandTimestamp = existingUserMessage.timestamp || new Date(command.created_at).getTime();
+                
+                // 获取结果内容
+                const { data: resultData, error: resultError } = await supabaseClient
+                    .from('results')
+                    .select('result_text, error_message, is_error')
+                    .eq('command_id', command.id);
+                
+                if (!resultError && resultData && resultData.length > 0) {
+                    const result = resultData[0];
+                    const resultContent = result.is_error ? result.error_message : result.result_text;
+                    
+                    messagesToRecover.push({
+                        type: result.is_error ? 'error' : 'cursor',
+                        content: resultContent,
+                        timestamp: commandTimestamp + 1000, // 结果比命令晚1秒
+                        commandId: command.id,
+                        relatedUserMessage: existingUserMessage.content
                     });
+                    
+                    recoveredCount++;
+                } else {
+                    console.log(`[Recovery] No result found for command ${command.id}`);
                 }
-                
-                // 获取并显示结果
-                await handleCompletedCommand(command.id, command.command_text, null);
-                recoveredCount++;
-                
-                // 短暂延迟避免过快的请求
-                await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+                console.log(`[Recovery] Result already exists for command ${command.id}`);
             }
         }
         
-        if (recoveredCount > 0) {
-            addNotificationToChat(`✅ 成功恢复了 ${recoveredCount} 个命令结果`);
-            console.log(`[Recovery] Successfully recovered ${recoveredCount} command results`);
+        // 如果有需要恢复的消息，按时间顺序添加到历史并重新渲染
+        if (messagesToRecover.length > 0) {
+            console.log(`[Recovery] Adding ${messagesToRecover.length} recovered messages to history`);
+            
+            // 将恢复的消息添加到历史中
+            for (const message of messagesToRecover) {
+                addMessageToHistoryWithTimestamp(message);
+            }
+            
+            // 按时间戳重新排序整个消息历史
+            appState.messageHistory.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            
+            // 保存到本地存储
+            localStorage.setItem('cursorRemoteHistory', JSON.stringify(appState.messageHistory));
+            
+            // 重新渲染整个聊天历史
+            renderMessageHistory();
+            
+            addNotificationToChat(`✅ 成功恢复了 ${recoveredCount} 个命令结果，消息已按时间顺序重新排列`);
+            console.log(`[Recovery] Successfully recovered ${recoveredCount} command results and re-sorted history`);
         } else {
             addNotificationToChat('✅ 所有命令结果都已正确显示');
         }
