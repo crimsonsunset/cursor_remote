@@ -1212,6 +1212,46 @@ message-content td {
   border: 1px dashed var(--border-color);
 }
 
+/* ===== 恢复和刷新按钮样式 ===== */
+.recovery-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.recovery-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.refresh-button {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.refresh-button:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.dark-mode .recovery-button,
+.dark-mode .refresh-button {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .recovery-button:hover {
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.dark-mode .refresh-button:hover {
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
 /* ===== Supabase诊断相关样式 ===== */
 .supabase-setup-guide,
 .supabase-error,
