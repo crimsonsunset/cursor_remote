@@ -26,6 +26,8 @@ let connectionAttempts = 0;
 const MAX_CONNECTION_ATTEMPTS = 10;
 const CONNECTION_RETRY_DELAY = 3000; // 3秒，减少重试延迟
 const CONNECTION_RESET_INTERVAL = 3 * 60 * 1000; // 3分钟重置连接尝试计数器，缩短重置间隔
+const CONNECTION_REFRESH_INTERVAL = 30 * 60 * 1000; // 30分钟强制刷新连接
+const HEALTH_CHECK_INTERVAL = 60 * 1000; // 1分钟健康检查间隔
 
 // 服务状态跟踪
 const serviceStatus = {
@@ -34,7 +36,9 @@ const serviceStatus = {
   consecutiveFailures: 0,
   isShuttingDown: false,
   isDegraded: false,
-  lastSuccessfulConnection: null
+  lastSuccessfulConnection: null,
+  lastConnectionRefresh: null,
+  connectionCreatedAt: null
 };
 
 // 命令队列和处理状态
@@ -48,6 +52,7 @@ const MAX_SUBSCRIPTION_RETRIES = 10;
 
 // 连接重置定时器
 let connectionResetTimer = null;
+let connectionRefreshTimer = null;
 
 // 优雅关闭处理
 const gracefulShutdown = () => {
@@ -61,6 +66,12 @@ const gracefulShutdown = () => {
   if (connectionResetTimer) {
     clearInterval(connectionResetTimer);
     connectionResetTimer = null;
+  }
+  
+  // 清理连接刷新定时器
+  if (connectionRefreshTimer) {
+    clearInterval(connectionRefreshTimer);
+    connectionRefreshTimer = null;
   }
   
   // 清理订阅
@@ -92,7 +103,7 @@ const gracefulShutdown = () => {
   checkQueue();
 };
 
-// 监听进程信号
+// 注册信号处理器
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
@@ -140,6 +151,45 @@ const testConnection = async () => {
       // 强制重置客户端以便下次重新初始化
       supabase = null;
     }
+    return false;
+  }
+};
+
+// 强制刷新连接的函数
+const forceRefreshConnection = async () => {
+  if (serviceStatus.isShuttingDown) {
+    return false;
+  }
+  
+  console.log('[SupabaseService] Performing scheduled connection refresh...');
+  
+  // 清理现有连接
+  if (supabase) {
+    try {
+      supabase.removeAllChannels();
+    } catch (error) {
+      console.warn('[SupabaseService] Warning during connection cleanup:', error.message);
+    }
+  }
+  
+  // 重置状态
+  supabase = null;
+  currentSubscription = null;
+  serviceStatus.isConnected = false;
+  connectionAttempts = 0;
+  subscriptionRetryAttempts = 0;
+  
+  // 重新初始化
+  const reconnected = await ensureSupabaseConnection();
+  if (reconnected) {
+    console.log('[SupabaseService] Connection refresh successful');
+    serviceStatus.lastConnectionRefresh = new Date();
+    
+    // 重新启动订阅
+    await subscribeToCommands();
+    return true;
+  } else {
+    console.error('[SupabaseService] Connection refresh failed');
     return false;
   }
 };
@@ -218,6 +268,10 @@ const initializeSupabase = async () => {
           params: {
             eventsPerSecond: 10
           }
+        },
+        // 添加连接池配置
+        db: {
+          schema: 'public'
         }
       });
       
@@ -227,6 +281,7 @@ const initializeSupabase = async () => {
         serviceStatus.isConnected = true;
         serviceStatus.consecutiveFailures = 0;
         serviceStatus.lastSuccessfulConnection = new Date();
+        serviceStatus.connectionCreatedAt = new Date();
         serviceStatus.isDegraded = false;
         
         // 重置连接尝试计数器
@@ -237,6 +292,12 @@ const initializeSupabase = async () => {
         if (connectionResetTimer) {
           clearInterval(connectionResetTimer);
           connectionResetTimer = null;
+        }
+        
+        // 启动定期连接刷新
+        if (!connectionRefreshTimer) {
+          connectionRefreshTimer = setInterval(forceRefreshConnection, CONNECTION_REFRESH_INTERVAL);
+          console.log(`[SupabaseService] Scheduled connection refresh every ${CONNECTION_REFRESH_INTERVAL / 60000} minutes`);
         }
         
         console.log('[SupabaseService] Supabase client initialized and connection verified successfully.');
@@ -656,7 +717,7 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
 let connectionHealthCheckInterval = null;
 
 // 启动定期连接健康检查
-export const startConnectionHealthCheck = (checkInterval = 2 * 60 * 1000) => {
+export const startConnectionHealthCheck = (checkInterval = HEALTH_CHECK_INTERVAL) => {
   if (connectionHealthCheckInterval) {
     clearInterval(connectionHealthCheckInterval);
   }
@@ -673,17 +734,43 @@ export const startConnectionHealthCheck = (checkInterval = 2 * 60 * 1000) => {
   // 设置定期检查
   connectionHealthCheckInterval = setInterval(async () => {
     try {
+      // 检查连接是否过期（超过45分钟强制刷新）
+      const connectionAge = serviceStatus.connectionCreatedAt ? 
+        Date.now() - serviceStatus.connectionCreatedAt.getTime() : 0;
+      
+      if (connectionAge > 45 * 60 * 1000) {
+        console.log('[SupabaseService] Connection age exceeded 45 minutes, forcing refresh...');
+        await forceRefreshConnection();
+        return;
+      }
+      
       const isConnected = await ensureSupabaseConnection();
       if (!isConnected) {
         const status = serviceStatus.isDegraded ? 'degraded mode' : 'attempting reconnection';
         console.warn(`[SupabaseService] Periodic connection health check: Connection is unhealthy (${status})`);
+        
+        // 如果连续失败超过3次，强制刷新连接
+        if (serviceStatus.consecutiveFailures >= 3) {
+          console.log('[SupabaseService] Multiple consecutive failures detected, forcing connection refresh...');
+          await forceRefreshConnection();
+        }
+      } else {
+        // 连接正常时，偶尔输出状态信息
+        if (Math.random() < 0.1) { // 10% 概率输出状态
+          const uptime = connectionAge ? Math.floor(connectionAge / 60000) : 0;
+          console.log(`[SupabaseService] Connection healthy (uptime: ${uptime} minutes)`);
+        }
       }
     } catch (error) {
       console.error('[SupabaseService] Error during periodic connection health check:', error);
+      serviceStatus.consecutiveFailures++;
     }
   }, checkInterval);
   
-  console.log(`[SupabaseService] Supabase connection health check scheduled every ${checkInterval / 60000} minutes`);
+  const intervalMinutes = checkInterval < 60000 ? 
+    `${Math.floor(checkInterval / 1000)} seconds` : 
+    `${Math.floor(checkInterval / 60000)} minutes`;
+  console.log(`[SupabaseService] Enhanced connection health check scheduled every ${intervalMinutes}`);
   return connectionHealthCheckInterval;
 };
 
@@ -700,21 +787,30 @@ export const stopConnectionHealthCheck = () => {
 const startIntelligentReconnect = () => {
   // 更频繁的重连尝试，在网络问题时
   setInterval(async () => {
-    if (serviceStatus.consecutiveFailures >= 2 && !serviceStatus.isConnected && !serviceStatus.isShuttingDown) {
+    if (serviceStatus.isShuttingDown) {
+      return;
+    }
+    
+    // 检查是否需要智能重连
+    const needsReconnect = (
+      serviceStatus.consecutiveFailures >= 2 && 
+      !serviceStatus.isConnected
+    ) || (
+      // 或者连接超过1小时且最近有失败
+      serviceStatus.connectionCreatedAt &&
+      Date.now() - serviceStatus.connectionCreatedAt.getTime() > 60 * 60 * 1000 &&
+      serviceStatus.consecutiveFailures > 0
+    );
+    
+    if (needsReconnect) {
       console.log('[SupabaseService] Intelligent reconnect: Attempting to recover from connection issues...');
       
-      // 强制重置所有状态
-      supabase = null;
-      currentSubscription = null;
-      connectionAttempts = 0;
-      subscriptionRetryAttempts = 0;
-      
-      // 尝试重新建立连接
-      const reconnected = await ensureSupabaseConnection();
+      // 使用强制刷新连接而不是手动重置
+      const reconnected = await forceRefreshConnection();
       if (reconnected) {
         console.log('[SupabaseService] Intelligent reconnect: Successfully restored connection!');
-        // 重新启动订阅
-        await subscribeToCommands();
+      } else {
+        console.warn('[SupabaseService] Intelligent reconnect: Failed to restore connection, will retry later');
       }
     }
   }, 30000); // 每30秒检查一次

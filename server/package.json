@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node src/services/supabaseService.js",
-    "dev": "nodemon src/services/supabaseService.js"
+    "dev": "nodemon src/services/supabaseService.js",
+    "monitor": "node connection-monitor.js",
+    "auto-restart": "node auto-restart.js",
+    "production": "node auto-restart.js"
   },
   "author": "",
   "license": "MIT",
