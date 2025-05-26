@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title data-i18n="html.page_title">Cursor远程控制</title>
+    <title>Cursor远程控制</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -34,7 +34,7 @@
 <body class="light-mode">
     <div class="app-container">
         <header class="app-header">
-            <h1 class="app-title" data-i18n="html.app_title">Cursor远程控制</h1>
+            <h1 class="app-title">Cursor远程控制</h1>
             <div class="header-actions">
                 <button id="historyButton" class="tool-button" title="命令历史">
                     <i class="ri-history-line"></i>
@@ -53,7 +53,7 @@
                 </button>
                 <div class="status-indicator">
                     <span class="status-dot" id="connectionStatus"></span>
-                    <span id="statusText" data-i18n="html.status.disconnected">未连接</span>
+                    <span id="statusText">未连接</span>
                 </div>
                 <a href="https://github.com/terryso/cursor_remote" target="_blank" rel="noopener noreferrer" class="github-link" title="查看项目源码">
                     <i class="ri-github-fill"></i>
@@ -66,7 +66,7 @@
                 <!-- Welcome message -->
                 <div class="message system-message">
                     <div class="message-content">
-                        <p data-i18n="html.welcome.text">欢迎使用Cursor远程控制！请输入您想问Cursor的问题。</p>
+                        <p>欢迎使用Cursor远程控制！请输入您想问Cursor的问题。</p>
                     </div>
                 </div>
                 <!-- Chat content will be dynamically added here -->
@@ -74,7 +74,7 @@
             
             <div class="input-wrapper">
                 <div class="input-container">
-                    <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." data-i18n-placeholder="html.input.placeholder" rows="1"></textarea>
+                    <textarea id="messageInput" placeholder="输入您想问Cursor的问题..." rows="1"></textarea>
                     <div class="input-buttons">
                         <div class="input-tools">
                             <button class="tool-button" title="上传文件">
@@ -252,10 +252,7 @@
     </div>
 
     <script src="env-config.js"></script>
-    <!-- i18n System - Load before main application -->
-    <script src="i18n.js"></script>
-    <script src="i18n-init.js"></script>
-    <script src="html-i18n.js"></script>
+    <!-- i18n System removed for debugging -->
     <script src="enhancement.js"></script>
     <script src="systemMonitor.js"></script>
     <script src="app.js"></script>
