@@ -25,13 +25,16 @@ let supabase = null;
 let connectionAttempts = 0;
 const MAX_CONNECTION_ATTEMPTS = 10;
 const CONNECTION_RETRY_DELAY = 5000; // 5秒
+const CONNECTION_RESET_INTERVAL = 5 * 60 * 1000; // 5分钟重置连接尝试计数器
 
 // 服务状态跟踪
 const serviceStatus = {
   isConnected: false,
   lastConnectionAttempt: null,
   consecutiveFailures: 0,
-  isShuttingDown: false
+  isShuttingDown: false,
+  isDegraded: false,
+  lastSuccessfulConnection: null
 };
 
 // 命令队列和处理状态
@@ -43,6 +46,9 @@ let currentSubscription = null;
 let subscriptionRetryAttempts = 0;
 const MAX_SUBSCRIPTION_RETRIES = 10;
 
+// 连接重置定时器
+let connectionResetTimer = null;
+
 // 优雅关闭处理
 const gracefulShutdown = () => {
   console.log('[SupabaseService] Received shutdown signal, cleaning up...');
@@ -50,6 +56,12 @@ const gracefulShutdown = () => {
   
   // 停止健康检查
   stopConnectionHealthCheck();
+  
+  // 清理连接重置定时器
+  if (connectionResetTimer) {
+    clearInterval(connectionResetTimer);
+    connectionResetTimer = null;
+  }
   
   // 清理订阅
   if (supabase) {
@@ -123,7 +135,20 @@ const initializeSupabase = async () => {
   connectionAttempts++;
   
   if (connectionAttempts > MAX_CONNECTION_ATTEMPTS) {
-    console.error(`[SupabaseService] Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached. Entering degraded mode.`);
+    if (!serviceStatus.isDegraded) {
+      console.error(`[SupabaseService] Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached. Entering degraded mode.`);
+      serviceStatus.isDegraded = true;
+      
+      // 启动连接重置定时器
+      if (!connectionResetTimer) {
+        connectionResetTimer = setInterval(() => {
+          console.log('[SupabaseService] Resetting connection attempts counter to allow recovery from degraded mode...');
+          connectionAttempts = 0;
+          subscriptionRetryAttempts = 0;
+          serviceStatus.isDegraded = false;
+        }, CONNECTION_RESET_INTERVAL);
+      }
+    }
     return false;
   }
   
@@ -165,13 +190,25 @@ const initializeSupabase = async () => {
       if (testResult) {
         serviceStatus.isConnected = true;
         serviceStatus.consecutiveFailures = 0;
+        serviceStatus.lastSuccessfulConnection = new Date();
+        serviceStatus.isDegraded = false;
+        
+        // 重置连接尝试计数器
+        connectionAttempts = 0;
+        subscriptionRetryAttempts = 0;
+        
+        // 清理连接重置定时器
+        if (connectionResetTimer) {
+          clearInterval(connectionResetTimer);
+          connectionResetTimer = null;
+        }
+        
         console.log('[SupabaseService] Supabase client initialized and connection verified successfully.');
         return true;
-      } else {
-        supabase = null;
-        serviceStatus.isConnected = false;
-        return false;
       }
+      supabase = null;
+      serviceStatus.isConnected = false;
+      return false;
     }
   } catch (error) {
     console.error('[SupabaseService] Error initializing Supabase client:', error.message);
@@ -207,22 +244,36 @@ export const ensureSupabaseConnection = async () => {
   // 如果客户端已初始化，测试连接
   const connectionValid = await testConnection();
   if (connectionValid) {
-    serviceStatus.isConnected = true;
-    serviceStatus.consecutiveFailures = 0;
-    return true;
-  } else {
-    serviceStatus.isConnected = false;
-    serviceStatus.consecutiveFailures++;
-    
-    // 如果连续失败次数过多，重置客户端
-    if (serviceStatus.consecutiveFailures >= 3) {
-      console.warn(`[SupabaseService] ${serviceStatus.consecutiveFailures} consecutive connection failures, resetting client...`);
-      supabase = null;
-      connectionAttempts = 0; // 重置连接尝试计数器
+    // 如果之前是降级状态，现在恢复了，记录恢复
+    if (serviceStatus.isDegraded) {
+      console.log('[SupabaseService] Connection recovered from degraded mode!');
     }
     
-    return false;
+    serviceStatus.isConnected = true;
+    serviceStatus.consecutiveFailures = 0;
+    serviceStatus.lastSuccessfulConnection = new Date();
+    serviceStatus.isDegraded = false;
+    
+    // 清理连接重置定时器
+    if (connectionResetTimer) {
+      clearInterval(connectionResetTimer);
+      connectionResetTimer = null;
+    }
+    
+    return true;
   }
+  
+  serviceStatus.isConnected = false;
+  serviceStatus.consecutiveFailures++;
+  
+  // 如果连续失败次数过多，重置客户端
+  if (serviceStatus.consecutiveFailures >= 3) {
+    console.warn(`[SupabaseService] ${serviceStatus.consecutiveFailures} consecutive connection failures, resetting client...`);
+    supabase = null;
+    connectionAttempts = 0; // 重置连接尝试计数器
+  }
+  
+  return false;
 };
 
 // NEW: Function to update command status with retry mechanism
@@ -472,8 +523,13 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
   subscriptionRetryAttempts++;
   
   if (subscriptionRetryAttempts > MAX_SUBSCRIPTION_RETRIES) {
-    console.error(`[SupabaseService] Max subscription retry attempts (${MAX_SUBSCRIPTION_RETRIES}) reached. Entering degraded mode.`);
-    return null;
+    if (!serviceStatus.isDegraded) {
+      console.error(`[SupabaseService] Max subscription retry attempts (${MAX_SUBSCRIPTION_RETRIES}) reached. Service will continue attempting recovery.`);
+    }
+    // 不要立即返回 null，允许在连接重置后继续尝试
+    if (serviceStatus.isDegraded && connectionResetTimer) {
+      return null;
+    }
   }
   
   console.log(`[SupabaseService] Attempting to subscribe to commands (attempt ${subscriptionRetryAttempts}/${MAX_SUBSCRIPTION_RETRIES})...`);
@@ -520,6 +576,18 @@ const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
         if (status === 'SUBSCRIBED') {
           console.log('[SupabaseService] Successfully subscribed to new commands!');
           subscriptionRetryAttempts = 0; // 重置重试计数器
+          
+          // 如果从降级模式恢复，记录恢复状态
+          if (serviceStatus.isDegraded) {
+            console.log('[SupabaseService] Service recovered from degraded mode - subscription active!');
+            serviceStatus.isDegraded = false;
+            
+            // 清理连接重置定时器
+            if (connectionResetTimer) {
+              clearInterval(connectionResetTimer);
+              connectionResetTimer = null;
+            }
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[SupabaseService] Subscription to commands timed out. Will attempt to reconnect in', retryDelay / 1000, 'seconds...');
           await handleSubscriptionError('TIMED_OUT', err, retryDelay);
@@ -571,7 +639,8 @@ export const startConnectionHealthCheck = (checkInterval = 15 * 60 * 1000) => {
     try {
       const isConnected = await ensureSupabaseConnection();
       if (!isConnected) {
-        console.warn('[SupabaseService] Periodic connection health check: Connection is unhealthy, attempting to reconnect');
+        const status = serviceStatus.isDegraded ? 'degraded mode' : 'attempting reconnection';
+        console.warn(`[SupabaseService] Periodic connection health check: Connection is unhealthy (${status})`);
       }
     } catch (error) {
       console.error('[SupabaseService] Error during periodic connection health check:', error);
