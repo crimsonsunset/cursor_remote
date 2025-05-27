@@ -23,8 +23,20 @@ const config = {
   checkInterval: 60000, // 1分钟检查一次
   failureThreshold: 3, // 连续失败3次后重启
   restartCooldown: 30000, // 重启后30秒冷却期
-  maxRestarts: 5, // 最大重启次数
-  resetInterval: 3600000 // 1小时后重置重启计数
+  maxRestarts: 10, // 增加最大重启次数到10次
+  resetInterval: 3600000, // 1小时后重置重启计数
+  criticalErrorPatterns: [
+    /errorRecoveryService\.handleError is not a function/i,
+    /TypeError.*is not a function/i,
+    /Cannot read property.*of undefined/i,
+    /ReferenceError/i,
+    /Failed to ensure Supabase connection/i,
+    /Max connection attempts.*reached/i,
+    /ECONNREFUSED/i,
+    /ENOTFOUND/i,
+    /CHANNEL_ERROR/i,
+    /subscription.*failed/i
+  ]
 };
 
 // 监控状态
@@ -35,7 +47,10 @@ const state = {
   lastSuccessTime: null,
   isServiceRunning: false,
   serviceProcess: null,
-  startTime: new Date()
+  startTime: new Date(),
+  criticalErrorCount: 0,
+  lastCriticalErrorTime: null,
+  errorHistory: []
 };
 
 // 创建测试客户端
@@ -53,6 +68,44 @@ const createTestClient = () => {
       }
     }
   });
+};
+
+// 检测服务输出中的关键错误
+const detectCriticalErrors = (output) => {
+  const errors = [];
+  const lines = output.split('\n');
+  
+  for (const line of lines) {
+    for (const pattern of config.criticalErrorPatterns) {
+      if (pattern.test(line)) {
+        errors.push({
+          pattern: pattern.source,
+          line: line.trim(),
+          timestamp: new Date()
+        });
+      }
+    }
+  }
+  
+  if (errors.length > 0) {
+    state.criticalErrorCount += errors.length;
+    state.lastCriticalErrorTime = new Date();
+    state.errorHistory.push(...errors);
+    
+    // 保持错误历史在合理大小
+    if (state.errorHistory.length > 50) {
+      state.errorHistory = state.errorHistory.slice(-30);
+    }
+    
+    console.error(`🚨 检测到 ${errors.length} 个严重错误:`);
+    for (const error of errors) {
+      console.error(`   - ${error.line}`);
+    }
+    
+    return true;
+  }
+  
+  return false;
 };
 
 // 测试服务连接
@@ -96,7 +149,18 @@ const testServiceHealth = async () => {
       return {
         success: false,
         reason: `Found ${stuckCommands.length} stuck pending commands`,
-        details: { stuckCommands: stuckCommands.length }
+        details: { stuckCommands: stuckCommands.length, shouldRestart: true }
+      };
+    }
+    
+    // 如果最近有严重错误且频率过高，建议重启
+    if (state.criticalErrorCount > 5 && 
+        state.lastCriticalErrorTime && 
+        (Date.now() - state.lastCriticalErrorTime.getTime()) < 300000) { // 5分钟内
+      return {
+        success: false,
+        reason: `Too many critical errors detected (${state.criticalErrorCount} in recent time)`,
+        details: { criticalErrors: state.criticalErrorCount, shouldRestart: true }
       };
     }
     
@@ -104,7 +168,8 @@ const testServiceHealth = async () => {
       success: true,
       details: {
         recentCommands: recentCommands?.length || 0,
-        stuckCommands: stuckCommands?.length || 0
+        stuckCommands: stuckCommands?.length || 0,
+        criticalErrors: state.criticalErrorCount
       }
     };
     
@@ -112,7 +177,7 @@ const testServiceHealth = async () => {
     return {
       success: false,
       reason: error.message,
-      details: { error: error.message }
+      details: { error: error.message, shouldRestart: true }
     };
   }
 };
@@ -138,12 +203,16 @@ const startService = () => {
       const output = data.toString();
       console.log(`[Service] ${output.trim()}`);
       
+      // 检测严重错误
+      detectCriticalErrors(output);
+      
       // 检测服务启动成功的标志
       if (output.includes('Service initialization completed') || 
           output.includes('Supabase client initialized')) {
         clearTimeout(startupTimeout);
         state.isServiceRunning = true;
         state.serviceProcess = serviceProcess;
+        state.criticalErrorCount = 0; // 重置错误计数
         console.log('✅ 服务启动成功');
         resolve(serviceProcess);
       }
@@ -152,6 +221,15 @@ const startService = () => {
     serviceProcess.stderr.on('data', (data) => {
       const output = data.toString();
       console.error(`[Service Error] ${output.trim()}`);
+      
+      // 检测严重错误
+      const hasCriticalError = detectCriticalErrors(output);
+      
+      // 如果检测到严重错误，立即触发重启检查
+      if (hasCriticalError) {
+        console.warn('🚨 检测到严重错误，将在下次检查时考虑重启服务');
+        state.consecutiveFailures++; // 增加失败计数
+      }
     });
     
     serviceProcess.on('exit', (code, signal) => {
@@ -163,12 +241,14 @@ const startService = () => {
         console.log('ℹ️ 服务正常退出');
       } else {
         console.error(`❌ 服务异常退出 (code: ${code}, signal: ${signal})`);
+        state.consecutiveFailures++;
       }
     });
     
     serviceProcess.on('error', (error) => {
       clearTimeout(startupTimeout);
       console.error('❌ 服务启动失败:', error.message);
+      state.consecutiveFailures++;
       reject(error);
     });
   });
@@ -259,6 +339,7 @@ const displayStatus = () => {
   console.log(`🔧 服务状态: ${state.isServiceRunning ? '✅ 运行中' : '❌ 已停止'}`);
   console.log(`🔄 重启次数: ${state.restartCount}/${config.maxRestarts}`);
   console.log(`❌ 连续失败: ${state.consecutiveFailures}/${config.failureThreshold}`);
+  console.log(`🚨 严重错误: ${state.criticalErrorCount}`);
   
   if (state.lastRestartTime) {
     const timeSinceRestart = Math.floor((now - state.lastRestartTime) / 1000);
@@ -268,6 +349,22 @@ const displayStatus = () => {
   if (state.lastSuccessTime) {
     const timeSinceSuccess = Math.floor((now - state.lastSuccessTime) / 1000);
     console.log(`✅ 最后成功: ${timeSinceSuccess}秒前`);
+  }
+  
+  if (state.lastCriticalErrorTime) {
+    const timeSinceError = Math.floor((now - state.lastCriticalErrorTime) / 1000);
+    console.log(`🚨 最后错误: ${timeSinceError}秒前`);
+  }
+  
+  // 显示最近的错误
+  if (state.errorHistory.length > 0) {
+    console.log('───────────────────────────────────────────────');
+    console.log('🚨 最近的严重错误:');
+    const recentErrors = state.errorHistory.slice(-3); // 显示最近3个错误
+    for (const error of recentErrors) {
+      const timeAgo = Math.floor((now - error.timestamp) / 1000);
+      console.log(`   ${timeAgo}秒前: ${error.line.substring(0, 60)}...`);
+    }
   }
   
   console.log('───────────────────────────────────────────────');
@@ -295,15 +392,26 @@ const monitorLoop = async () => {
     state.lastSuccessTime = new Date();
     
     if (Math.random() < 0.1) { // 10% 概率显示成功信息
-      console.log(`✅ 服务健康检查通过 (最近命令: ${healthResult.details.recentCommands})`);
+      console.log(`✅ 服务健康检查通过 (最近命令: ${healthResult.details.recentCommands}, 严重错误: ${healthResult.details.criticalErrors})`);
     }
   } else {
     state.consecutiveFailures++;
     console.error(`❌ 服务健康检查失败 (${state.consecutiveFailures}/${config.failureThreshold}): ${healthResult.reason}`);
     
-    // 达到失败阈值时重启服务
-    if (state.consecutiveFailures >= config.failureThreshold) {
-      console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+    // 检查是否应该立即重启（基于错误类型）
+    const shouldImmediateRestart = healthResult.details?.shouldRestart && (
+      state.criticalErrorCount > 10 || // 严重错误过多
+      healthResult.reason.includes('stuck pending commands') || // 有卡住的命令
+      healthResult.reason.includes('critical errors detected') // 检测到严重错误
+    );
+    
+    // 达到失败阈值或需要立即重启时重启服务
+    if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart) {
+      if (shouldImmediateRestart) {
+        console.warn('🚨 检测到严重问题，立即重启服务...');
+      } else {
+        console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+      }
       
       const restartSuccess = await restartService();
       if (!restartSuccess) {

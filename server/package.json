@@ -10,7 +10,12 @@
     "monitor": "node connection-monitor.js",
     "auto-restart": "node auto-restart.js",
     "production": "node auto-restart.js",
-    "fix-stuck": "node fix-stuck-commands.js"
+    "fix-stuck": "node fix-stuck-commands.js",
+    "smart-restart": "../scripts/smart-restart.sh restart",
+    "smart-start": "../scripts/smart-restart.sh start",
+    "smart-stop": "../scripts/smart-restart.sh stop",
+    "smart-status": "../scripts/smart-restart.sh status",
+    "smart-monitor": "../scripts/smart-restart.sh monitor"
   },
   "author": "",
   "license": "MIT",
