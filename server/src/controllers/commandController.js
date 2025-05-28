@@ -276,8 +276,14 @@ export class CommandController {
       // 确定命令优先级
       const priority = this.determineCommandPriority(commandData);
       
+      // 为命令添加处理器函数
+      const commandWithHandler = {
+        ...commandData,
+        handler: () => this.executeCommand(commandData, startTime)
+      };
+      
       // 添加到队列
-      const result = await this.queueManager.addCommand(commandData, priority);
+      const result = await this.queueManager.addCommand(commandWithHandler, priority);
       
       if (result) {
         this.logger.log(`[CommandController] Command ${commandId} added to queue with priority ${priority}`);

@@ -394,7 +394,13 @@ describe('CommandController', () => {
       const result = await commandController.addCommandToQueue(commandData);
 
       expect(result).toBe(true);
-      expect(mockOptions.queueManager.addCommand).toHaveBeenCalledWith(commandData, 'normal');
+      // 验证传递给queueManager的对象包含handler函数
+      const callArgs = mockOptions.queueManager.addCommand.mock.calls[0];
+      expect(callArgs[1]).toBe('normal'); // priority
+      expect(callArgs[0]).toEqual(expect.objectContaining({
+        ...commandData,
+        handler: expect.any(Function)
+      }));
       expect(mockOptions.logger.log).toHaveBeenCalledWith(
         '[CommandController] Command cmd-123 added to queue with priority normal'
       );
@@ -434,6 +440,13 @@ describe('CommandController', () => {
       );
       expect(mockOptions.updateCommandStatus).toHaveBeenCalledWith('cmd-123', 'error', 'Queue error: Queue exception');
       expect(mockOptions.analyticsService.recordCommandEnd).toHaveBeenCalledWith('cmd-123', false, expect.any(Number), 'Queue exception');
+      
+      // 验证传递给queueManager的对象包含handler函数
+      const callArgs = mockOptions.queueManager.addCommand.mock.calls[0];
+      expect(callArgs[0]).toEqual(expect.objectContaining({
+        ...commandData,
+        handler: expect.any(Function)
+      }));
     });
   });
 
