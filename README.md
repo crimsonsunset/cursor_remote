@@ -277,11 +277,11 @@ CREATE TABLE command_templates (
 ### 核心架构流程
 ```mermaid
 sequenceDiagram
-    participant C as 客户端
-    participant S as Supabase
-    participant N as Node.js监听服务
-    participant A as AppleScript
-    participant CR as Cursor
+    participant C as "客户端"
+    participant S as "Supabase"
+    participant N as "Node.js监听服务"
+    participant A as "AppleScript"
+    participant CR as "Cursor"
     
     C->>S: 插入命令 (status='pending')
     S->>N: 实时通知新命令

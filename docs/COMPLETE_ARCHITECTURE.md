@@ -34,21 +34,24 @@ CursorRemote是一个基于Supabase的远程控制解决方案，允许用户通
 
 ### 核心交互流程
 ```mermaid
-graph TB
-    subgraph "客户端层"
-        WC[Web客户端<br/>HTML/CSS/JS]
-        MC[移动端浏览器]
+graph TD
+    subgraph "Web客户端"
+        WC[移动设备<br/>浏览器客户端]
     end
     
-    subgraph "Supabase云端"
-        DB[(PostgreSQL<br/>数据库)]
+    subgraph "移动客户端"
+        MC[手机<br/>Web应用]
+    end
+    
+    subgraph Supabase
+        DB[PostgreSQL<br/>数据库]
         RT[Realtime<br/>订阅服务]
         API[REST API<br/>自动生成]
         RPC[RPC函数<br/>自定义逻辑]
         RLS[行级安全<br/>策略]
     end
     
-    subgraph "Mac本地服务"
+    subgraph Local[Mac本地服务]
         NS[Node.js<br/>监听服务]
         AS[AppleScript<br/>执行器]
         CS[Cursor<br/>应用]
@@ -69,7 +72,7 @@ graph TB
     DB --> RLS
     
     style Supabase fill:#00d084
-    style "Mac本地服务" fill:#333
+    style Local fill:#333
 ```
 
 ## 架构设计模式
