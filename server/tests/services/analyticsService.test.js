@@ -147,41 +147,26 @@ describe('AnalyticsService', () => {
       );
     });
 
-    it('should successfully record command start with extended info', async () => {
+    it('should successfully record command start', async () => {
       mockSupabaseClient.insert.mockResolvedValue({ error: null });
       
       const result = await service.recordCommandStart('test-id', 'test command');
       
-      expect(result).toEqual({ success: true, method: 'extended' });
+      expect(result).toEqual({ success: true, method: 'standard' });
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('command_metrics');
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith({
         command_id: 'test-id',
         command_length: 12,
-        success: false,
-        created_at: expect.any(String),
-        command_text: 'test command',
-        start_time: expect.any(String)
+        processing_duration: null,
+        success: null,
+        created_at: expect.any(String)
       });
       expect(mockLogger.log).toHaveBeenCalledWith(
         '[AnalyticsService] Command start recorded for test-id'
       );
     });
 
-    it('should fall back to basic metrics when extended insert fails', async () => {
-      mockSupabaseClient.insert
-        .mockResolvedValueOnce({ error: new Error('Column not found') })
-        .mockResolvedValueOnce({ error: null });
-      
-      const result = await service.recordCommandStart('test-id', 'test command');
-      
-      expect(result).toEqual({ success: true, method: 'basic' });
-      expect(mockSupabaseClient.insert).toHaveBeenCalledTimes(2);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        '[AnalyticsService] Used basic metrics fallback'
-      );
-    });
-
-    it('should handle database errors', async () => {
+    it('should handle database error when recording command start', async () => {
       const dbError = new Error('Database error');
       mockSupabaseClient.insert.mockResolvedValue({ error: dbError });
       
@@ -215,7 +200,7 @@ describe('AnalyticsService', () => {
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith(
         expect.objectContaining({
           command_length: 0,
-          command_text: null
+          command_id: 'test-id'
         })
       );
     });
@@ -235,37 +220,27 @@ describe('AnalyticsService', () => {
       expect(result).toEqual({ success: false, reason: 'service_unavailable' });
     });
 
-    it('should successfully record command end with extended info', async () => {
+    it('should successfully record command end', async () => {
       const mockChain = { eq: jest.fn().mockResolvedValue({ error: null }) };
       mockSupabaseClient.update.mockReturnValue(mockChain);
       
       const result = await service.recordCommandEnd('test-id', true, 1000, 'Test error');
       
-      expect(result).toEqual({ success: true, method: 'extended' });
+      expect(result).toEqual({ success: true, method: 'standard' });
       expect(mockSupabaseClient.update).toHaveBeenCalledWith({
-        end_time: expect.any(String),
         success: true,
-        processing_duration: 1000,
-        error_message: 'Test error'
+        processing_duration: 1000
       });
       expect(mockChain.eq).toHaveBeenCalledWith('command_id', 'test-id');
     });
 
-    it('should fall back to basic update when extended update fails', async () => {
-      const mockChainExtended = { eq: jest.fn().mockResolvedValue({ error: new Error('Column not found') }) };
-      const mockChainBasic = { eq: jest.fn().mockResolvedValue({ error: null }) };
-      
-      mockSupabaseClient.update
-        .mockReturnValueOnce(mockChainExtended)
-        .mockReturnValueOnce(mockChainBasic);
+    it('should handle database error when recording command end', async () => {
+      const mockChain = { eq: jest.fn().mockResolvedValue({ error: new Error('Database error') }) };
+      mockSupabaseClient.update.mockReturnValue(mockChain);
       
       const result = await service.recordCommandEnd('test-id', false, 2000);
       
-      expect(result).toEqual({ success: true, method: 'basic' });
-      expect(mockSupabaseClient.update).toHaveBeenCalledTimes(2);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        '[AnalyticsService] Used basic update fallback'
-      );
+      expect(result).toEqual({ success: false, reason: 'database_error', error: expect.any(Error) });
     });
   });
 
@@ -413,36 +388,35 @@ describe('AnalyticsService', () => {
   });
 
   describe('attemptInsert', () => {
-    it('should succeed with extended method', async () => {
+    it('should succeed with standard method', async () => {
       mockSupabaseClient.insert.mockResolvedValue({ error: null });
       
-      const result = await service.attemptInsert(mockSupabaseClient, { test: 'data' }, 'command');
+      const result = await service.attemptInsert(mockSupabaseClient, { command_id: 'test-id' }, 'command');
       
-      expect(result).toEqual({ success: true, method: 'extended' });
+      expect(result).toEqual({ success: true, method: 'standard' });
     });
 
-    it('should fall back to basic method', async () => {
-      mockSupabaseClient.insert
-        .mockResolvedValueOnce({ error: new Error('Extended failed') })
-        .mockResolvedValueOnce({ error: null });
-      
-      const result = await service.attemptInsert(mockSupabaseClient, { test: 'data' }, 'command');
-      
-      expect(result).toEqual({ success: true, method: 'basic' });
-    });
-
-    it('should fail when both methods fail', async () => {
-      const error = new Error('Both failed');
+    it('should fail when insert fails', async () => {
+      const error = new Error('Insert failed');
       mockSupabaseClient.insert.mockResolvedValue({ error });
       
-      const result = await service.attemptInsert(mockSupabaseClient, { test: 'data' }, 'command');
+      const result = await service.attemptInsert(mockSupabaseClient, { command_id: 'test-id' }, 'command');
       
       expect(result).toEqual({ success: false, reason: 'database_error', error });
+    });
+
+    it('should handle unexpected errors', async () => {
+      const error = new Error('Unexpected error');
+      mockSupabaseClient.insert.mockRejectedValue(error);
+      
+      const result = await service.attemptInsert(mockSupabaseClient, { command_id: 'test-id' }, 'command');
+      
+      expect(result).toEqual({ success: false, reason: 'unexpected_error', error });
     });
   });
 
   describe('attemptUpdate', () => {
-    it('should succeed with extended method', async () => {
+    it('should succeed with standard method', async () => {
       const mockChain = { eq: jest.fn().mockResolvedValue({ error: null }) };
       mockSupabaseClient.update.mockReturnValue(mockChain);
       
@@ -452,34 +426,13 @@ describe('AnalyticsService', () => {
         errorMessage: null
       });
       
-      expect(result).toEqual({ success: true, method: 'extended' });
+      expect(result).toEqual({ success: true, method: 'standard' });
     });
 
-    it('should fall back to basic method', async () => {
-      const mockChainExtended = { eq: jest.fn().mockResolvedValue({ error: new Error('Extended failed') }) };
-      const mockChainBasic = { eq: jest.fn().mockResolvedValue({ error: null }) };
-      
-      mockSupabaseClient.update
-        .mockReturnValueOnce(mockChainExtended)
-        .mockReturnValueOnce(mockChainBasic);
-      
-      const result = await service.attemptUpdate(mockSupabaseClient, 'test-id', {
-        success: false,
-        duration: 2000,
-        errorMessage: 'Error'
-      });
-      
-      expect(result).toEqual({ success: true, method: 'basic' });
-    });
-
-    it('should fail when both methods fail', async () => {
-      const error = new Error('Both methods failed');
-      const mockChainExtended = { eq: jest.fn().mockResolvedValue({ error: new Error('Extended failed') }) };
-      const mockChainBasic = { eq: jest.fn().mockResolvedValue({ error }) };
-      
-      mockSupabaseClient.update
-        .mockReturnValueOnce(mockChainExtended)
-        .mockReturnValueOnce(mockChainBasic);
+    it('should fail when update fails', async () => {
+      const error = new Error('Update failed');
+      const mockChain = { eq: jest.fn().mockResolvedValue({ error }) };
+      mockSupabaseClient.update.mockReturnValue(mockChain);
       
       const result = await service.attemptUpdate(mockSupabaseClient, 'test-id', {
         success: false,
@@ -491,9 +444,9 @@ describe('AnalyticsService', () => {
     });
 
     it('should handle unexpected errors', async () => {
-      const unexpectedError = new Error('Unexpected error');
+      const error = new Error('Unexpected error');
       mockSupabaseClient.update.mockImplementation(() => {
-        throw unexpectedError;
+        throw error;
       });
       
       const result = await service.attemptUpdate(mockSupabaseClient, 'test-id', {
@@ -502,7 +455,7 @@ describe('AnalyticsService', () => {
         errorMessage: 'Error'
       });
       
-      expect(result).toEqual({ success: false, reason: 'unexpected_error', error: unexpectedError });
+      expect(result).toEqual({ success: false, reason: 'unexpected_error', error });
     });
   });
 

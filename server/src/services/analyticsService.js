@@ -186,74 +186,54 @@ export class AnalyticsService {
   }
 
   /**
-   * 尝试插入记录（带降级策略）
+   * 尝试插入记录（使用现有表结构字段）
    */
   async attemptInsert(supabase, basicMetrics, commandText) {
     try {
-      // 尝试插入完整信息
-      const { error: extendedError } = await supabase
-        .from('command_metrics')
-        .insert({
-          ...basicMetrics,
-          command_text: commandText,
-          start_time: new Date().toISOString()
-        });
+      // 只使用表中实际存在的字段
+      const metricsToInsert = {
+        command_id: basicMetrics.command_id,
+        command_length: commandText ? commandText.length : 0,
+        processing_duration: null, // 开始时还不知道处理时间
+        success: null, // 开始时还不知道结果
+        created_at: new Date().toISOString()
+      };
 
-      if (!extendedError) {
-        return { success: true, method: 'extended' };
+      const { error } = await supabase
+        .from('command_metrics')
+        .insert(metricsToInsert);
+
+      if (!error) {
+        return { success: true, method: 'standard' };
       }
 
-      // 降级到基础信息
-      const { error: basicError } = await supabase
-        .from('command_metrics')
-        .insert(basicMetrics);
-
-      if (!basicError) {
-        this.logger.warn('[AnalyticsService] Used basic metrics fallback');
-        return { success: true, method: 'basic' };
-      }
-
-      return { success: false, reason: 'database_error', error: basicError };
+      return { success: false, reason: 'database_error', error };
     } catch (error) {
       return { success: false, reason: 'unexpected_error', error };
     }
   }
 
   /**
-   * 尝试更新记录（带降级策略）
+   * 尝试更新记录（使用现有表结构字段）
    */
   async attemptUpdate(supabase, commandId, { success, duration, errorMessage }) {
     try {
-      // 尝试更新完整信息
-      const { error: extendedError } = await supabase
+      // 只使用表中实际存在的字段
+      const updateData = {
+        success: success,
+        processing_duration: duration
+      };
+
+      const { error } = await supabase
         .from('command_metrics')
-        .update({
-          end_time: new Date().toISOString(),
-          success: success,
-          processing_duration: duration,
-          error_message: errorMessage
-        })
+        .update(updateData)
         .eq('command_id', commandId);
 
-      if (!extendedError) {
-        return { success: true, method: 'extended' };
+      if (!error) {
+        return { success: true, method: 'standard' };
       }
 
-      // 降级到基础信息
-      const { error: basicError } = await supabase
-        .from('command_metrics')
-        .update({
-          success: success,
-          processing_duration: duration
-        })
-        .eq('command_id', commandId);
-
-      if (!basicError) {
-        this.logger.warn('[AnalyticsService] Used basic update fallback');
-        return { success: true, method: 'basic' };
-      }
-
-      return { success: false, reason: 'database_error', error: basicError };
+      return { success: false, reason: 'database_error', error };
     } catch (error) {
       return { success: false, reason: 'unexpected_error', error };
     }
