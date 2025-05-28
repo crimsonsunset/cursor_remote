@@ -1,5 +1,5 @@
 # Cursor远程控制项目
-> 通过 Supabase 实现手机远程控制 Cursor 的解决方案。
+> 基于 Supabase 的无服务器远程控制解决方案，通过手机远程控制 Cursor 应用。
 
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
@@ -8,12 +8,18 @@
 
 [Read this in English](README.en.md)
 
-## 🚨 首次使用须知
-如果您是第一次设置此项目，**请先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库**，否则客户端将无法连接。
+## 🏗️ 架构升级说明
+**重要变更**: 项目已升级为**完全基于Supabase的无服务器架构**，去除了对Express服务器的依赖，系统更加简洁和稳定。
 
-📖 **快速开始**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前部署状态和待办事项。
+📖 **完整文档**: 查看 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 了解新架构设计。
 
 📚 **文档导航**: 查看 [文档目录](docs/README.md) 了解完整的文档结构。
+
+## 🚨 快速开始
+如果您是第一次设置此项目：
+1. **数据库配置**: 先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库
+2. **架构了解**: 阅读 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 理解系统设计
+3. **部署状态**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前状态
 
 ## Demo 体验
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
@@ -55,60 +61,102 @@ Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜�
 - **状态仪表盘**: 多标签页显示详细系统信息
 - **错误诊断**: 自动检测并提供解决方案
 
+## 🏗️ 新架构特性
+
+### 无服务器设计
+- **纯Supabase BaaS**: 无需Express服务器，降低部署复杂度
+- **实时数据同步**: 基于PostgreSQL的原生实时订阅
+- **自动API生成**: Supabase自动生成REST API和RPC函数
+- **行级安全**: 内置的安全策略和权限控制
+
+### 优化的数据流
+```
+手机客户端 → Supabase云端 → Node.js监听服务 → AppleScript → Cursor
+```
+
 ## 一键部署到 Vercel (客户端)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fterryso%2Fcursor_remote&env=SUPABASE_URL,SUPABASE_ANON_KEY&envDescription=SUPABASE_URL%20is%20your%20Supabase%20project%20URL.%20SUPABASE_ANON_KEY%20is%20your%20Supabase%20project%20anon%20key.&project-name=cursor-remote-client&repository-name=cursor-remote-client)
 
 点击上面的按钮将 **客户端** 项目部署到 Vercel。您需要为客户端提供以下环境变量：
 
-- `SUPABASE_URL`: 您的 Supabase 项目 URL。
-- `SUPABASE_ANON_KEY`: 您的 Supabase 项目公开匿名 (public anon) 密钥。
-
-这些密钥用于客户端连接到您的 Supabase 后端。
+- `SUPABASE_URL`: 您的 Supabase 项目 URL
+- `SUPABASE_ANON_KEY`: 您的 Supabase 项目公开匿名密钥
 
 ## 项目结构
 
-- `server/`: 服务器端代码，负责监听 Supabase 命令并使用 AppleScript 控制目标编辑器。
-  - `src/services/supabaseService.js`: 主服务器逻辑，连接到 Supabase 并订阅命令。
-  - `src/controllers/commandController.js`: 处理从 Supabase 接收到的命令并调用 AppleScript 执行。
-  - `src/appleScriptRunner.js`: 执行 AppleScript 脚本的模块。
-  
-- `client/`: 手机客户端代码 (Web 界面)。
-  - `index.html`: Web 界面，包含命令发送、历史管理、系统监控等功能。
-  - `app.js`: 客户端 JavaScript 代码，与 Supabase 交互。
-  - `enhancement.js`: 增强功能模块，提供智能建议和数据管理。
-  - `systemMonitor.js`: 系统监控模块，实时显示系统状态和性能指标。
-  - `connection-test.js`: 连接测试模块，诊断 Supabase 连接问题。
-  - `styles.css`: 样式表。
-  - `env-config.js`: 包含 Supabase 连接配置。**注意**: 通过 Vercel 部署时，环境变量会优先于此文件中的硬编码值。
-  
-- `scripts/`: AppleScript 脚本。
-  - `send_command_to_editor.scpt`: (或 `send_chat.scpt` 如果未重命名) 发送命令到配置的目标编辑器的脚本。
+```plaintext
+CursorRemote/
+├── client/                     # 前端应用（纯JavaScript）
+│   ├── index.html              # 主界面
+│   ├── app.js                  # 核心应用逻辑
+│   ├── enhancement.js          # 增强功能模块
+│   ├── systemMonitor.js        # 系统监控
+│   └── styles.css              # 样式文件
+├── server/                     # 轻量级监听服务
+│   ├── src/services/
+│   │   └── supabaseService.js  # Supabase监听服务
+│   ├── auto-restart.js         # 自动重启机制
+│   └── connection-monitor.js   # 连接监控
+├── database/                   # 数据库配置
+│   ├── tables.sql              # 表结构定义
+│   └── functions.sql           # RPC函数定义
+├── docs/                       # 完整项目文档
+│   ├── COMPLETE_ARCHITECTURE.md  # 主架构文档
+│   ├── ROADMAP_2025.md          # 功能路线图
+│   └── auto-restart-guide.md    # 部署指南
+└── scripts/                    # AppleScript集成
+```
+
+### 关键变更说明
+- **无Express依赖**: 客户端直接调用Supabase API和RPC函数
+- **轻量级服务**: Node.js仅作为监听服务，无HTTP服务器
+- **数据库驱动**: 所有业务逻辑通过Supabase函数实现
+- **简化部署**: 前端静态部署，后端轻量级本地服务
 
 ## 重要前提条件
 
-- **操作系统**: 此解决方案仅在 **macOS** 上经过测试和支持。
-- **目标应用程序**: 您的 Mac 上必须已安装您希望控制的编辑器，例如 **Cursor** 或 **Visual Studio Code**。
-- **运行状态**: 为了使 AppleScript 能够控制目标编辑器，**该应用程序必须正在运行**。
-- **快捷键配置**: 为确保聊天模式能正确切换，您可能需要在目标编辑器的设置中配置（或保留默认的）以下快捷键：
-    - Agent 模式 (例如 Cursor): `⌘+I`
-    - Ask/Chat 模式 (例如 Cursor): `⌘+K` 或 `⌘+⇧+K`
-    - **VS Code**: 您可能需要配置 GitHub Copilot Chat 或其他 AI 助手的快捷键以匹配 AppleScript 中的操作。
-- **默认编辑器配置**: 您可以在项目根目录的 `.env` 文件中设置 `DEFAULT_EDITOR` 变量 (例如 `DEFAULT_EDITOR=VSCode` 或 `DEFAULT_EDITOR=Cursor`) 来指定服务启动时默认控制的编辑器。如果命令中包含 `target_editor` 参数，则会优先使用该参数指定的编辑器。
+- **操作系统**: 此解决方案仅在 **macOS** 上经过测试和支持
+- **目标应用程序**: 您的 Mac 上必须已安装 **Cursor** 或 **Visual Studio Code**
+- **运行状态**: AppleScript 需要目标编辑器处于运行状态
+- **快捷键配置**: 确保以下快捷键可用：
+    - Agent 模式 (Cursor): `⌘+I`
+    - Chat 模式 (Cursor): `⌘+K` 或 `⌘+⇧+K`
+    - VS Code: 需要配置 GitHub Copilot Chat 快捷键
 
 ## Supabase 数据库配置
 
 ⚠️ **重要提示**: 请按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 完成Supabase数据库的详细配置，包括：
-- 创建必要的数据表 (`commands`, `results` 等)
-- 配置RPC函数
+- 创建必要的数据表 (`commands`, `results`, `user_favorites`, `command_templates`)
+- 配置RPC函数 (分析、历史、模板管理等)
 - 设置Realtime订阅
 - 配置RLS (Row Level Security) 策略
 
+### 新增数据表
+```sql
+-- 用户收藏命令
+CREATE TABLE user_favorites (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    command_text TEXT NOT NULL,
+    category VARCHAR(50),
+    description TEXT,
+    usage_count INTEGER DEFAULT 0
+);
+
+-- 命令模板
+CREATE TABLE command_templates (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    template_text TEXT NOT NULL,
+    category VARCHAR(50),
+    variables JSONB,
+    usage_count INTEGER DEFAULT 0
+);
+```
+
 ## Cursor MCP 配置 (用于结果返回)
 
-为了让 Cursor 能够将执行的命令结果写回到您的 Supabase 项目 (例如，写入 `results` 表)，您需要在 Cursor 的设置中配置 Supabase 的MCP服务器。这样，客户端才能接收到来自 Cursor 的反馈。
-
-在 Cursor 的 MCP 设置中，添加以下配置：
+为了让 Cursor 能够将执行的命令结果写回到您的 Supabase 项目，需要在 Cursor 的 MCP 设置中添加以下配置：
 
 ```json
 {
@@ -127,120 +175,118 @@ Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜�
 ```
 
 **重要提示**: 
-- 将 `"your-supabase-access-token"` 替换为您 Supabase 项目的有效访问令牌。您可以在 Supabase 控制面板的 [账户设置 > Access Tokens](https://supabase.com/dashboard/account/tokens) 页面生成个人访问令牌。此令牌将授予 MCP 服务器向您的 Supabase 数据库写入数据的权限。请确保此令牌具有写入 `results` 表（或您用于存储结果的任何其他表）的必要权限，并妥善保管。
-- MCP 服务器 (`@supabase/mcp-server-supabase`) 会在 Cursor 执行动作后，使用此令牌将结果发送回您的 Supabase 实例。
+- 将 `"your-supabase-access-token"` 替换为您 Supabase 项目的有效访问令牌
+- 此令牌用于 MCP 服务器向您的 Supabase 数据库写入执行结果
+- 可在 [Supabase 控制面板](https://supabase.com/dashboard/account/tokens) 生成访问令牌
 
-## 支持的功能
+## 🚀 功能路线图
 
-### 聊天模式与目标编辑器
+查看我们的 [2025年功能路线图](docs/ROADMAP_2025.md) 了解项目发展计划：
 
-通过 AppleScript (`send_command_to_editor.scpt` 或 `send_chat.scpt`) 支持向配置的目标编辑器（如 Cursor, VS Code）发送命令。支持的模式通常包括：
+### 短期目标 (1-3个月)
+- 🎨 用户体验优化 (文件上传、快捷命令)
+- 🤖 智能AI助手集成 (多AI引擎支持)
+- 🎮 深度编辑器集成 (文件系统操作)
 
-- `agent`: Agent/通用AI助手模式 (例如 Cursor 中的 ⌘+I)
-- `chat` 或 `ask`: 上下文聊天/提问模式 (例如 Cursor 中的 ⌘+K 或 ⌘+⇧+K)
+### 中期目标 (3-6个月)
+- 👥 多用户支持与认证
+- 📱 PWA与离线支持
+- 🔧 会话管理系统
 
-具体的快捷键和行为可能需要根据目标编辑器及其AI助手（如 GitHub Copilot Chat）的配置进行调整。
-
-客户端发送命令时，可以在 `raw_command` JSON 对象中通过 `target_editor` 字段指定目标编辑器 (例如 `"target_editor": "VSCode"`)，并通过 `chatMode` 字段指定模式。如果未指定 `target_editor`，则会使用服务器端 `.env` 文件中配置的 `DEFAULT_EDITOR`，如果 `.env` 中也未配置，则默认为 "Cursor"。
-
-## 🚀 未来展望：我们的 Roadmap
-
-我们深知，远程控制的可能性远不止于此！为了让这个项目更加强大和普惠，我们有以下激动人心的计划：
-
-*   **💻 支持更多 AI 编辑器/助手：**
-    *   **Visual Studio Code (VS Code):** 将远程控制能力扩展到广受欢迎的 VS Code，通过其强大的 API 实现更精细的编辑器控制和任务执行。
-    *   **Deepchat:** 集成对 Deepchat ([https://github.com/thinkinaixyz/deepchat](https://github.com/thinkinaixyz/deepchat)) 的支持。Deepchat 作为一个智能助手，连接了强大的AI与个人世界，我们的目标是让用户也能远程与 Deepchat 互动，利用其 MCP（Model Controller Platform）的特性。
-    *   **Trae 及其他 AI 工具:** 探索并逐步支持更多新兴的 AI 代码编辑器和开发助手，让远程控制覆盖更广泛的 AI 开发场景。
-*   **功能增强：**
-    *   **文件系统操作：** 允许远程浏览、打开、甚至修改项目文件。
-    *   **更复杂的指令支持：** 例如，远程执行代码片段、运行测试、控制版本管理等。
-    *   **双向通信增强：** 更丰富的结果反馈，甚至支持流式输出。
-*   **易用性提升：**
-    *   **更便捷的配置流程：** 简化服务器和客户端的安装配置。
-    *   **更完善的错误处理和提示。**
-*   **安全性强化：** 持续关注并提升数据传输和指令执行的安全性。
-
-我们相信，通过社区的共同努力，这个项目将能连接更多优秀的AI工具，为大家带来前所未有的远程协作体验！
+### 长期目标 (6个月以上)
+- 🌐 跨平台编辑器支持 (JetBrains系列)
+- 🔌 插件系统架构
+- 🏢 企业级功能
 
 ## 安装与使用
 
 ### 服务器端
 
-1.  进入服务器目录:
+1. 进入服务器目录并安装依赖:
     ```bash
-    cd server
+    cd server && npm install
     ```
-2.  安装依赖:
-    ```bash
-    npm install
-    ```
-3.  配置环境变量:
-    在 `server/` 目录的同级，即项目根目录下创建一个 `.env` 文件，并添加以下内容，替换为您的实际 Supabase 信息:
+
+2. 配置环境变量:
+    在项目根目录创建 `.env` 文件:
     ```env
     SUPABASE_URL=https://your-project-id.supabase.co
     SUPABASE_SERVICE_KEY=your-supabase-service-role-key
-    DEFAULT_EDITOR=Cursor # 或 VSCode, VSCode-Insiders 等
+    DEFAULT_EDITOR=Cursor
     ```
-    **重要**: 
-    - `SUPABASE_SERVICE_KEY` 是您的服务角色密钥 (Service Role Key)，具有完全访问权限，请妥善保管，不要泄露。
-    - `DEFAULT_EDITOR` (可选) 用于指定服务器默认控制的编辑器。可接受的值包括 `Cursor`, `VSCode`, `VSCode-Insiders`。如果客户端请求中指定了 `target_editor`，则会覆盖此默认值。
 
-4.  启动服务器:
+3. 启动监听服务:
     ```bash
-    npm start 
-    # 或者 npm run dev (使用 nodemon 自动重启)
+    # 开发模式（自动重启）
+    npm run dev
+    
+    # 生产模式（带自动重启监控）
+    npm run production
+    
+    # 手动启动
+    npm start
     ```
 
 ### 客户端
 
-1.  **通过 Vercel 部署 (推荐)**:
-    *   点击本 README 文件顶部的 "Deploy with Vercel" 按钮。
-    *   在 Vercel 的配置向导中，提供您的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。Vercel 会将这些作为环境变量注入到您的客户端应用中。
+1. **通过 Vercel 部署 (推荐)**:
+    - 点击上方的 "Deploy with Vercel" 按钮
+    - 配置 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` 环境变量
 
-2.  **本地配置/其他部署**:
-    *   如果您不通过 Vercel 部署，或者需要在本地运行客户端，请修改 `client/env-config.js` 文件，填入您的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。
-    ```javascript
-    // client/env-config.js
-    window.SUPABASE_URL = 'https://your-project-id.supabase.co';
-    window.SUPABASE_ANON_KEY = 'your-public-anon-key';
-    ```
-    *   然后，您可以使用任何静态文件服务器（如 Live Server VScode 插件，或 `npx serve client/`）来运行客户端，或者将其部署到其他静态托管平台。
+2. **本地运行**:
+    - 修改 `client/env-config.js` 配置文件
+    - 使用静态文件服务器运行: `npx serve client/`
 
 ## 工作原理
 
-### 核心流程
-1.  手机客户端 (Web 界面) 通过 Supabase 客户端库将用户操作（如点击按钮）转换为命令，并将命令数据插入到 Supabase 数据库的 `commands` 表中。
-2.  部署在您电脑上的服务器程序 (`server/src/services/supabaseService.js`) 使用 Supabase Realtime 功能实时监听 `commands` 表中状态为 'pending' 的新插入记录。
-3.  当服务器接收到新命令后，`commandController.js` 解析命令（包括确定目标编辑器和聊天模式）并通过 `appleScriptRunner.js` 调用相应的 AppleScript 脚本 (`scripts/` 目录下的 `.scpt` 文件) 来控制本机的目标编辑器应用。
-4.  命令执行状态（如 'completed' 或 'error'）以及可能的错误信息会由服务器更新回 `commands` 表中对应的记录。
-5.  (可选) 如果命令有执行结果需要返回给客户端，服务器可以将结果插入到 `results` 表中。客户端可以监听 `results` 表的变化以接收这些结果。
+### 核心架构流程
+```mermaid
+sequenceDiagram
+    participant C as 客户端
+    participant S as Supabase
+    participant N as Node.js监听服务
+    participant A as AppleScript
+    participant CR as Cursor
+    
+    C->>S: 插入命令 (status='pending')
+    S->>N: 实时通知新命令
+    N->>S: 更新状态 (status='processing')
+    N->>A: 执行AppleScript
+    A->>CR: 控制Cursor执行
+    A->>N: 返回执行结果
+    N->>S: 插入结果 + 更新状态
+    S->>C: 实时推送状态变更
+```
 
-### 增强功能
-- **智能建议**: `enhancement.js` 分析历史命令，提供自动补全和智能建议
-- **系统监控**: `systemMonitor.js` 实时收集和显示系统性能指标
-- **连接诊断**: `connection-test.js` 自动检测连接问题并提供解决方案
-- **历史管理**: 支持命令历史搜索、过滤和删除功能
-- **状态仪表盘**: 多标签页展示概览、分析、队列和系统信息
+### 新架构优势
+- **减少延迟**: 客户端直接与Supabase交互
+- **提高稳定性**: 无单点故障，Supabase提供高可用性
+- **简化部署**: 前端静态部署，后端轻量级服务
+- **自动扩展**: Supabase自动处理负载和扩展
 
 ## 📚 文档和维护
 
-### 文档结构
-- [`docs/`](docs/) - 完整文档目录
-  - [`architecture/`](docs/architecture/) - 系统架构文档
-  - [`deployment/`](docs/deployment/) - 部署和设置指南
-  - [`fixes/`](docs/fixes/) - 问题修复文档
-  - [`testing/`](docs/testing/) - 测试指南
+### 核心文档
+- [📐 完整架构文档](docs/COMPLETE_ARCHITECTURE.md) - 系统设计蓝图
+- [🚀 功能路线图](docs/ROADMAP_2025.md) - 发展规划
+- [🔄 自动重启指南](docs/auto-restart-guide.md) - 服务监控
+
+### 专业文档
+- [`docs/deployment/`](docs/deployment/) - 部署和设置指南
+- [`docs/testing/`](docs/testing/) - 测试策略文档
+- [`docs/fixes/`](docs/fixes/) - 问题修复记录
 
 ### 维护工具
-- [`scripts/maintenance/`](scripts/maintenance/) - 维护脚本
-  - `check-status.sh` - 系统状态检查
-  - `fix-db.sh` - 数据库修复工具
-
-### 项目报告
-- [功能完成报告](docs/FUNCTIONALITY_COMPLETION_REPORT.md) - 项目完成状态
-- [清理报告](docs/CLEANUP_REPORT.md) - 代码清理详情
-- [最终解决方案](docs/FINAL_SOLUTION.md) - 关键问题解决方案
+项目包含完善的监控和维护机制：
+- **自动重启**: `npm run production` 启动带监控的服务
+- **连接监控**: 实时监控Supabase连接状态
+- **故障恢复**: 自动检测和修复卡住的命令
+- **性能分析**: 内置的系统指标收集和展示
 
 ## License
 
-本项根据 [MIT License](LICENSE) 授权。
+本项目根据 [MIT License](LICENSE) 授权。
+
+---
+
+*🎯 追求简洁高效的远程控制体验！*
