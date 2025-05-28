@@ -9,17 +9,26 @@
 [Read this in English](README.en.md)
 
 ## 🏗️ 架构升级说明
-**重要变更**: 项目已升级为**完全基于Supabase的无服务器架构**，去除了对Express服务器的依赖，系统更加简洁和稳定。
+**重要变更**: 项目已完成**从Redis到Supabase的完整迁移**，实现了完全基于Supabase的无服务器架构，系统更加安全、简洁和稳定。
 
-📖 **完整文档**: 查看 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 了解新架构设计。
+📖 **完整文档**: 查看 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 了解新架构的详细设计。
 
-📚 **文档导航**: 查看 [文档目录](docs/README.md) 了解完整的文档结构。
+📚 **文档导航**: 查看 [文档中心](docs/README.md) 了解完整的文档结构和组织。
+
+📋 **需求文档**: 查看 [需求文档中心](docs/requirements/README.md) 了解完整的产品需求、用户故事和技术规范。
 
 ## 🚨 快速开始
 如果您是第一次设置此项目：
-1. **数据库配置**: 先按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库
-2. **架构了解**: 阅读 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 理解系统设计
-3. **部署状态**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前状态
+
+### 📚 理解项目
+1. **项目背景**: 阅读 [需求文档导航](docs/requirements/README.md) 了解项目背景和目标
+2. **架构概览**: 阅读 [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) 理解系统设计
+3. **技术实施**: 查看 [用户故事和史诗分解](docs/requirements/USER_STORIES.md) 了解功能实现
+
+### ⚙️ 环境配置
+1. **数据库设置**: 按照 [数据库设置指南](docs/deployment/SETUP_DATABASE.md) 配置Supabase数据库
+2. **部署状态**: 查看 [部署状态](docs/deployment/DEPLOYMENT_STATUS.md) 了解当前配置
+3. **测试验证**: 参考 [浏览器测试指南](docs/testing/BROWSER_TEST_GUIDE.md) 验证功能
 
 ## Demo 体验
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
@@ -63,7 +72,7 @@ Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜�
 
 ## 🏗️ 新架构特性
 
-### 无服务器设计
+### 完全基于Supabase的无服务器设计
 - **纯Supabase BaaS**: 无需Express服务器，降低部署复杂度
 - **实时数据同步**: 基于PostgreSQL的原生实时订阅
 - **自动API生成**: Supabase自动生成REST API和RPC函数
@@ -73,6 +82,12 @@ Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜�
 ```
 手机客户端 → Supabase云端 → Node.js监听服务 → AppleScript → Cursor
 ```
+
+### 迁移成果
+✅ **安全性提升** - 解决Redis公网暴露问题  
+✅ **架构简化** - 去除Express依赖，纯Supabase实现  
+✅ **功能完整** - 29个用户故事全部完成（4个史诗）  
+✅ **文档完善** - 完整的需求、架构和技术文档  
 
 ## 一键部署到 Vercel (客户端)
 
@@ -101,18 +116,38 @@ CursorRemote/
 ├── database/                   # 数据库配置
 │   ├── tables.sql              # 表结构定义
 │   └── functions.sql           # RPC函数定义
-├── docs/                       # 完整项目文档
-│   ├── COMPLETE_ARCHITECTURE.md  # 主架构文档
-│   ├── ROADMAP_2025.md          # 功能路线图
-│   └── auto-restart-guide.md    # 部署指南
-└── scripts/                    # AppleScript集成
+├── docs/                       # 📚 完整项目文档
+│   ├── README.md               # 文档导航中心
+│   ├── COMPLETE_ARCHITECTURE.md  # 完整架构文档
+│   ├── ROADMAP_2025.md         # 2025功能路线图
+│   ├── auto-restart-guide.md   # 自动重启指南
+│   ├── requirements/           # 📋 需求文档体系
+│   │   ├── README.md          # 需求文档导航
+│   │   ├── PRODUCT_REQUIREMENTS.md  # 产品需求文档
+│   │   ├── USER_STORIES.md    # 用户故事 (29个故事)
+│   │   └── EPICS_BREAKDOWN.md # 史诗技术分解
+│   ├── deployment/             # 🚀 部署指南
+│   ├── testing/                # 🧪 测试文档
+│   └── fixes/                  # 🔧 问题修复记录
+├── scripts/                    # AppleScript集成
+└── bmad-agent/                 # BMad方法论代理系统
+    ├── personas/               # 代理人格配置
+    ├── tasks/                  # 任务定义
+    ├── templates/              # 文档模板
+    └── data/                   # 知识库数据
 ```
 
-### 关键变更说明
-- **无Express依赖**: 客户端直接调用Supabase API和RPC函数
-- **轻量级服务**: Node.js仅作为监听服务，无HTTP服务器
-- **数据库驱动**: 所有业务逻辑通过Supabase函数实现
-- **简化部署**: 前端静态部署，后端轻量级本地服务
+### 📋 文档组织亮点
+- **requirements/** - 完整的需求文档体系，包含产品需求、用户故事和技术分解
+- **COMPLETE_ARCHITECTURE.md** - 16个章节的comprehensive架构文档
+- **角色导向** - 针对不同角色（PM、架构师、开发者、测试）提供专门的阅读指南
+- **标准化格式** - 统一的文档格式和版本控制
+
+### 关键架构变更
+- **✅ 完全去除Express依赖** - 客户端直接调用Supabase API和RPC函数
+- **✅ 轻量级Node.js服务** - 仅作为监听服务，无HTTP服务器
+- **✅ 数据库驱动架构** - 所有业务逻辑通过Supabase函数实现
+- **✅ 简化部署模式** - 前端静态部署，后端轻量级本地服务
 
 ## 重要前提条件
 
@@ -266,17 +301,41 @@ sequenceDiagram
 
 ## 📚 文档和维护
 
-### 核心文档
-- [📐 完整架构文档](docs/COMPLETE_ARCHITECTURE.md) - 系统设计蓝图
-- [🚀 功能路线图](docs/ROADMAP_2025.md) - 发展规划
-- [🔄 自动重启指南](docs/auto-restart-guide.md) - 服务监控
+### 🎯 核心文档导航
 
-### 专业文档
-- [`docs/deployment/`](docs/deployment/) - 部署和设置指南
-- [`docs/testing/`](docs/testing/) - 测试策略文档
-- [`docs/fixes/`](docs/fixes/) - 问题修复记录
+#### 📋 需求和设计文档
+- [📖 需求文档中心](docs/requirements/README.md) - 需求文档导航和使用指南
+- [📐 完整架构文档](docs/COMPLETE_ARCHITECTURE.md) - 系统架构设计蓝图（16个章节）
+- [📋 产品需求文档](docs/requirements/PRODUCT_REQUIREMENTS.md) - 完整的产品需求规范
+- [📝 用户故事文档](docs/requirements/USER_STORIES.md) - 29个用户故事和4个史诗
+- [🔧 史诗技术分解](docs/requirements/EPICS_BREAKDOWN.md) - 详细的技术实施方案
 
-### 维护工具
+#### 🚀 部署和运维文档
+- [🚀 数据库设置指南](docs/deployment/SETUP_DATABASE.md) - Supabase配置详细说明
+- [📊 部署状态文档](docs/deployment/DEPLOYMENT_STATUS.md) - 当前部署状态和配置
+- [🔄 自动重启指南](docs/auto-restart-guide.md) - 服务监控和自动重启
+- [🧪 浏览器测试指南](docs/testing/BROWSER_TEST_GUIDE.md) - 功能测试方法
+
+#### 🔧 技术支持文档
+- [📚 文档组织说明](docs/README.md) - 完整的文档结构和使用指南
+- [🚀 2025功能路线图](docs/ROADMAP_2025.md) - 项目发展规划
+- [🔧 问题修复记录](docs/fixes/) - 技术问题解决方案集合
+
+### 🎭 角色导向的文档使用指南
+
+#### 👔 项目经理/产品经理
+1. [需求文档导航](docs/requirements/README.md) → [产品需求文档](docs/requirements/PRODUCT_REQUIREMENTS.md) → [用户故事](docs/requirements/USER_STORIES.md)
+
+#### 🏗️ 技术架构师/开发负责人
+1. [完整架构文档](docs/COMPLETE_ARCHITECTURE.md) → [史诗技术分解](docs/requirements/EPICS_BREAKDOWN.md) → [部署指南](docs/deployment/)
+
+#### 💻 开发工程师
+1. [史诗技术分解](docs/requirements/EPICS_BREAKDOWN.md) → [架构文档](docs/COMPLETE_ARCHITECTURE.md) → [用户故事](docs/requirements/USER_STORIES.md)
+
+#### 🧪 测试工程师
+1. [用户故事验收标准](docs/requirements/USER_STORIES.md) → [测试指南](docs/testing/) → [史诗分解](docs/requirements/EPICS_BREAKDOWN.md)
+
+### 🔄 维护工具和机制
 项目包含完善的监控和维护机制：
 - **自动重启**: `npm run production` 启动带监控的服务
 - **连接监控**: 实时监控Supabase连接状态
@@ -289,4 +348,4 @@ sequenceDiagram
 
 ---
 
-*🎯 追求简洁高效的远程控制体验！*
+*🎯 追求简洁高效的远程控制体验！基于BMad方法论的增量式架构设计完成*

@@ -1,5 +1,5 @@
 # Cursor Remote Control Project
-> A solution to remotely control Cursor from your mobile phone using Supabase.
+> A Supabase-based serverless remote control solution for controlling Cursor applications from mobile phones.
 
 [![GitHub stars](https://img.shields.io/github/stars/terryso/cursor_remote.svg)](https://github.com/terryso/cursor_remote/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/terryso/cursor_remote/pulls)
@@ -8,12 +8,27 @@
 
 [阅读中文版 (Read in Chinese)](README.md)
 
-## 🚨 First-Time Setup Notice
-If you are setting up this project for the first time, **please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to configure your Supabase database first**, otherwise the client will not be able to connect.
+## 🏗️ Architecture Upgrade Notice
+**Important Update**: The project has **completed the full migration from Redis to Supabase**, implementing a completely Supabase-based serverless architecture that is more secure, simple, and stable.
 
-📖 **Quick Start**: Check [Deployment Status](docs/deployment/DEPLOYMENT_STATUS.md) to understand current deployment status and tasks.
+📖 **Complete Documentation**: See [Complete Architecture Document](docs/COMPLETE_ARCHITECTURE.md) for detailed architecture design.
 
-📚 **Documentation**: See [Documentation Directory](docs/README.en.md) for complete documentation structure.
+📚 **Documentation Hub**: Check [Documentation Center](docs/README.md) for complete document structure and organization.
+
+📋 **Requirements Documentation**: Visit [Requirements Documentation Center](docs/requirements/README.md) for complete product requirements, user stories, and technical specifications.
+
+## 🚨 Quick Start
+If you are setting up this project for the first time:
+
+### 📚 Understanding the Project
+1. **Project Background**: Read [Requirements Documentation Guide](docs/requirements/README.md) to understand project background and goals
+2. **Architecture Overview**: Read [Complete Architecture Document](docs/COMPLETE_ARCHITECTURE.md) to understand system design
+3. **Technical Implementation**: Check [User Stories and Epic Breakdown](docs/requirements/USER_STORIES.md) to understand feature implementation
+
+### ⚙️ Environment Configuration
+1. **Database Setup**: Follow [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to configure Supabase database
+2. **Deployment Status**: Check [Deployment Status](docs/deployment/DEPLOYMENT_STATUS.md) to understand current configuration
+3. **Testing Verification**: Refer to [Browser Testing Guide](docs/testing/BROWSER_TEST_GUIDE.md) to verify functionality
 
 ## Live Demo
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
@@ -55,6 +70,25 @@ The system will automatically use Tavily search to fetch the latest information 
 - **Status Dashboard**: Multi-tab detailed system information display
 - **Error Diagnosis**: Automatic detection with solution suggestions
 
+## 🏗️ New Architecture Features
+
+### Fully Supabase-based Serverless Design
+- **Pure Supabase BaaS**: No Express server needed, reduced deployment complexity
+- **Real-time Data Sync**: Native real-time subscriptions based on PostgreSQL
+- **Auto API Generation**: Supabase automatically generates REST APIs and RPC functions
+- **Row-level Security**: Built-in security policies and permission control
+
+### Optimized Data Flow
+```
+Mobile Client → Supabase Cloud → Node.js Listener Service → AppleScript → Cursor
+```
+
+### Migration Achievements
+✅ **Enhanced Security** - Resolved Redis public exposure issues  
+✅ **Simplified Architecture** - Removed Express dependency, pure Supabase implementation  
+✅ **Complete Functionality** - All 29 user stories completed (4 epics)  
+✅ **Comprehensive Documentation** - Complete requirements, architecture, and technical documentation  
+
 ## Deploy to Vercel (Client)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fterryso%2Fcursor_remote&env=SUPABASE_URL,SUPABASE_ANON_KEY&envDescription=SUPABASE_URL%20is%20your%20Supabase%20project%20URL.%20SUPABASE_ANON_KEY%20is%20your%20Supabase%20project%20anon%20key.&project-name=cursor-remote-client&repository-name=cursor-remote-client)
@@ -68,22 +102,54 @@ These keys are used for the client to connect to your Supabase backend.
 
 ## Project Structure
 
-- `server/`: Server-side code, responsible for listening to Supabase commands and controlling the target editor using AppleScript.
-  - `src/services/supabaseService.js`: Main server logic, connects to Supabase and subscribes to commands.
-  - `src/controllers/commandController.js`: Handles commands received from Supabase and calls AppleScript for execution.
-  - `src/appleScriptRunner.js`: Module for executing AppleScript scripts.
-  
-- `client/`: Mobile client code (Web interface).
-  - `index.html`: Web interface with command sending, history management, system monitoring features.
-  - `app.js`: Client-side JavaScript code, interacts with Supabase.
-  - `enhancement.js`: Enhancement module providing intelligent suggestions and data management.
-  - `systemMonitor.js`: System monitoring module displaying real-time system status and performance metrics.
-  - `connection-test.js`: Connection testing module for diagnosing Supabase connection issues.
-  - `styles.css`: Stylesheet.
-  - `env-config.js`: Contains Supabase connection configuration. **Note**: When deploying via Vercel, environment variables will take precedence over hardcoded values in this file.
-  
-- `scripts/`: AppleScript scripts.
-  - `send_command_to_editor.scpt`: (or `send_chat.scpt` if not renamed) Script to send commands to the configured target editor.
+```plaintext
+CursorRemote/
+├── client/                     # Frontend application (pure JavaScript)
+│   ├── index.html              # Main interface
+│   ├── app.js                  # Core application logic
+│   ├── enhancement.js          # Enhancement feature module
+│   ├── systemMonitor.js        # System monitoring
+│   └── styles.css              # Stylesheet
+├── server/                     # Lightweight listener service
+│   ├── src/services/
+│   │   └── supabaseService.js  # Supabase listener service
+│   ├── auto-restart.js         # Auto-restart mechanism
+│   └── connection-monitor.js   # Connection monitoring
+├── database/                   # Database configuration
+│   ├── tables.sql              # Table structure definitions
+│   └── functions.sql           # RPC function definitions
+├── docs/                       # 📚 Complete project documentation
+│   ├── README.md               # Documentation navigation center
+│   ├── COMPLETE_ARCHITECTURE.md  # Complete architecture document
+│   ├── ROADMAP_2025.md         # 2025 feature roadmap
+│   ├── auto-restart-guide.md   # Auto-restart guide
+│   ├── requirements/           # 📋 Requirements documentation system
+│   │   ├── README.md          # Requirements documentation guide
+│   │   ├── PRODUCT_REQUIREMENTS.md  # Product requirements document
+│   │   ├── USER_STORIES.md    # User stories (29 stories)
+│   │   └── EPICS_BREAKDOWN.md # Epic technical breakdown
+│   ├── deployment/             # 🚀 Deployment guides
+│   ├── testing/                # 🧪 Testing documentation
+│   └── fixes/                  # 🔧 Issue fix records
+├── scripts/                    # AppleScript integration
+└── bmad-agent/                 # BMad methodology agent system
+    ├── personas/               # Agent persona configurations
+    ├── tasks/                  # Task definitions
+    ├── templates/              # Document templates
+    └── data/                   # Knowledge base data
+```
+
+### 📋 Documentation Organization Highlights
+- **requirements/** - Complete requirements documentation system including product requirements, user stories, and technical breakdown
+- **COMPLETE_ARCHITECTURE.md** - Comprehensive 16-chapter architecture document
+- **Role-oriented** - Specialized reading guides for different roles (PM, architects, developers, testers)
+- **Standardized Format** - Unified document format and version control
+
+### Key Architecture Changes
+- **✅ Completely Removed Express Dependency** - Client directly calls Supabase APIs and RPC functions
+- **✅ Lightweight Node.js Service** - Only serves as listener service, no HTTP server
+- **✅ Database-driven Architecture** - All business logic implemented through Supabase functions
+- **✅ Simplified Deployment Mode** - Frontend static deployment, backend lightweight local service
 
 ## Important Prerequisites
 
@@ -94,21 +160,40 @@ These keys are used for the client to connect to your Supabase backend.
     - Agent Mode (e.g., for Cursor): `⌘+I`
     - Ask/Chat Mode (e.g., for Cursor): `⌘+K` or `⌘+⇧+K`
     - **VS Code**: You might need to configure shortcuts for GitHub Copilot Chat or other AI assistants to match the actions in the AppleScript.
-- **Default Editor Configuration**: You can set the `DEFAULT_EDITOR` variable in the `.env` file in the project root (e.g., `DEFAULT_EDITOR=VSCode` or `DEFAULT_EDITOR=Cursor`) to specify the default editor the service controls on startup. If the command includes a `target_editor` parameter, it will take precedence.
 
 ## Supabase Database Configuration
 
 ⚠️ **Important Note**: Please follow the [Database Setup Guide](docs/deployment/SETUP_DATABASE.md) to complete detailed Supabase database configuration, including:
-- Creating necessary data tables (`commands`, `results`, etc.)
-- Configuring RPC functions
+- Creating necessary data tables (`commands`, `results`, `user_favorites`, `command_templates`)
+- Configuring RPC functions (analysis, history, template management, etc.)
 - Setting up Realtime subscriptions
 - Configuring RLS (Row Level Security) policies
 
+### New Data Tables
+```sql
+-- User favorite commands
+CREATE TABLE user_favorites (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    command_text TEXT NOT NULL,
+    category VARCHAR(50),
+    description TEXT,
+    usage_count INTEGER DEFAULT 0
+);
+
+-- Command templates
+CREATE TABLE command_templates (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    template_text TEXT NOT NULL,
+    category VARCHAR(50),
+    variables JSONB,
+    usage_count INTEGER DEFAULT 0
+);
+```
+
 ## Cursor MCP Configuration (for Result Return)
 
-To allow Cursor to write the execution results of commands back to your Supabase project (e.g., to the `results` table), you need to configure the Supabase Message Conduit Protocol (MCP) server in Cursor's settings. This enables the client to receive feedback from Cursor.
-
-In Cursor's MCP settings, add the following configuration:
+To allow Cursor to write the execution results of commands back to your Supabase project, you need to configure the Supabase Message Conduit Protocol (MCP) server in Cursor's settings:
 
 ```json
 {
@@ -127,121 +212,142 @@ In Cursor's MCP settings, add the following configuration:
 ```
 
 **Important Note**:
-- Replace `"your-supabase-access-token"` with a valid access token for your Supabase project. You can generate a personal access token on the Supabase dashboard under [Account Settings > Access Tokens](https://supabase.com/dashboard/account/tokens). This token grants the MCP server permission to write data to your Supabase database. Ensure this token has the necessary permissions to write to the `results` table (or any other table you use for results) and keep it secure.
-- The MCP server (`@supabase/mcp-server-supabase`) will use this token to send results back to your Supabase instance after Cursor executes an action.
+- Replace `"your-supabase-access-token"` with a valid access token for your Supabase project
+- This token is used for the MCP server to write execution results to your Supabase database
+- You can generate access tokens at [Supabase Dashboard](https://supabase.com/dashboard/account/tokens)
 
-## Supported Features
+## 🚀 Feature Roadmap
 
-### Chat Modes and Target Editors
+Check our [2025 Feature Roadmap](docs/ROADMAP_2025.md) for project development plans:
 
-Commands can be sent to a configured target editor (e.g., Cursor, VS Code) via AppleScript (`send_command_to_editor.scpt` or `send_chat.scpt`). Supported modes typically include:
+### Short-term Goals (1-3 months)
+- 🎨 User Experience Optimization (file upload, quick commands)
+- 🤖 Intelligent AI Assistant Integration (multi-AI engine support)
+- 🎮 Deep Editor Integration (file system operations)
 
-- `agent`: Agent/General AI assistant mode (e.g., ⌘+I in Cursor)
-- `chat` or `ask`: Contextual chat/ask mode (e.g., ⌘+K or ⌘+⇧+K in Cursor)
+### Medium-term Goals (3-6 months)
+- 👥 Multi-user Support and Authentication
+- 📱 PWA and Offline Support
+- 🔧 Session Management System
 
-Specific shortcuts and behaviors might need adjustments based on the target editor and its AI assistant (like GitHub Copilot Chat) configuration.
-
-When the client sends a command, it can specify the target editor via the `target_editor` field in the `raw_command` JSON object (e.g., `"target_editor": "VSCode"`) and the mode via the `chatMode` field. If `target_editor` is not specified, the server will use the `DEFAULT_EDITOR` configured in its `.env` file. If that is also not configured, it defaults to "Cursor".
-
-## 🚀 Future Outlook: Our Roadmap
-
-We know the possibilities for remote control extend far beyond what's currently implemented! To make this project even more powerful and beneficial for everyone, we have some exciting plans:
-
-*   **💻 Support for More AI Editors/Assistants:** (Partially Implemented/In Progress)
-    *   **Visual Studio Code (VS Code):** (Initial support) Remote control capabilities have been extended to the widely popular VS Code. Future work will focus on finer-grained editor control and task execution through its powerful APIs.
-    *   **Cursor:** (Primary support) Remains a key supported editor for the project.
-    *   **Deepchat:** Integrate support for Deepchat ([https://github.com/thinkinaixyz/deepchat](https://github.com/thinkinaixyz/deepchat)). As an intelligent assistant connecting powerful AI to the personal world, our goal is to allow users to interact with Deepchat remotely, leveraging its MCP (Model Controller Platform) features.
-    *   **Trae and other AI Tools:** Explore and incrementally support more emerging AI code editors and development assistants, broadening the scope of remote control to cover a wider range of AI development scenarios.
-*   **Feature Enhancements:**
-    *   **File System Operations:** Allow remote browsing, opening, and even modification of project files.
-    *   **Support for More Complex Instructions:** For example, remotely executing code snippets, running tests, controlling version management, etc.
-    *   **Enhanced Bidirectional Communication:** Richer result feedback, potentially including streaming output.
-*   **Usability Improvements:**
-    *   **More Convenient Configuration Process:** Simplify server and client installation and setup.
-    *   **More Comprehensive Error Handling and Prompts.**
-*   **Security Hardening:** Continuously focus on and improve the security of data transmission and command execution.
-
-We believe that with the collective efforts of the community, this project can connect more excellent AI tools and bring an unprecedented remote collaboration experience to everyone!
+### Long-term Goals (6+ months)
+- 🌐 Cross-platform Editor Support (JetBrains series)
+- 🔌 Plugin System Architecture
+- 🏢 Enterprise-level Features
 
 ## Installation and Usage
 
 ### Server-side
 
-1.  Navigate to the server directory:
+1. Navigate to the server directory and install dependencies:
     ```bash
-    cd server
+    cd server && npm install
     ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Configure environment variables:
-    Create a `.env` file in the project root directory (at the same level as the `server/` directory) and add the following, replacing with your actual Supabase information:
+
+2. Configure environment variables:
+    Create a `.env` file in the project root directory:
     ```env
     SUPABASE_URL=https://your-project-id.supabase.co
     SUPABASE_SERVICE_KEY=your-supabase-service-role-key
-    DEFAULT_EDITOR=Cursor # Or VSCode, VSCode-Insiders, etc.
+    DEFAULT_EDITOR=Cursor
     ```
-    **Important**:
-    - `SUPABASE_SERVICE_KEY` is your Service Role Key, which has full access. Keep it secure and do not expose it.
-    - `DEFAULT_EDITOR` (optional) specifies the default editor for the server to control. Acceptable values include `Cursor`, `VSCode`, `VSCode-Insiders`. This will be overridden if a `target_editor` is specified in the client request.
 
-4.  Start the server:
+3. Start the listener service:
     ```bash
-    npm start 
-    # Or npm run dev (uses nodemon for auto-restart)
+    # Development mode (auto-restart)
+    npm run dev
+    
+    # Production mode (with auto-restart monitoring)
+    npm run production
+    
+    # Manual start
+    npm start
     ```
 
 ### Client-side
 
-1.  **Deploy via Vercel (Recommended)**:
-    *   Click the "Deploy with Vercel" button at the top of this README file.
-    *   In Vercel's configuration wizard, provide your `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Vercel will inject these as environment variables into your client application.
+1. **Deploy via Vercel (Recommended)**:
+    - Click the "Deploy with Vercel" button above
+    - Configure `SUPABASE_URL` and `SUPABASE_ANON_KEY` environment variables
 
-2.  **Local Configuration/Other Deployments**:
-    *   If you are not deploying via Vercel, or if you need to run the client locally, modify the `client/env-config.js` file and fill in your `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-    ```javascript
-    // client/env-config.js
-    window.SUPABASE_URL = 'https://your-project-id.supabase.co';
-    window.SUPABASE_ANON_KEY = 'your-public-anon-key';
-    ```
-    *   Then, you can use any static file server (like the Live Server VSCode extension, or `npx serve client/`) to run the client, or deploy it to other static hosting platforms.
+2. **Local Running**:
+    - Modify `client/env-config.js` configuration file
+    - Use static file server: `npx serve client/`
 
 ## How It Works
 
-### Core Process
-1.  The mobile client (Web interface) converts user actions (like button clicks) into commands using the Supabase client library and inserts the command data into the `commands` table in the Supabase database.
-2.  The server program (`server/src/services/supabaseService.js`) deployed on your computer uses Supabase Realtime to listen for new records inserted into the `commands` table with a status of 'pending'.
-3.  When the server receives a new command, `commandController.js` parses the command (including determining the target editor and chat mode) and calls the corresponding AppleScript script (in the `scripts/` directory) via `appleScriptRunner.js` to control the local target editor application.
-4.  The command execution status (e.g., 'completed' or 'error') and any possible error messages are updated back to the corresponding record in the `commands` table by the server.
-5.  (Optional) If the command has execution results that need to be returned to the client, the server can insert the results into the `results` table. The client can listen for changes in the `results` table to receive these results.
+### Core Architecture Flow
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Supabase
+    participant N as Node.js Listener
+    participant A as AppleScript
+    participant CR as Cursor
+    
+    C->>S: Insert command (status='pending')
+    S->>N: Real-time notification of new command
+    N->>S: Update status (status='processing')
+    N->>A: Execute AppleScript
+    A->>CR: Control Cursor execution
+    A->>N: Return execution result
+    N->>S: Insert result + update status
+    S->>C: Real-time push status change
+```
 
-### Enhanced Features
-- **Smart Suggestions**: `enhancement.js` analyzes command history to provide auto-completion and intelligent suggestions
-- **System Monitoring**: `systemMonitor.js` collects and displays real-time system performance metrics
-- **Connection Diagnosis**: `connection-test.js` automatically detects connection issues and provides solutions
-- **History Management**: Supports command history search, filtering, and deletion functions
-- **Status Dashboard**: Multi-tab display showing overview, analytics, queue, and system information
+### New Architecture Advantages
+- **Reduced Latency**: Client directly interacts with Supabase
+- **Improved Stability**: No single point of failure, Supabase provides high availability
+- **Simplified Deployment**: Frontend static deployment, backend lightweight service
+- **Auto Scaling**: Supabase automatically handles load and scaling
 
 ## 📚 Documentation and Maintenance
 
-### Documentation Structure
-- [`docs/`](docs/) - Complete documentation directory
-  - [`architecture/`](docs/architecture/) - System architecture documents
-  - [`deployment/`](docs/deployment/) - Deployment and setup guides
-  - [`fixes/`](docs/fixes/) - Issue fix documentation
-  - [`testing/`](docs/testing/) - Testing guides
+### 🎯 Core Documentation Navigation
 
-### Maintenance Tools
-- [`scripts/maintenance/`](scripts/maintenance/) - Maintenance scripts
-  - `check-status.sh` - System status checker
-  - `fix-db.sh` - Database repair tool
+#### 📋 Requirements and Design Documents
+- [📖 Requirements Documentation Center](docs/requirements/README.md) - Requirements documentation guide and usage instructions
+- [📐 Complete Architecture Document](docs/COMPLETE_ARCHITECTURE.md) - System architecture design blueprint (16 chapters)
+- [📋 Product Requirements Document](docs/requirements/PRODUCT_REQUIREMENTS.md) - Complete product requirement specifications
+- [📝 User Stories Document](docs/requirements/USER_STORIES.md) - 29 user stories and 4 epics
+- [🔧 Epic Technical Breakdown](docs/requirements/EPICS_BREAKDOWN.md) - Detailed technical implementation plan
 
-### Project Reports
-- [Functionality Completion Report](docs/FUNCTIONALITY_COMPLETION_REPORT.md) - Project completion status
-- [Cleanup Report](docs/CLEANUP_REPORT.md) - Code cleanup details
-- [Final Solution](docs/FINAL_SOLUTION.md) - Key issue solutions
+#### 🚀 Deployment and Operations Documents
+- [🚀 Database Setup Guide](docs/deployment/SETUP_DATABASE.md) - Detailed Supabase configuration instructions
+- [📊 Deployment Status Document](docs/deployment/DEPLOYMENT_STATUS.md) - Current deployment status and configuration
+- [🔄 Auto-restart Guide](docs/auto-restart-guide.md) - Service monitoring and auto-restart
+- [🧪 Browser Testing Guide](docs/testing/BROWSER_TEST_GUIDE.md) - Function testing methods
+
+#### 🔧 Technical Support Documents
+- [📚 Documentation Organization Guide](docs/README.md) - Complete document structure and usage guide
+- [🚀 2025 Feature Roadmap](docs/ROADMAP_2025.md) - Project development planning
+- [🔧 Issue Fix Records](docs/fixes/) - Technical problem solution collection
+
+### 🎭 Role-oriented Documentation Usage Guide
+
+#### 👔 Project Manager/Product Manager
+1. [Requirements Documentation Guide](docs/requirements/README.md) → [Product Requirements Document](docs/requirements/PRODUCT_REQUIREMENTS.md) → [User Stories](docs/requirements/USER_STORIES.md)
+
+#### 🏗️ Technical Architect/Development Lead
+1. [Complete Architecture Document](docs/COMPLETE_ARCHITECTURE.md) → [Epic Technical Breakdown](docs/requirements/EPICS_BREAKDOWN.md) → [Deployment Guide](docs/deployment/)
+
+#### 💻 Development Engineer
+1. [Epic Technical Breakdown](docs/requirements/EPICS_BREAKDOWN.md) → [Architecture Document](docs/COMPLETE_ARCHITECTURE.md) → [User Stories](docs/requirements/USER_STORIES.md)
+
+#### 🧪 Test Engineer
+1. [User Stories Acceptance Criteria](docs/requirements/USER_STORIES.md) → [Testing Guide](docs/testing/) → [Epic Breakdown](docs/requirements/EPICS_BREAKDOWN.md)
+
+### 🔄 Maintenance Tools and Mechanisms
+The project includes comprehensive monitoring and maintenance mechanisms:
+- **Auto-restart**: `npm run production` starts service with monitoring
+- **Connection Monitoring**: Real-time monitoring of Supabase connection status
+- **Failure Recovery**: Automatic detection and repair of stuck commands
+- **Performance Analysis**: Built-in system metrics collection and display
 
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+---
+
+*🎯 Pursuing simple and efficient remote control experience! Incremental architecture design completed based on BMad methodology*
