@@ -279,11 +279,11 @@ Check our [2025 Feature Roadmap](docs/ROADMAP_2025.md) for project development p
 ### Core Architecture Flow
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant S as Supabase
-    participant N as Node.js Listener
-    participant A as AppleScript
-    participant CR as Cursor
+    participant C as "Client"
+    participant S as "Supabase"
+    participant N as "Node.js Listener"
+    participant A as "AppleScript"
+    participant CR as "Cursor"
     
     C->>S: Insert command (status='pending')
     S->>N: Real-time notification of new command
