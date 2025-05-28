@@ -580,10 +580,12 @@ export class SupabaseService {
 const defaultConfig = new SupabaseConfig();
 const defaultService = new SupabaseService(defaultConfig);
 
-// Auto-initialize the default service
-defaultService.initialize().catch(error => {
-  console.error('[SupabaseService] Failed to auto-initialize:', error);
-});
+// Auto-initialize the default service only in non-test environments
+if (process.env.NODE_ENV !== 'test' && process.env.JEST_WORKER_ID === undefined) {
+  defaultService.initialize().catch(error => {
+    console.error('[SupabaseService] Failed to auto-initialize:', error);
+  });
+}
 
 // Handle graceful shutdown for default instance
 const gracefulShutdown = () => {
@@ -592,8 +594,11 @@ const gracefulShutdown = () => {
   });
 };
 
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
+// Only register process handlers in non-test environments
+if (process.env.NODE_ENV !== 'test' && process.env.JEST_WORKER_ID === undefined) {
+  process.on('SIGINT', gracefulShutdown);
+  process.on('SIGTERM', gracefulShutdown);
+}
 
 // Export named functions for backward compatibility
 export const ensureSupabaseConnection = () => defaultService.ensureConnection();

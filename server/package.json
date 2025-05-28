@@ -44,6 +44,7 @@
       "src/**/*.js",
       "!src/**/index.js"
     ],
-    "forceExit": true
+    "silent": true,
+    "setupFilesAfterEnv": ["<rootDir>/tests/setupTests.js"]
   }
 }
