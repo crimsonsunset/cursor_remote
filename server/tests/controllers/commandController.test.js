@@ -203,20 +203,22 @@ describe('CommandController', () => {
     it('should setup result listener successfully', async () => {
       const mockSubscription = { callback: jest.fn() };
       mockOptions.subscribeToResultForCommand.mockResolvedValue(mockSubscription);
+      const mockCallback = jest.fn();
       
-      const result = await commandController.setupResultListener('cmd-123');
+      const result = await commandController.setupResultListener('cmd-123', mockCallback);
       
       expect(result).toBe(mockSubscription);
       expect(mockOptions.subscribeToResultForCommand).toHaveBeenCalledWith(
         'cmd-123',
-        expect.any(Function)
+        mockCallback
       );
     });
 
     it('should throw error after max attempts', async () => {
       mockOptions.subscribeToResultForCommand.mockResolvedValue(null);
+      const mockCallback = jest.fn();
       
-      await expect(commandController.setupResultListener('cmd-123', 1))
+      await expect(commandController.setupResultListener('cmd-123', mockCallback, 1))
         .rejects.toThrow('Failed to setup result subscription after 1 attempts');
       
       expect(mockOptions.subscribeToResultForCommand).toHaveBeenCalledTimes(1);

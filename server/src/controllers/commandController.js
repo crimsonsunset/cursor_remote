@@ -86,13 +86,10 @@ export class CommandController {
   /**
    * 设置结果监听器
    */
-  async setupResultListener(commandId, maxAttempts = 3) {
+  async setupResultListener(commandId, callback, maxAttempts = 3) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const subscription = await this.subscribeToResultForCommand(commandId, (payload) => {
-          this.logger.log(`[CommandController] Received result for command ${commandId} via subscription:`, payload.new);
-          return payload.new;
-        });
+        const subscription = await this.subscribeToResultForCommand(commandId, callback);
         
         if (subscription) {
           return subscription; 
@@ -118,43 +115,45 @@ export class CommandController {
   createResultPromise(commandId) {
     return new Promise((resolve, reject) => {
       let resultSubscription = null;
+      let timeoutId = null;
+      
+      // 定义清理函数
+      const cleanup = () => {
+        if (resultSubscription) {
+          this.clearResultSubscription(resultSubscription);
+          resultSubscription = null;
+        }
+        if (timeoutId) {
+          this.timer.clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
+      
+      // 定义订阅回调函数
+      const subscriptionCallback = (payload) => {
+        this.logger.log(`[CommandController] Received result for command ${commandId} via subscription:`, payload.new);
+        cleanup();
+        resolve(payload.new);
+      };
       
       // 使用立即执行的异步函数处理异步逻辑
       (async () => {
         try {
-          resultSubscription = await this.setupResultListener(commandId);
+          resultSubscription = await this.setupResultListener(commandId, subscriptionCallback);
           
           if (!resultSubscription) {
             reject(new Error(`Failed to initialize result subscription for command ${commandId} after multiple attempts.`));
             return;
           }
           
-          // 更新订阅回调以解析promise
-          const originalCallback = resultSubscription.callback;
-          resultSubscription.callback = (payload) => {
-            const result = originalCallback(payload);
-            if (resultSubscription) {
-              this.clearResultSubscription(resultSubscription);
-              resultSubscription = null;
-            }
-            resolve(result);
-          };
-          
-          const timeoutId = this.timer.setTimeout(() => {
-            if (resultSubscription) {
-              this.clearResultSubscription(resultSubscription);
-              resultSubscription = null;
-            }
+          // 设置超时
+          timeoutId = this.timer.setTimeout(() => {
+            cleanup();
             reject(new Error(`Timeout: Did not receive result for command ${commandId} within ${this.appleScriptTimeoutDuration / 1000}s`));
           }, this.appleScriptTimeoutDuration);
           
-          // 清理超时
-          resultSubscription.timeoutId = timeoutId;
-          
         } catch (err) {
-          if (resultSubscription) {
-            this.clearResultSubscription(resultSubscription);
-          }
+          cleanup();
           reject(err);
         }
       })();
