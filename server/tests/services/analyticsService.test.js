@@ -471,5 +471,132 @@ describe('AnalyticsService', () => {
       
       expect(result).toEqual({ success: true, method: 'basic' });
     });
+
+    it('should fail when both methods fail', async () => {
+      const error = new Error('Both methods failed');
+      const mockChainExtended = { eq: jest.fn().mockResolvedValue({ error: new Error('Extended failed') }) };
+      const mockChainBasic = { eq: jest.fn().mockResolvedValue({ error }) };
+      
+      mockSupabaseClient.update
+        .mockReturnValueOnce(mockChainExtended)
+        .mockReturnValueOnce(mockChainBasic);
+      
+      const result = await service.attemptUpdate(mockSupabaseClient, 'test-id', {
+        success: false,
+        duration: 2000,
+        errorMessage: 'Error'
+      });
+      
+      expect(result).toEqual({ success: false, reason: 'database_error', error });
+    });
+
+    it('should handle unexpected errors', async () => {
+      const unexpectedError = new Error('Unexpected error');
+      mockSupabaseClient.update.mockImplementation(() => {
+        throw unexpectedError;
+      });
+      
+      const result = await service.attemptUpdate(mockSupabaseClient, 'test-id', {
+        success: false,
+        duration: 2000,
+        errorMessage: 'Error'
+      });
+      
+      expect(result).toEqual({ success: false, reason: 'unexpected_error', error: unexpectedError });
+    });
+  });
+
+  describe('Export functions coverage', () => {
+    it('should test getAnalyticsService function', async () => {
+      // 动态导入以测试导出函数
+      const { getAnalyticsService, recordCommandStart, recordCommandEnd, recordCommandMetrics, getCommandStats } = await import('../../src/services/analyticsService.js');
+      
+      expect(typeof getAnalyticsService).toBe('function');
+      expect(typeof recordCommandStart).toBe('function');
+      expect(typeof recordCommandEnd).toBe('function');
+      expect(typeof recordCommandMetrics).toBe('function');
+      expect(typeof getCommandStats).toBe('function');
+    });
+
+    it('should test actual export function calls', async () => {
+      // 保存原始环境变量
+      const originalNodeEnv = process.env.NODE_ENV;
+      
+      // 模拟非测试环境以触发实际的服务创建
+      process.env.NODE_ENV = 'production';
+      
+      // 重新导入模块以获取新的实例
+      jest.resetModules();
+      const { getAnalyticsService, recordCommandStart, recordCommandEnd, recordCommandMetrics, getCommandStats } = await import('../../src/services/analyticsService.js');
+      
+      // 测试getAnalyticsService创建默认实例
+      const service1 = await getAnalyticsService();
+      const service2 = await getAnalyticsService();
+      
+      // 应该返回同一个实例
+      expect(service1).toBe(service2);
+      expect(service1).toBeDefined();
+      
+      // 恢复环境变量
+      process.env.NODE_ENV = originalNodeEnv;
+      jest.resetModules();
+    });
+  });
+
+  describe('getCommandStats exception handling', () => {
+    beforeEach(async () => {
+      await service.initialize();
+      mockSupabaseService.ensureConnection.mockResolvedValue(true);
+    });
+
+    it('should handle unexpected errors in getCommandStats', async () => {
+      const unexpectedError = new Error('Unexpected stats error');
+      mockSupabaseService.getClient.mockImplementation(() => {
+        throw unexpectedError;
+      });
+      
+      const result = await service.getCommandStats(24);
+      
+      expect(result).toBeNull();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[AnalyticsService] Error fetching stats:',
+        unexpectedError
+      );
+    });
+  });
+
+  describe('recordCommandMetrics exception handling', () => {
+    beforeEach(async () => {
+      await service.initialize();
+      mockSupabaseService.ensureConnection.mockResolvedValue(true);
+    });
+
+    it('should handle unexpected errors in recordCommandMetrics', async () => {
+      const unexpectedError = new Error('Unexpected metrics error');
+      mockSupabaseService.getClient.mockImplementation(() => {
+        throw unexpectedError;
+      });
+      
+      const result = await service.recordCommandMetrics('test-id', 'command', 1000, true);
+      
+      expect(result).toEqual({ success: false, reason: 'unexpected_error', error: unexpectedError });
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[AnalyticsService] Error recording metrics:',
+        unexpectedError
+      );
+    });
+  });
+
+  describe('attemptInsert exception handling', () => {
+    it('should handle unexpected errors in attemptInsert', async () => {
+      const unexpectedError = new Error('Unexpected insert error');
+      mockSupabaseClient.insert.mockImplementation(() => {
+        throw unexpectedError;
+      });
+      
+      const result = await service.attemptInsert(mockSupabaseClient, { test: 'data' }, 'command');
+      
+      expect(result).toEqual({ success: false, reason: 'unexpected_error', error: unexpectedError });
+    });
   });
 }); 
