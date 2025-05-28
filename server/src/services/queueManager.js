@@ -280,7 +280,7 @@ export class CommandQueueManager {
     // 等待当前处理完成
     const startTime = Date.now();
     while (this.isProcessing && (Date.now() - startTime) < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => this.timer.setTimeout(resolve, 100));
     }
     
     if (this.isProcessing) {

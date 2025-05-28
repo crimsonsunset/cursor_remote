@@ -251,13 +251,17 @@ describe('ConnectionManager', () => {
   });
 
   describe('cleanup', () => {
-    it('should clear all timers and remove channels', () => {
-      connectionManager.timers.resetTimer = setInterval(() => {}, 1000);
-      connectionManager.timers.refreshTimer = setInterval(() => {}, 1000);
+    it('should clear all timers and client', () => {
+      // 使用模拟的计时器而不是真实的setInterval
+      const mockResetTimer = 'reset-timer-id';
+      const mockRefreshTimer = 'refresh-timer-id';
+      connectionManager.timers.resetTimer = mockResetTimer;
+      connectionManager.timers.refreshTimer = mockRefreshTimer;
       connectionManager.client = mockSupabaseClient;
-      
+
       connectionManager.cleanup();
-      
+
+      // 验证removeAllChannels被调用
       expect(mockSupabaseClient.removeAllChannels).toHaveBeenCalled();
     });
   });
@@ -1112,6 +1116,7 @@ describe('Additional Coverage Tests', () => {
         // Should have attempted multiple client calls
         expect(clientCallCount).toBe(2);
       } finally {
+        // 确保总是恢复原始的setTimeout
         global.setTimeout = originalSetTimeout;
       }
     }, 5000);

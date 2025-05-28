@@ -27,6 +27,12 @@ export class CommandController {
     
     // 内部状态
     this.isInitialized = false;
+    
+    // 测试友好的依赖项
+    this.timer = options.timer || {
+      setTimeout: setTimeout.bind(global),
+      clearTimeout: clearTimeout.bind(global)
+    };
   }
 
   /**
@@ -94,12 +100,12 @@ export class CommandController {
         
         this.logger.warn(`[CommandController] Failed to setup result subscription on attempt ${attempt}/${maxAttempts}`);
         if (attempt < maxAttempts) {
-          await new Promise(res => setTimeout(res, 2000));
+          await new Promise(res => this.timer.setTimeout(res, 2000));
         }
       } catch (err) {
         this.logger.error(`[CommandController] Error setting up result subscription on attempt ${attempt}/${maxAttempts}:`, err);
         if (attempt < maxAttempts) {
-          await new Promise(res => setTimeout(res, 2000));
+          await new Promise(res => this.timer.setTimeout(res, 2000));
         }
       }
     }
@@ -134,12 +140,12 @@ export class CommandController {
             resolve(result);
           };
           
-          const timeoutId = setTimeout(() => {
+          const timeoutId = this.timer.setTimeout(() => {
             if (resultSubscription) {
               this.clearResultSubscription(resultSubscription);
               resultSubscription = null;
             }
-            reject(new Error('Timeout: Did not receive result for command ' + commandId + ' within ' + (this.appleScriptTimeoutDuration / 1000) + 's'));
+            reject(new Error(`Timeout: Did not receive result for command ${commandId} within ${this.appleScriptTimeoutDuration / 1000}s`));
           }, this.appleScriptTimeoutDuration);
           
           // 清理超时
@@ -158,7 +164,7 @@ export class CommandController {
   /**
    * 执行单个命令（重构后的原executeCommand）
    */
-  async executeCommand(commandData, startTime) {
+  async executeCommand(commandData, startTime = Date.now()) {
     const commandId = commandData.id;
     const originalCommandText = commandData.command_text;
     const chatMode = commandData.raw_command?.chatMode || "agent";
@@ -167,7 +173,7 @@ export class CommandController {
 
     if (!this.supabaseProjectId) {
       const errorMsg = 'Server configuration error: SUPABASE_PROJECT_ID missing.';
-      this.logger.error(`[CommandController] CRITICAL: SUPABASE_PROJECT_ID is not defined. Cannot construct augmented command.`);
+      this.logger.error('[CommandController] CRITICAL: SUPABASE_PROJECT_ID is not defined. Cannot construct augmented command.');
       await this.updateCommandStatus(commandId, 'error', errorMsg);
       await this.analyticsService.recordCommandEnd(commandId, false, Date.now() - startTime, errorMsg);
       return;
@@ -271,16 +277,20 @@ export class CommandController {
       const priority = this.determineCommandPriority(commandData);
       
       // 添加到队列
-      await this.queueManager.addCommand({
-        ...commandData,
-        handler: async () => await this.executeCommand(commandData, startTime)
-      }, priority);
+      const result = await this.queueManager.addCommand(commandData, priority);
       
-      this.logger.log(`[CommandController] Added command ${commandId} to queue with priority ${priority}`);
+      if (result) {
+        this.logger.log(`[CommandController] Command ${commandId} added to queue with priority ${priority}`);
+        return true;
+      }
+      
+      this.logger.error(`[CommandController] Failed to add command ${commandId} to queue`);
+      return false;
     } catch (error) {
-      this.logger.error(`[CommandController] Failed to add command ${commandId} to queue:`, error);
+      this.logger.error(`[CommandController] Error adding command ${commandId} to queue:`, error);
       await this.updateCommandStatus(commandId, 'error', `Queue error: ${error.message}`);
       await this.analyticsService.recordCommandEnd(commandId, false, Date.now() - startTime, error.message);
+      return false;
     }
   }
 
@@ -292,7 +302,7 @@ export class CommandController {
       if (this.queueManager && typeof this.queueManager.shutdown === 'function') {
         await this.queueManager.shutdown();
       }
-      this.logger.log('[CommandController] Services cleaned up successfully');
+      this.logger.log('[CommandController] Cleanup completed');
     } catch (error) {
       this.logger.error('[CommandController] Error during cleanup:', error);
     }

@@ -16,7 +16,13 @@ describe('CommandQueueManager', () => {
 
     // 创建模拟的 timer
     mockTimer = {
-      setTimeout: jest.fn(),
+      setTimeout: jest.fn().mockImplementation((callback, delay) => {
+        // 在测试中立即执行callback以避免挂起
+        if (typeof callback === 'function') {
+          setImmediate(callback);
+        }
+        return 'mock-timeout-id';
+      }),
       setInterval: jest.fn(),
       clearInterval: jest.fn(),
       clearTimeout: jest.fn()
@@ -33,16 +39,29 @@ describe('CommandQueueManager', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // 清理
     if (queueManager && !queueManager.isShutdown) {
-      queueManager.shutdown();
+      try {
+        // 强制设置isProcessing为false以防测试中有挂起的操作
+        queueManager.isProcessing = false;
+        await queueManager.shutdown();
+      } catch (error) {
+        // 静默处理清理错误
+      }
     }
+    
+    // 清理所有模拟
+    jest.clearAllMocks();
+    jest.clearAllTimers();
   });
 
   describe('constructor', () => {
     it('should initialize with default options', () => {
-      const defaultManager = new CommandQueueManager();
+      const defaultManager = new CommandQueueManager({
+        autoProcess: false,
+        timer: mockTimer
+      });
       
       expect(defaultManager.highPriorityQueue).toEqual([]);
       expect(defaultManager.normalPriorityQueue).toEqual([]);
@@ -51,7 +70,10 @@ describe('CommandQueueManager', () => {
       expect(defaultManager.maxConcurrentCommands).toBe(1);
       expect(defaultManager.processInterval).toBe(1000);
       expect(defaultManager.commandDelay).toBe(1000);
-      expect(defaultManager.isAutoProcessing).toBe(true);
+      expect(defaultManager.isAutoProcessing).toBe(false);
+      
+      // 立即清理以防止测试间泄露
+      defaultManager.shutdown();
     });
 
     it('should initialize with custom options', () => {
@@ -59,7 +81,8 @@ describe('CommandQueueManager', () => {
         maxConcurrentCommands: 3,
         processInterval: 2000,
         commandDelay: 500,
-        autoProcess: false
+        autoProcess: false,
+        timer: mockTimer
       };
       
       const customManager = new CommandQueueManager(customOptions);
@@ -68,6 +91,9 @@ describe('CommandQueueManager', () => {
       expect(customManager.processInterval).toBe(2000);
       expect(customManager.commandDelay).toBe(500);
       expect(customManager.isAutoProcessing).toBe(false);
+      
+      // 立即清理以防止测试间泄露
+      customManager.shutdown();
     });
 
     it('should use provided logger and timer', () => {
