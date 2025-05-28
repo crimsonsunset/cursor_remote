@@ -15,7 +15,11 @@
     "smart-start": "../scripts/smart-restart.sh start",
     "smart-stop": "../scripts/smart-restart.sh stop",
     "smart-status": "../scripts/smart-restart.sh status",
-    "smart-monitor": "../scripts/smart-restart.sh monitor"
+    "smart-monitor": "../scripts/smart-restart.sh monitor",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+    "test:verbose": "node --experimental-vm-modules node_modules/.bin/jest --verbose"
   },
   "author": "",
   "license": "MIT",
@@ -26,6 +30,20 @@
     "cors": "^2.8.5"
   },
   "devDependencies": {
-    "nodemon": "^2.0.15"
+    "nodemon": "^2.0.15",
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/**/index.js"
+    ],
+    "forceExit": true
   }
 }
