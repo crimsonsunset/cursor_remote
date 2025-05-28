@@ -19,6 +19,8 @@ export class CommandController {
     this.updateCommandStatus = options.updateCommandStatus || updateCommandStatus;
     this.subscribeToResultForCommand = options.subscribeToResultForCommand || subscribeToResultForCommand;
     this.clearResultSubscription = options.clearResultSubscription || clearResultSubscription;
+    this.supabaseClient = options.supabaseClient || null; // 用于轮询备用机制
+    this.connectionManager = options.connectionManager || null; // 连接管理器
     
     // 配置选项
     this.appleScriptTimeoutDuration = options.appleScriptTimeoutDuration || 600000; // 10 minutes
@@ -110,12 +112,76 @@ export class CommandController {
   }
 
   /**
-   * 创建结果等待Promise
+   * 轮询检查命令结果（备用机制）
+   */
+  async pollForResult(commandId, maxAttempts = 60, intervalMs = 5000) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // 直接查询results表
+        const client = this.connectionManager?.getClient() || this.getSupabaseClient();
+        if (!client) {
+          this.logger.warn(`[CommandController] No Supabase client available for polling attempt ${attempt}`);
+          await new Promise(res => this.timer.setTimeout(res, intervalMs));
+          continue;
+        }
+
+        const { data, error } = await client
+          .from('results')
+          .select('*')
+          .eq('command_id', commandId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          this.logger.error(`[CommandController] Error polling for result ${commandId} (attempt ${attempt}):`, error);
+        } else if (data && data.length > 0) {
+          this.logger.log(`[CommandController] Found result for command ${commandId} via polling:`, data[0]);
+          return data[0];
+        }
+
+        // 等待下一次轮询
+        if (attempt < maxAttempts) {
+          await new Promise(res => this.timer.setTimeout(res, intervalMs));
+        }
+      } catch (err) {
+        this.logger.error(`[CommandController] Exception during polling for command ${commandId} (attempt ${attempt}):`, err);
+        if (attempt < maxAttempts) {
+          await new Promise(res => this.timer.setTimeout(res, intervalMs));
+        }
+      }
+    }
+    
+    throw new Error(`Polling timeout: No result found for command ${commandId} after ${maxAttempts} attempts`);
+  }
+
+  /**
+   * 获取Supabase客户端（用于轮询）
+   */
+  getSupabaseClient() {
+    // 尝试从注入的服务获取客户端
+    if (this.supabaseClient) {
+      return this.supabaseClient;
+    }
+    
+    // 尝试从默认服务获取
+    try {
+      const { supabaseService } = require('../services/supabaseService.js');
+      return supabaseService?.getClient();
+    } catch (error) {
+      this.logger.error('[CommandController] Failed to get Supabase client:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 创建结果等待Promise（增强版，包含轮询备用机制）
    */
   createResultPromise(commandId) {
     return new Promise((resolve, reject) => {
       let resultSubscription = null;
       let timeoutId = null;
+      let pollTimeoutId = null;
+      let isResolved = false;
       
       // 定义清理函数
       const cleanup = () => {
@@ -127,13 +193,50 @@ export class CommandController {
           this.timer.clearTimeout(timeoutId);
           timeoutId = null;
         }
+        if (pollTimeoutId) {
+          this.timer.clearTimeout(pollTimeoutId);
+          pollTimeoutId = null;
+        }
+      };
+      
+      // 定义解析函数（防止重复解析）
+      const safeResolve = (result) => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        }
+      };
+      
+      // 定义拒绝函数（防止重复拒绝）
+      const safeReject = (error) => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          reject(error);
+        }
       };
       
       // 定义订阅回调函数
       const subscriptionCallback = (payload) => {
         this.logger.log(`[CommandController] Received result for command ${commandId} via subscription:`, payload.new);
-        cleanup();
-        resolve(payload.new);
+        safeResolve(payload.new);
+      };
+      
+      // 启动轮询备用机制（延迟启动，给订阅一些时间）
+      const startPollingBackup = () => {
+        pollTimeoutId = this.timer.setTimeout(async () => {
+          if (isResolved) return;
+          
+          this.logger.log(`[CommandController] Starting polling backup for command ${commandId}`);
+          try {
+            const result = await this.pollForResult(commandId, 12, 5000);
+            safeResolve(result);
+          } catch (pollError) {
+            this.logger.warn(`[CommandController] Polling backup failed for command ${commandId}:`, pollError.message);
+            // 不要因为轮询失败就拒绝Promise，让主超时处理
+          }
+        }, 30000); // 30秒后启动轮询备用
       };
       
       // 使用立即执行的异步函数处理异步逻辑
@@ -142,19 +245,28 @@ export class CommandController {
           resultSubscription = await this.setupResultListener(commandId, subscriptionCallback);
           
           if (!resultSubscription) {
-            reject(new Error(`Failed to initialize result subscription for command ${commandId} after multiple attempts.`));
-            return;
+            // 如果订阅失败，立即启动轮询
+            this.logger.warn(`[CommandController] Subscription failed for command ${commandId}, starting polling immediately`);
+            try {
+              const result = await this.pollForResult(commandId, 60, 5000);
+              safeResolve(result);
+              return;
+            } catch (pollError) {
+              safeReject(new Error(`Failed to initialize result subscription and polling for command ${commandId}: ${pollError.message}`));
+              return;
+            }
           }
           
-          // 设置超时
+          // 启动轮询备用机制
+          startPollingBackup();
+          
+          // 设置主超时
           timeoutId = this.timer.setTimeout(() => {
-            cleanup();
-            reject(new Error(`Timeout: Did not receive result for command ${commandId} within ${this.appleScriptTimeoutDuration / 1000}s`));
+            safeReject(new Error(`Timeout: Did not receive result for command ${commandId} within ${this.appleScriptTimeoutDuration / 1000}s`));
           }, this.appleScriptTimeoutDuration);
           
         } catch (err) {
-          cleanup();
-          reject(err);
+          safeReject(err);
         }
       })();
     });

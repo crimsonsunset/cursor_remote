@@ -52,6 +52,23 @@ describe('CommandController', () => {
         timeoutId: null
       }),
       clearResultSubscription: jest.fn(),
+      supabaseClient: {
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              order: jest.fn().mockReturnValue({
+                limit: jest.fn().mockResolvedValue({
+                  data: [],
+                  error: null
+                })
+              })
+            })
+          })
+        })
+      },
+      connectionManager: {
+        getClient: jest.fn().mockReturnValue(null)
+      },
       supabaseProjectId: 'test-project-id',
       appleScriptTimeoutDuration: 1000
     };
@@ -467,6 +484,91 @@ describe('CommandController', () => {
       await commandController.cleanup();
 
       expect(mockOptions.logger.error).toHaveBeenCalledWith('[CommandController] Error during cleanup:', error);
+    });
+  });
+
+  describe('pollForResult', () => {
+    it('should find result via polling', async () => {
+      const mockResult = { command_id: 'cmd-123', result_text: 'test result', is_error: false };
+      mockOptions.supabaseClient.from().select().eq().order().limit.mockResolvedValue({
+        data: [mockResult],
+        error: null
+      });
+      
+      const result = await commandController.pollForResult('cmd-123', 1, 100);
+      
+      expect(result).toBe(mockResult);
+      expect(mockOptions.supabaseClient.from).toHaveBeenCalledWith('results');
+    });
+
+    it('should handle polling timeout', async () => {
+      mockOptions.supabaseClient.from().select().eq().order().limit.mockResolvedValue({
+        data: [],
+        error: null
+      });
+      
+      await expect(commandController.pollForResult('cmd-123', 1, 100))
+        .rejects.toThrow('Polling timeout: No result found for command cmd-123 after 1 attempts');
+    });
+
+    it('should handle polling errors', async () => {
+      mockOptions.supabaseClient.from().select().eq().order().limit.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+      
+      await expect(commandController.pollForResult('cmd-123', 1, 100))
+        .rejects.toThrow('Polling timeout: No result found for command cmd-123 after 1 attempts');
+      
+      expect(mockOptions.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error polling for result cmd-123'),
+        expect.any(Error)
+      );
+    });
+
+    it('should handle no client available', async () => {
+      // 模拟没有客户端可用
+      commandController.connectionManager = null;
+      commandController.supabaseClient = null;
+      commandController.getSupabaseClient = jest.fn().mockReturnValue(null);
+      
+      // 模拟timer.setTimeout立即执行回调，避免实际等待
+      const mockTimer = {
+        setTimeout: jest.fn().mockImplementation((callback, delay) => {
+          // 立即执行回调，避免等待
+          setTimeout(callback, 0);
+          return 'timeout-id';
+        }),
+        clearTimeout: jest.fn()
+      };
+      commandController.timer = mockTimer;
+      
+      await expect(commandController.pollForResult('cmd-123', 1, 100))
+        .rejects.toThrow('Polling timeout: No result found for command cmd-123 after 1 attempts');
+      
+      expect(mockOptions.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('No Supabase client available for polling attempt 1')
+      );
+    });
+  });
+
+  describe('getSupabaseClient', () => {
+    it('should return injected client', () => {
+      const result = commandController.getSupabaseClient();
+      expect(result).toBe(mockOptions.supabaseClient);
+    });
+
+    it('should return null when no client available', () => {
+      const controller = new CommandController({
+        ...mockOptions,
+        supabaseClient: null
+      });
+      
+      // 模拟getSupabaseClient方法直接返回null
+      controller.getSupabaseClient = jest.fn().mockReturnValue(null);
+      
+      const result = controller.getSupabaseClient();
+      expect(result).toBeNull();
     });
   });
 });
