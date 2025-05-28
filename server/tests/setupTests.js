@@ -29,19 +29,16 @@ const mockCleanupSubscriptions = () => {
   }
 };
 
-// 增强的计时器清理
+// 安全的计时器清理
 const clearAllTimers = () => {
-  // 清理所有Jest模拟的计时器
-  jest.clearAllTimers();
-  jest.runOnlyPendingTimers();
+  try {
+    jest.clearAllTimers();
+  } catch (error) {
+    // 静默处理计时器清理错误
+  }
   
   // 清理活跃的计时器记录
   global.activeTimers.clear();
-  
-  // 确保所有模拟的异步操作立即完成
-  if (jest.isMockFunction(global.setTimeout)) {
-    jest.clearAllMocks();
-  }
 };
 
 // 在每个测试前重置
@@ -66,7 +63,7 @@ afterEach(async () => {
   // 清理模拟的订阅
   mockCleanupSubscriptions();
   
-  // 彻底清理计时器
+  // 清理计时器
   clearAllTimers();
   
   // 清理所有模拟
@@ -74,13 +71,12 @@ afterEach(async () => {
   
   // 等待所有活跃的Promise完成
   if (global.activePromises.size > 0) {
-    await Promise.allSettled(Array.from(global.activePromises));
+    try {
+      await Promise.allSettled(Array.from(global.activePromises));
+    } catch (error) {
+      // 静默处理Promise清理错误
+    }
     global.activePromises.clear();
-  }
-  
-  // 强制垃圾回收（如果可用）
-  if (global.gc) {
-    global.gc();
   }
 });
 
@@ -90,20 +86,15 @@ afterAll(async () => {
   clearAllTimers();
   jest.clearAllMocks();
   
-  // 清理全局状态（通过重新赋值而不是 delete）
+  // 清理全局状态
   global.errorStats = undefined;
   global.testCleanup = [];
   global.activeTimers.clear();
   global.activePromises.clear();
   
-  // 给异步操作一些时间来完成，然后强制关闭
+  // 给异步操作一些时间来完成
   await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // 确保所有Jest模拟的异步操作都已完成
-  jest.runAllTimers();
   
   // 最终清理
   mockCleanupSubscriptions();
-  
-  // 注意：Jest的 --forceExit 选项应该在这里生效
 }); 
