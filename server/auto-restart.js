@@ -20,11 +20,12 @@ console.log('🔄 CursorRemote 自动重启监控器启动中...\n');
 
 // 监控配置
 const config = {
-  checkInterval: 60000, // 1分钟检查一次
-  failureThreshold: 3, // 连续失败3次后重启
-  restartCooldown: 30000, // 重启后30秒冷却期
-  maxRestarts: 10, // 增加最大重启次数到10次
+  checkInterval: 120000, // 2分钟检查一次（从1分钟改为2分钟）
+  failureThreshold: 5, // 连续失败5次后重启（从3次改为5次）
+  restartCooldown: 120000, // 重启后2分钟冷却期（从30秒改为2分钟）
+  maxRestarts: 5, // 减少最大重启次数到5次（从10次改为5次）
   resetInterval: 3600000, // 1小时后重置重启计数
+  enableAutoRestart: process.env.ENABLE_AUTO_RESTART !== 'false', // 允许通过环境变量禁用自动重启
   criticalErrorPatterns: [
     /errorRecoveryService\.handleError is not a function/i,
     /TypeError.*is not a function/i,
@@ -33,10 +34,15 @@ const config = {
     /Failed to ensure Supabase connection/i,
     /Max connection attempts.*reached/i,
     /ECONNREFUSED/i,
-    /ENOTFOUND/i,
-    /CHANNEL_ERROR/i,
-    /subscription.*failed/i
-  ]
+    /ENOTFOUND/i
+    // 移除了订阅相关的错误模式，因为这些是可以恢复的
+    // /CHANNEL_ERROR/i,
+    // /subscription.*failed/i
+  ],
+  // 新增：更严格的重启条件
+  stuckCommandThreshold: 30, // 30分钟未处理才算卡住（从10分钟改为30分钟）
+  criticalErrorThreshold: 10, // 严重错误阈值提高到10个（从5个改为10个）
+  criticalErrorWindow: 600000 // 严重错误检查窗口改为10分钟（从5分钟改为10分钟）
 };
 
 // 监控状态
@@ -140,7 +146,7 @@ const testServiceHealth = async () => {
       .from('commands')
       .select('id, created_at')
       .eq('status', 'pending')
-      .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString()); // 超过10分钟的pending命令
+      .lt('created_at', new Date(Date.now() - config.stuckCommandThreshold * 60 * 1000).toISOString()); // 使用配置的阈值
     
     if (stuckError) {
       console.warn('⚠️ 无法查询卡住的命令:', stuckError.message);
@@ -154,9 +160,9 @@ const testServiceHealth = async () => {
     }
     
     // 如果最近有严重错误且频率过高，建议重启
-    if (state.criticalErrorCount > 5 && 
+    if (state.criticalErrorCount > config.criticalErrorThreshold && 
         state.lastCriticalErrorTime && 
-        (Date.now() - state.lastCriticalErrorTime.getTime()) < 300000) { // 5分钟内
+        (Date.now() - state.lastCriticalErrorTime.getTime()) < config.criticalErrorWindow) {
       return {
         success: false,
         reason: `Too many critical errors detected (${state.criticalErrorCount} in recent time)`,
@@ -400,13 +406,19 @@ const monitorLoop = async () => {
     
     // 检查是否应该立即重启（基于错误类型）
     const shouldImmediateRestart = healthResult.details?.shouldRestart && (
-      state.criticalErrorCount > 10 || // 严重错误过多
+      state.criticalErrorCount > config.criticalErrorThreshold * 2 || // 严重错误过多（提高阈值）
       healthResult.reason.includes('stuck pending commands') || // 有卡住的命令
       healthResult.reason.includes('critical errors detected') // 检测到严重错误
     );
     
     // 达到失败阈值或需要立即重启时重启服务
     if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart) {
+      if (!config.enableAutoRestart) {
+        console.warn('⚠️ 检测到需要重启的条件，但自动重启已禁用');
+        console.warn('💡 请手动重启服务或设置 ENABLE_AUTO_RESTART=true 启用自动重启');
+        return;
+      }
+      
       if (shouldImmediateRestart) {
         console.warn('🚨 检测到严重问题，立即重启服务...');
       } else {
@@ -446,6 +458,10 @@ const main = async () => {
   console.log(`📊 检查间隔: ${config.checkInterval / 1000}秒`);
   console.log(`⚠️ 失败阈值: ${config.failureThreshold}次`);
   console.log(`🔄 最大重启: ${config.maxRestarts}次`);
+  console.log(`🔧 自动重启: ${config.enableAutoRestart ? '✅ 启用' : '❌ 禁用'}`);
+  if (!config.enableAutoRestart) {
+    console.log('💡 要启用自动重启，请设置环境变量: ENABLE_AUTO_RESTART=true');
+  }
   console.log('');
   
   // 注册信号处理器
