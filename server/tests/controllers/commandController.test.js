@@ -275,17 +275,111 @@ describe('CommandController', () => {
     });
 
     it('should handle command execution error', async () => {
-      // 模拟AppleScript抛出异常
-      mockOptions.appleScriptRunner.mockRejectedValue(new Error('AppleScript exception'));
+      const commandData = {
+        id: 'test-command-id',
+        command_text: 'test command',
+        raw_command: { chatMode: 'agent' }
+      };
 
-      await commandController.executeCommand(mockCommandData);
+      mockOptions.appleScriptRunner.mockResolvedValue({ success: false, error: 'Script failed' });
+      mockOptions.updateCommandStatus.mockResolvedValue();
+      mockOptions.analyticsService.recordCommandEnd.mockResolvedValue();
+      mockOptions.errorRecoveryService.handleErrorWithRecovery.mockResolvedValue();
 
-      expect(mockOptions.updateCommandStatus).toHaveBeenCalledWith(
-        'cmd-123',
-        'error',
-        'Controller error: AppleScript exception'
+      await commandController.executeCommand(commandData);
+
+      expect(mockOptions.updateCommandStatus).toHaveBeenCalledWith('test-command-id', 'error', 'AppleScript execution failed: Script failed');
+      expect(mockOptions.analyticsService.recordCommandEnd).toHaveBeenCalledWith('test-command-id', false, expect.any(Number), 'AppleScript execution failed: Script failed');
+      expect(mockOptions.errorRecoveryService.handleErrorWithRecovery).toHaveBeenCalledWith('test-command-id', expect.any(Error));
+    });
+
+    it('should handle status update failure during processing', async () => {
+      const commandData = {
+        id: 'test-command-id',
+        command_text: 'test command',
+        raw_command: { chatMode: 'agent' }
+      };
+
+      // 模拟状态更新失败
+      mockOptions.updateCommandStatus.mockRejectedValueOnce(new Error('Status update failed'));
+      mockOptions.appleScriptRunner.mockResolvedValue({ success: true });
+      // 添加createResultPromise mock以避免超时
+      commandController.createResultPromise = jest.fn().mockResolvedValue({ is_error: false });
+      mockOptions.analyticsService.recordCommandEnd.mockResolvedValue();
+
+      await commandController.executeCommand(commandData);
+
+      expect(mockOptions.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to update initial status for command test-command-id:'),
+        expect.any(Error)
       );
-      expect(mockOptions.errorRecoveryService.handleErrorWithRecovery).toHaveBeenCalled();
+    });
+
+    it('should handle result promise error', async () => {
+      const commandData = {
+        id: 'test-command-id',
+        command_text: 'test command',
+        raw_command: { chatMode: 'agent' }
+      };
+
+      mockOptions.appleScriptRunner.mockResolvedValue({ success: true });
+      // 模拟createResultPromise失败
+      commandController.createResultPromise = jest.fn().mockRejectedValue(new Error('Result promise failed'));
+      mockOptions.analyticsService.recordCommandEnd.mockResolvedValue();
+      mockOptions.errorRecoveryService.handleErrorWithRecovery.mockResolvedValue();
+
+      await commandController.executeCommand(commandData);
+
+      expect(mockOptions.updateCommandStatus).toHaveBeenCalledWith('test-command-id', 'error', 'Result wait error: Result promise failed');
+      expect(mockOptions.errorRecoveryService.handleErrorWithRecovery).toHaveBeenCalledWith('test-command-id', expect.any(Error));
+    });
+
+    it('should handle final status update failure', async () => {
+      const commandData = {
+        id: 'test-command-id',
+        command_text: 'test command',
+        raw_command: { chatMode: 'agent' }
+      };
+
+      mockOptions.appleScriptRunner.mockResolvedValue({ success: true });
+      // 模拟createResultPromise成功返回结果
+      commandController.createResultPromise = jest.fn().mockResolvedValue({ is_error: false });
+      mockOptions.analyticsService.recordCommandEnd.mockResolvedValue();
+      
+      // 第一次调用成功（processing），第二次调用失败（completed）
+      mockOptions.updateCommandStatus
+        .mockResolvedValueOnce() // processing状态更新成功
+        .mockRejectedValueOnce(new Error('Final status update failed')); // completed状态更新失败
+      
+      await commandController.executeCommand(commandData);
+
+      expect(mockOptions.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to update final status for command test-command-id:'),
+        expect.any(Error)
+      );
+    });
+
+    it('should handle critical error during error status update', async () => {
+      const commandData = {
+        id: 'test-command-id',
+        command_text: 'test command',
+        raw_command: { chatMode: 'agent' }
+      };
+
+      // 模拟executeCommand中的异常
+      mockOptions.appleScriptRunner.mockRejectedValue(new Error('Execution failed'));
+      
+      // 模拟状态更新也失败
+      mockOptions.updateCommandStatus.mockRejectedValue(new Error('Status update failed'));
+      mockOptions.analyticsService.recordCommandEnd.mockRejectedValue(new Error('Analytics failed'));
+      mockOptions.errorRecoveryService.handleErrorWithRecovery.mockResolvedValue();
+
+      await commandController.executeCommand(commandData);
+
+      expect(mockOptions.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('CRITICAL: Failed to update command test-command-id status to error after another error:'),
+        expect.any(Error)
+      );
     });
   });
 
@@ -321,6 +415,25 @@ describe('CommandController', () => {
       expect(mockOptions.logger.error).toHaveBeenCalledWith(
         '[CommandController] Failed to add command cmd-123 to queue'
       );
+    });
+
+    it('should handle queue add exception', async () => {
+      const commandData = {
+        id: 'cmd-123',
+        command_text: 'test command'
+      };
+
+      mockOptions.queueManager.addCommand.mockRejectedValue(new Error('Queue exception'));
+
+      const result = await commandController.addCommandToQueue(commandData);
+
+      expect(result).toBe(false);
+      expect(mockOptions.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error adding command cmd-123 to queue:'),
+        expect.any(Error)
+      );
+      expect(mockOptions.updateCommandStatus).toHaveBeenCalledWith('cmd-123', 'error', 'Queue error: Queue exception');
+      expect(mockOptions.analyticsService.recordCommandEnd).toHaveBeenCalledWith('cmd-123', false, expect.any(Number), 'Queue exception');
     });
   });
 
