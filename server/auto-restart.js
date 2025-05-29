@@ -26,6 +26,14 @@ const config = {
   maxRestarts: 5, // 减少最大重启次数到5次（从10次改为5次）
   resetInterval: 3600000, // 1小时后重置重启计数
   enableAutoRestart: process.env.ENABLE_AUTO_RESTART !== 'false', // 允许通过环境变量禁用自动重启
+  
+  // 新增：持续运行策略配置
+  extendedCheckInterval: 600000, // 达到最大重启次数后，延长检查间隔到10分钟
+  forceResetInterval: 21600000, // 6小时后强制重置重启计数（即使没有成功）
+  emergencyRestartThreshold: 10, // 紧急重启阈值：连续失败10次后强制重启
+  maxEmergencyRestarts: 3, // 紧急重启的最大次数
+  emergencyResetInterval: 43200000, // 12小时后重置紧急重启计数
+  
   criticalErrorPatterns: [
     /errorRecoveryService\.handleError is not a function/i,
     /TypeError.*is not a function/i,
@@ -56,7 +64,14 @@ const state = {
   startTime: new Date(),
   criticalErrorCount: 0,
   lastCriticalErrorTime: null,
-  errorHistory: []
+  errorHistory: [],
+  
+  // 新增：持续运行状态
+  emergencyRestartCount: 0,
+  lastEmergencyRestartTime: null,
+  lastForceResetTime: null,
+  isInExtendedMode: false, // 是否处于延长检查模式
+  totalFailuresSinceLastSuccess: 0 // 自上次成功以来的总失败次数
 };
 
 // 创建测试客户端
@@ -290,7 +305,7 @@ const stopService = () => {
 };
 
 // 重启服务
-const restartService = async () => {
+const restartService = async (isEmergencyRestart = false) => {
   const now = new Date();
   
   // 检查冷却期
@@ -300,13 +315,24 @@ const restartService = async () => {
   }
   
   // 检查重启次数限制
-  if (state.restartCount >= config.maxRestarts) {
-    console.error(`❌ 已达到最大重启次数 (${config.maxRestarts})，停止自动重启`);
+  if (!isEmergencyRestart && state.restartCount >= config.maxRestarts) {
+    console.warn(`⚠️ 已达到最大重启次数 (${config.maxRestarts})，进入延长检查模式`);
+    state.isInExtendedMode = true;
+    return false;
+  }
+  
+  // 检查紧急重启次数限制
+  if (isEmergencyRestart && state.emergencyRestartCount >= config.maxEmergencyRestarts) {
+    console.error(`❌ 已达到最大紧急重启次数 (${config.maxEmergencyRestarts})，等待自动重置`);
     return false;
   }
   
   try {
-    console.log(`🔄 执行第 ${state.restartCount + 1} 次重启...`);
+    const restartType = isEmergencyRestart ? '紧急' : '常规';
+    const currentCount = isEmergencyRestart ? state.emergencyRestartCount + 1 : state.restartCount + 1;
+    const maxCount = isEmergencyRestart ? config.maxEmergencyRestarts : config.maxRestarts;
+    
+    console.log(`🔄 执行第 ${currentCount} 次${restartType}重启 (${currentCount}/${maxCount})...`);
     
     // 停止当前服务
     await stopService();
@@ -317,17 +343,64 @@ const restartService = async () => {
     // 启动新服务
     await startService();
     
-    state.restartCount++;
+    if (isEmergencyRestart) {
+      state.emergencyRestartCount++;
+      state.lastEmergencyRestartTime = now;
+    } else {
+      state.restartCount++;
+    }
+    
     state.lastRestartTime = now;
     state.consecutiveFailures = 0;
+    state.totalFailuresSinceLastSuccess = 0;
     
-    console.log('✅ 服务重启成功');
+    console.log(`✅ ${restartType}重启成功`);
     return true;
     
   } catch (error) {
-    console.error('❌ 服务重启失败:', error.message);
+    console.error(`❌ ${isEmergencyRestart ? '紧急' : '常规'}重启失败:`, error.message);
     return false;
   }
+};
+
+// 重置重启计数器
+const resetRestartCounters = (reason = '定时重置') => {
+  const now = new Date();
+  const oldRestartCount = state.restartCount;
+  const oldEmergencyCount = state.emergencyRestartCount;
+  
+  state.restartCount = 0;
+  state.emergencyRestartCount = 0;
+  state.isInExtendedMode = false;
+  state.totalFailuresSinceLastSuccess = 0;
+  state.lastForceResetTime = now;
+  
+  console.log(`🔄 重启计数器已重置 (${reason})`);
+  console.log(`   常规重启: ${oldRestartCount} → 0`);
+  console.log(`   紧急重启: ${oldEmergencyCount} → 0`);
+  console.log('   退出延长检查模式');
+};
+
+// 检查是否需要强制重置
+const checkForceReset = () => {
+  const now = Date.now();
+  
+  // 强制重置条件：6小时后无论如何都重置
+  if (state.lastForceResetTime && (now - state.lastForceResetTime) > config.forceResetInterval) {
+    resetRestartCounters('6小时强制重置');
+    return true;
+  }
+  
+  // 紧急重启计数重置：12小时后重置紧急重启计数
+  if (state.lastEmergencyRestartTime && 
+      (now - state.lastEmergencyRestartTime) > config.emergencyResetInterval) {
+    const oldCount = state.emergencyRestartCount;
+    state.emergencyRestartCount = 0;
+    console.log(`🔄 紧急重启计数器已重置: ${oldCount} → 0 (12小时重置)`);
+    return true;
+  }
+  
+  return false;
 };
 
 // 显示状态
@@ -343,9 +416,17 @@ const displayStatus = () => {
   console.log('═══════════════════════════════════════════════');
   console.log(`⏰ 运行时间: ${uptimeDisplay}`);
   console.log(`🔧 服务状态: ${state.isServiceRunning ? '✅ 运行中' : '❌ 已停止'}`);
-  console.log(`🔄 重启次数: ${state.restartCount}/${config.maxRestarts}`);
+  console.log(`🔄 常规重启: ${state.restartCount}/${config.maxRestarts}`);
+  console.log(`🚨 紧急重启: ${state.emergencyRestartCount}/${config.maxEmergencyRestarts}`);
   console.log(`❌ 连续失败: ${state.consecutiveFailures}/${config.failureThreshold}`);
+  console.log(`📊 总失败数: ${state.totalFailuresSinceLastSuccess}`);
   console.log(`🚨 严重错误: ${state.criticalErrorCount}`);
+  
+  if (state.isInExtendedMode) {
+    console.log('⏰ 模式: 延长检查模式 (10分钟间隔)');
+  } else {
+    console.log('⏰ 模式: 正常检查模式 (2分钟间隔)');
+  }
   
   if (state.lastRestartTime) {
     const timeSinceRestart = Math.floor((now - state.lastRestartTime) / 1000);
@@ -362,6 +443,18 @@ const displayStatus = () => {
     console.log(`🚨 最后错误: ${timeSinceError}秒前`);
   }
   
+  // 显示下次重置时间
+  if (state.lastForceResetTime) {
+    const timeUntilReset = config.forceResetInterval - (now - state.lastForceResetTime);
+    if (timeUntilReset > 0) {
+      const hoursUntilReset = Math.floor(timeUntilReset / (1000 * 60 * 60));
+      console.log(`⏳ 下次强制重置: ${hoursUntilReset}小时后`);
+    }
+  } else {
+    const hoursUntilReset = Math.floor(config.forceResetInterval / (1000 * 60 * 60));
+    console.log(`⏳ 首次强制重置: ${hoursUntilReset}小时后`);
+  }
+  
   // 显示最近的错误
   if (state.errorHistory.length > 0) {
     console.log('───────────────────────────────────────────────');
@@ -375,6 +468,7 @@ const displayStatus = () => {
   
   console.log('───────────────────────────────────────────────');
   console.log('按 Ctrl+C 退出监控');
+  console.log('按 USR1 信号重置重启计数器');
   console.log('═══════════════════════════════════════════════');
 };
 
@@ -382,12 +476,16 @@ const displayStatus = () => {
 const monitorLoop = async () => {
   displayStatus();
   
-  // 重置重启计数器（每小时）
+  // 检查是否需要强制重置
+  checkForceReset();
+  
+  // 重置重启计数器（每小时，仅在有成功记录时）
   if (state.restartCount > 0 && 
       state.lastRestartTime && 
-      (Date.now() - state.lastRestartTime) > config.resetInterval) {
-    console.log('🔄 重置重启计数器');
-    state.restartCount = 0;
+      state.lastSuccessTime &&
+      (Date.now() - state.lastRestartTime) > config.resetInterval &&
+      (Date.now() - state.lastSuccessTime) < config.resetInterval) {
+    resetRestartCounters('1小时成功重置');
   }
   
   // 测试服务健康状态
@@ -395,13 +493,21 @@ const monitorLoop = async () => {
   
   if (healthResult.success) {
     state.consecutiveFailures = 0;
+    state.totalFailuresSinceLastSuccess = 0;
     state.lastSuccessTime = new Date();
+    
+    // 如果在延长模式下成功，考虑退出延长模式
+    if (state.isInExtendedMode && state.restartCount < config.maxRestarts) {
+      console.log('✅ 服务恢复正常，退出延长检查模式');
+      state.isInExtendedMode = false;
+    }
     
     if (Math.random() < 0.1) { // 10% 概率显示成功信息
       console.log(`✅ 服务健康检查通过 (最近命令: ${healthResult.details.recentCommands}, 严重错误: ${healthResult.details.criticalErrors})`);
     }
   } else {
     state.consecutiveFailures++;
+    state.totalFailuresSinceLastSuccess++;
     console.error(`❌ 服务健康检查失败 (${state.consecutiveFailures}/${config.failureThreshold}): ${healthResult.reason}`);
     
     // 检查是否应该立即重启（基于错误类型）
@@ -411,26 +517,50 @@ const monitorLoop = async () => {
       healthResult.reason.includes('critical errors detected') // 检测到严重错误
     );
     
+    // 检查是否需要紧急重启（在延长模式下）
+    const needEmergencyRestart = state.isInExtendedMode && 
+      state.totalFailuresSinceLastSuccess >= config.emergencyRestartThreshold &&
+      state.emergencyRestartCount < config.maxEmergencyRestarts;
+    
     // 达到失败阈值或需要立即重启时重启服务
-    if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart) {
+    if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart || needEmergencyRestart) {
       if (!config.enableAutoRestart) {
         console.warn('⚠️ 检测到需要重启的条件，但自动重启已禁用');
         console.warn('💡 请手动重启服务或设置 ENABLE_AUTO_RESTART=true 启用自动重启');
         return;
       }
       
-      if (shouldImmediateRestart) {
+      let restartSuccess = false;
+      
+      if (needEmergencyRestart) {
+        console.warn(`🚨 延长模式下连续失败 ${state.totalFailuresSinceLastSuccess} 次，执行紧急重启...`);
+        restartSuccess = await restartService(true); // 紧急重启
+      } else if (shouldImmediateRestart) {
         console.warn('🚨 检测到严重问题，立即重启服务...');
+        restartSuccess = await restartService(false); // 常规重启
       } else {
         console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+        restartSuccess = await restartService(false); // 常规重启
       }
       
-      const restartSuccess = await restartService();
       if (!restartSuccess) {
-        console.error('❌ 自动重启失败，请手动检查服务状态');
+        if (state.isInExtendedMode) {
+          console.error('❌ 重启失败，继续延长检查模式');
+        } else {
+          console.error('❌ 自动重启失败，请手动检查服务状态');
+        }
       }
     }
   }
+  
+  // 动态调整下次检查间隔
+  const nextCheckInterval = state.isInExtendedMode ? config.extendedCheckInterval : config.checkInterval;
+  
+  if (state.isInExtendedMode && Math.random() < 0.3) { // 30% 概率在延长模式下显示提示
+    console.log(`⏰ 延长检查模式：下次检查将在 ${nextCheckInterval / 60000} 分钟后进行`);
+  }
+  
+  return nextCheckInterval;
 };
 
 // 优雅退出
@@ -458,6 +588,8 @@ const main = async () => {
   console.log(`📊 检查间隔: ${config.checkInterval / 1000}秒`);
   console.log(`⚠️ 失败阈值: ${config.failureThreshold}次`);
   console.log(`🔄 最大重启: ${config.maxRestarts}次`);
+  console.log(`🚨 紧急重启: ${config.maxEmergencyRestarts}次`);
+  console.log(`⏰ 延长间隔: ${config.extendedCheckInterval / 60000}分钟`);
   console.log(`🔧 自动重启: ${config.enableAutoRestart ? '✅ 启用' : '❌ 禁用'}`);
   if (!config.enableAutoRestart) {
     console.log('💡 要启用自动重启，请设置环境变量: ENABLE_AUTO_RESTART=true');
@@ -468,19 +600,48 @@ const main = async () => {
   process.on('SIGINT', gracefulExit);
   process.on('SIGTERM', gracefulExit);
   
+  // 注册USR1信号处理器用于手动重置重启计数器
+  process.on('SIGUSR1', () => {
+    console.log('\n📡 收到USR1信号，手动重置重启计数器...');
+    resetRestartCounters('手动重置');
+    displayStatus();
+  });
+  
   // 启动初始服务
   try {
     await startService();
+    state.lastForceResetTime = new Date(); // 初始化强制重置时间
   } catch (error) {
     console.error('❌ 初始服务启动失败:', error.message);
     process.exit(1);
   }
   
-  // 开始监控循环
-  setInterval(monitorLoop, config.checkInterval);
+  // 动态监控循环
+  let currentInterval = config.checkInterval;
   
-  // 立即执行一次检查
-  setTimeout(monitorLoop, 5000); // 5秒后开始第一次检查
+  const scheduleNextCheck = () => {
+    setTimeout(async () => {
+      try {
+        const nextInterval = await monitorLoop();
+        currentInterval = nextInterval || currentInterval;
+      } catch (error) {
+        console.error('❌ 监控循环出错:', error.message);
+        currentInterval = config.checkInterval; // 出错时回到默认间隔
+      }
+      scheduleNextCheck(); // 递归调度下次检查
+    }, currentInterval);
+  };
+  
+  // 开始监控循环
+  setTimeout(async () => {
+    try {
+      const nextInterval = await monitorLoop();
+      currentInterval = nextInterval || currentInterval;
+    } catch (error) {
+      console.error('❌ 首次监控检查出错:', error.message);
+    }
+    scheduleNextCheck();
+  }, 5000); // 5秒后开始第一次检查
 };
 
 // 启动监控器
