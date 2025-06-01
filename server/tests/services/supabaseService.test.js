@@ -1160,8 +1160,8 @@ describe('Additional Coverage Tests', () => {
         // Call handleSubscriptionError which should trigger setTimeout
         await subscriptionManager.handleSubscriptionError('ERROR', new Error('Test error'), mockOnNewCommand, 5000);
         
-        // 当retryCount为0时，会调用scheduleRetryWithBackoff，延迟为1000ms
-        expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+        // 当retryCount为0时，会调用scheduleRetryWithBackoff，延迟为5000ms（新的基础延迟）
+        expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 5000);
         
         // Execute the timeout callback if it exists
         if (timeoutCallback) {
@@ -1549,13 +1549,13 @@ describe('Additional Coverage for Missing Lines', () => {
       
       expect(global.setInterval).toHaveBeenCalledWith(
         expect.any(Function),
-        30000
+        60000
       );
     });
 
     it('should handle missed heartbeats and force reconnection', () => {
       subscriptionManager.subscription = { id: 'test-subscription' };
-      subscriptionManager.lastHeartbeat = Date.now() - 70000; // 70 seconds ago
+      subscriptionManager.lastHeartbeat = Date.now() - 200000; // 200 seconds ago (beyond 180s timeout)
       subscriptionManager.forceReconnect = jest.fn();
       
       subscriptionManager.startHealthCheck();
@@ -1563,17 +1563,24 @@ describe('Additional Coverage for Missing Lines', () => {
       // Simulate health check interval execution
       const healthCheckCallback = global.setInterval.mock.calls[0][0];
       
-      // First missed heartbeat
+      // First missed heartbeat (should not log warning yet)
       healthCheckCallback();
       expect(subscriptionManager.missedHeartbeats).toBe(1);
+      expect(mockLogger.warn).not.toHaveBeenCalled();
       
-      // Second missed heartbeat
+      // Second missed heartbeat (should log warning now)
       healthCheckCallback();
       expect(subscriptionManager.missedHeartbeats).toBe(2);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('[SubscriptionManager] Missed heartbeat 2/5')
+      );
       
-      // Third missed heartbeat should trigger reconnection
-      healthCheckCallback();
-      expect(subscriptionManager.missedHeartbeats).toBe(3);
+      // Continue until we reach the threshold (5 missed heartbeats)
+      healthCheckCallback(); // 3rd
+      healthCheckCallback(); // 4th
+      healthCheckCallback(); // 5th - should trigger reconnection
+      
+      expect(subscriptionManager.missedHeartbeats).toBe(5);
       expect(mockLogger.error).toHaveBeenCalledWith(
         '[SubscriptionManager] Too many missed heartbeats, forcing reconnection'
       );
@@ -1757,11 +1764,10 @@ describe('Additional Coverage for Missing Lines', () => {
       await subscriptionManager.handleSubscriptionError('ERROR', new Error('Sub failed'), mockOnNewCommand, 1000);
       
       expect(mockLogger.error).toHaveBeenCalledWith(
-        '[SubscriptionManager] Subscription failed with status: ERROR',
-        expect.any(Error)
+        '[SubscriptionManager] Subscription failed with status: ERROR Sub failed'
       );
       expect(mockLogger.log).toHaveBeenCalledWith(
-        '[SubscriptionManager] Retrying subscription in 1000ms'
+        '[SubscriptionManager] Retrying subscription in 1000ms (3 attempts left)'
       );
       expect(subscriptionManager.scheduleRetry).toHaveBeenCalledWith(mockOnNewCommand, 1000);
     });
@@ -1773,7 +1779,7 @@ describe('Additional Coverage for Missing Lines', () => {
       
       await subscriptionManager.handleSubscriptionError('ERROR', new Error('Sub failed'), mockOnNewCommand, 1000);
       
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         '[SubscriptionManager] All subscription attempts failed, using backoff strategy'
       );
       expect(subscriptionManager.scheduleRetryWithBackoff).toHaveBeenCalledWith(mockOnNewCommand);
@@ -1826,7 +1832,7 @@ describe('Additional Coverage for Missing Lines', () => {
       subscriptionManager.subscribe = jest.fn();
       subscriptionManager.scheduleRetryWithBackoff(mockOnNewCommand);
       
-      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 5000);
     });
 
     it('should test SubscriptionManager handleSubscriptionStatus with CHANNEL_ERROR', async () => {
@@ -1858,9 +1864,10 @@ describe('Additional Coverage for Missing Lines', () => {
       await subscriptionManager.handleSubscriptionStatus('CLOSED', null, mockOnNewCommand, 1000);
       
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        '[SubscriptionManager] Subscription closed'
+        '[SubscriptionManager] Subscription closed: CLOSED'
       );
-      expect(subscriptionManager.scheduleRetryWithBackoff).toHaveBeenCalledWith(mockOnNewCommand);
+      // 验证setTimeout被调用，因为实际的scheduleRetryWithBackoff是在setTimeout中调用的
+      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 10000);
     });
 
     it('should test SupabaseService startHealthCheck timer clearing', () => {

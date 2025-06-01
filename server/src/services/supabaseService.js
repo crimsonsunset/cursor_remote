@@ -242,11 +242,12 @@ export class SubscriptionManager {
     this.subscriptionHealthTimer = null;
     this.maxRetryAttempts = config.maxSubscriptionRetries || 15;
     
-    // 新增：连接健康检查
-    this.healthCheckInterval = 30000; // 30秒检查一次
+    // 新增：连接健康检查 - 优化参数减少误报
+    this.healthCheckInterval = 60000; // 60秒检查一次（从30秒增加到60秒）
     this.lastHeartbeat = null;
     this.missedHeartbeats = 0;
-    this.maxMissedHeartbeats = 3;
+    this.maxMissedHeartbeats = 5; // 允许5次丢失（从3次增加到5次）
+    this.heartbeatTimeout = 180000; // 3分钟心跳超时（从60秒增加到180秒）
   }
 
   // 新增：订阅健康检查
@@ -258,16 +259,23 @@ export class SubscriptionManager {
     this.subscriptionHealthTimer = setInterval(() => {
       if (this.subscription && !this.isShuttingDown) {
         const now = Date.now();
-        if (this.lastHeartbeat && (now - this.lastHeartbeat) > this.healthCheckInterval * 2) {
+        // 使用更宽松的心跳超时时间
+        if (this.lastHeartbeat && (now - this.lastHeartbeat) > this.heartbeatTimeout) {
           this.missedHeartbeats++;
-          this.logger.warn(`[SubscriptionManager] Missed heartbeat ${this.missedHeartbeats}/${this.maxMissedHeartbeats}`);
+          // 只在达到警告阈值时才记录日志，减少噪音
+          if (this.missedHeartbeats >= 2) {
+            this.logger.warn(`[SubscriptionManager] Missed heartbeat ${this.missedHeartbeats}/${this.maxMissedHeartbeats} (${Math.round((now - this.lastHeartbeat) / 1000)}s since last)`);
+          }
           
           if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
             this.logger.error('[SubscriptionManager] Too many missed heartbeats, forcing reconnection');
             this.forceReconnect();
           }
         } else {
-          this.missedHeartbeats = 0;
+          // 重置计数器，但不记录日志以减少噪音
+          if (this.missedHeartbeats > 0) {
+            this.missedHeartbeats = 0;
+          }
         }
       }
     }, this.healthCheckInterval);
@@ -328,12 +336,18 @@ export class SubscriptionManager {
           }
         })
         .on('system', {}, (status, err) => {
+          // 系统事件也算作心跳活动
+          this.lastHeartbeat = Date.now();
           this.handleSubscriptionStatus(status, err, onNewCommand, retryDelay);
         })
         .subscribe((status, err) => {
           this.handleSubscriptionError(status, err, onNewCommand, retryDelay);
         });
 
+      // 设置初始心跳时间
+      this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
+      
       // 启动健康检查
       this.startHealthCheck();
 
@@ -390,17 +404,26 @@ export class SubscriptionManager {
   scheduleRetryWithBackoff(onNewCommand) {
     if (this.isShuttingDown) return;
     
-    const backoffDelay = Math.min(1000 * Math.pow(2, this.retryCount), 300000); // 最大5分钟
-    this.logger.log(`[SubscriptionManager] Scheduling retry with backoff in ${backoffDelay}ms`);
+    // 改进退避算法：起始延迟更长，增长更缓慢
+    const baseDelay = 5000; // 5秒起始延迟
+    const backoffDelay = Math.min(baseDelay * Math.pow(1.5, this.retryCount), 300000); // 最大5分钟，增长因子1.5
+    this.logger.log(`[SubscriptionManager] Scheduling retry with backoff in ${Math.round(backoffDelay/1000)}s (attempt ${this.retryCount + 1})`);
     
     this.retryTimer = setTimeout(() => {
       this.retryCount++;
+      // 重置重试计数，避免无限增长
+      if (this.retryCount > 10) {
+        this.retryCount = 5; // 重置到中等水平
+        this.logger.log('[SubscriptionManager] Resetting retry count to prevent infinite backoff');
+      }
       this.subscribe(onNewCommand, this.maxRetryAttempts, 15000);
     }, backoffDelay);
   }
 
   async handleSubscriptionStatus(status, err, onNewCommand, retryDelay) {
-    this.logger.log(`[SubscriptionManager] Subscription status: ${status}`);
+    // 改进状态日志显示
+    const statusStr = typeof status === 'object' ? JSON.stringify(status) : status;
+    this.logger.log(`[SubscriptionManager] Subscription status: ${statusStr}`);
     
     if (status === 'SUBSCRIBED') {
       this.retryCount = 0;
@@ -408,7 +431,7 @@ export class SubscriptionManager {
       this.missedHeartbeats = 0;
       this.logger.log('[SubscriptionManager] Successfully subscribed to commands');
     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      this.logger.error(`[SubscriptionManager] Subscription error: ${status}`, err);
+      this.logger.error(`[SubscriptionManager] Subscription error: ${statusStr}`, err);
       if (!this.isShuttingDown) {
         // 延迟重连以避免频繁重试
         setTimeout(() => {
@@ -416,10 +439,16 @@ export class SubscriptionManager {
         }, 5000);
       }
     } else if (status === 'CLOSED') {
-      this.logger.warn('[SubscriptionManager] Subscription closed');
+      this.logger.warn(`[SubscriptionManager] Subscription closed: ${statusStr}`);
       if (!this.isShuttingDown) {
-        this.scheduleRetryWithBackoff(onNewCommand);
+        // 对于CLOSED状态，使用更长的延迟避免立即重连
+        setTimeout(() => {
+          this.scheduleRetryWithBackoff(onNewCommand);
+        }, 10000); // 10秒延迟
       }
+    } else {
+      // 处理其他未知状态
+      this.logger.warn(`[SubscriptionManager] Unknown subscription status: ${statusStr}`, err);
     }
   }
 
@@ -427,17 +456,21 @@ export class SubscriptionManager {
     if (status === 'SUBSCRIBED') {
       this.retryCount = 0;
       this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
       this.logger.log('[SubscriptionManager] Subscription established successfully');
       return;
     }
 
-    this.logger.error(`[SubscriptionManager] Subscription failed with status: ${status}`, error);
+    // 改进错误状态显示
+    const statusStr = typeof status === 'object' ? JSON.stringify(status) : status;
+    const errorStr = error ? (error.message || error.toString()) : 'undefined';
+    this.logger.error(`[SubscriptionManager] Subscription failed with status: ${statusStr} ${errorStr}`);
     
     if (!this.isShuttingDown && this.retryCount > 0) {
-      this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms`);
+      this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms (${this.retryCount} attempts left)`);
       this.scheduleRetry(onNewCommand, retryDelay);
     } else if (!this.isShuttingDown) {
-      this.logger.error('[SubscriptionManager] All subscription attempts failed, using backoff strategy');
+      this.logger.warn('[SubscriptionManager] All subscription attempts failed, using backoff strategy');
       this.scheduleRetryWithBackoff(onNewCommand);
     }
   }
