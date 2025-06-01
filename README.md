@@ -33,15 +33,22 @@
 ## Demo 体验
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
 
-### 🔍 **新功能：集成 Tavily MCP 搜索服务**
-Demo服务器已集成 Tavily MCP 搜索功能，您可以直接测试实时搜索能力！
+### 🔍 **新功能：集成多种 MCP 服务**
+Demo服务器已集成多种MCP功能，您可以直接测试各种能力！
 
+#### 🔍 Tavily 搜索服务
 **测试建议**：
 - 尝试询问："2025年全球AI发展的最新趋势和突破"
 - 或者："量子计算在金融行业的应用案例和效果分析"
 - 或者："ChatGPT-5的主要技术突破和与前代产品的区别"
 
-系统会自动使用 Tavily 搜索获取最新信息并返回结果。
+#### 🐍 Python 代码执行服务
+**测试建议**：
+- 尝试询问："帮我生成一个计算圆的面积的python函数，并通过execute_code工具执行半径为10厘米的圆的面积"
+- 或者："用Python生成一个斐波那契数列的前20项并执行"
+- 或者："创建一个简单的数据分析脚本，分析一组随机数据的统计特征"
+
+系统会自动使用相应的MCP服务获取最新信息或执行代码并返回结果。
 
 ## 演示视频 🎬
 > 远程控制 Cursor 进行UI自动化测试
@@ -189,10 +196,11 @@ CREATE TABLE command_templates (
 );
 ```
 
-## Cursor MCP 配置 (用于结果返回)
+## Cursor MCP 配置 (增强功能支持)
 
-为了让 Cursor 能够将执行的命令结果写回到您的 Supabase 项目，需要在 Cursor 的 MCP 设置中添加以下配置：
+为了获得完整的功能体验，建议在 Cursor 的 MCP 设置中配置以下服务：
 
+### 基础配置 - Supabase 结果返回
 ```json
 {
   "mcpServers": {
@@ -209,10 +217,46 @@ CREATE TABLE command_templates (
 }
 ```
 
-**重要提示**: 
-- 将 `"your-supabase-access-token"` 替换为您 Supabase 项目的有效访问令牌
-- 此令牌用于 MCP 服务器向您的 Supabase 数据库写入执行结果
-- 可在 [Supabase 控制面板](https://supabase.com/dashboard/account/tokens) 生成访问令牌
+### 增强配置 - 多种MCP服务
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "your-supabase-access-token"
+      ]
+    },
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@tavily/mcp-server@latest"
+      ],
+      "env": {
+        "TAVILY_API_KEY": "your-tavily-api-key"
+      }
+    },
+    "python": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-python@latest"
+      ]
+    }
+  }
+}
+```
+
+**配置说明**: 
+- **Supabase MCP**: 用于将命令执行结果写回数据库
+- **Tavily MCP**: 提供实时搜索功能，需要 [Tavily API Key](https://tavily.com/)
+- **Python MCP**: 支持Python代码执行和分析
+- 将 `"your-supabase-access-token"` 替换为您的 [Supabase 访问令牌](https://supabase.com/dashboard/account/tokens)
+- 将 `"your-tavily-api-key"` 替换为您的 Tavily API 密钥
 
 ## 🚀 功能路线图
 
