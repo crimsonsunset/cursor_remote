@@ -421,16 +421,25 @@ export class SubscriptionManager {
   }
 
   async handleSubscriptionStatus(status, err, onNewCommand, retryDelay) {
-    // 改进状态日志显示
+    // 改进状态日志显示和状态检查
     const statusStr = typeof status === 'object' ? JSON.stringify(status) : status;
-    this.logger.log(`[SubscriptionManager] Subscription status: ${statusStr}`);
     
-    if (status === 'SUBSCRIBED') {
+    // 检查是否是成功的订阅状态（包括对象形式的状态）
+    const isSubscribed = status === 'SUBSCRIBED' || 
+                        (typeof status === 'object' && status?.status === 'ok' && status?.message?.includes('Subscribed'));
+    
+    if (isSubscribed) {
       this.retryCount = 0;
       this.lastHeartbeat = Date.now();
       this.missedHeartbeats = 0;
       this.logger.log('[SubscriptionManager] Successfully subscribed to commands');
-    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      return; // 早期返回，避免记录为未知状态
+    }
+    
+    // 只在非成功状态时记录详细状态
+    this.logger.log(`[SubscriptionManager] Subscription status: ${statusStr}`);
+    
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
       this.logger.error(`[SubscriptionManager] Subscription error: ${statusStr}`, err);
       if (!this.isShuttingDown) {
         // 延迟重连以避免频繁重试
@@ -446,8 +455,12 @@ export class SubscriptionManager {
           this.scheduleRetryWithBackoff(onNewCommand);
         }, 10000); // 10秒延迟
       }
+    } else if (typeof status === 'object' && status?.status === 'ok') {
+      // 处理其他成功状态的对象，但不是订阅确认
+      this.lastHeartbeat = Date.now();
+      this.logger.log(`[SubscriptionManager] Received status update: ${status.message || 'OK'}`);
     } else {
-      // 处理其他未知状态
+      // 处理真正的未知状态
       this.logger.warn(`[SubscriptionManager] Unknown subscription status: ${statusStr}`, err);
     }
   }
