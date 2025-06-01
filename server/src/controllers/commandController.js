@@ -118,7 +118,7 @@ export class CommandController {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         // 直接查询results表
-        const client = this.connectionManager?.getClient() || this.getSupabaseClient();
+        const client = this.connectionManager?.getClient() || await this.getSupabaseClient();
         if (!client) {
           this.logger.warn(`[CommandController] No Supabase client available for polling attempt ${attempt}`);
           await new Promise(res => this.timer.setTimeout(res, intervalMs));
@@ -157,7 +157,7 @@ export class CommandController {
   /**
    * 获取Supabase客户端（用于轮询）
    */
-  getSupabaseClient() {
+  async getSupabaseClient() {
     // 尝试从注入的服务获取客户端
     if (this.supabaseClient) {
       return this.supabaseClient;
@@ -165,7 +165,7 @@ export class CommandController {
     
     // 尝试从默认服务获取
     try {
-      const { supabaseService } = require('../services/supabaseService.js');
+      const { supabaseService } = await import('../services/supabaseService.js');
       return supabaseService?.getClient();
     } catch (error) {
       this.logger.error('[CommandController] Failed to get Supabase client:', error);

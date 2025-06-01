@@ -553,21 +553,21 @@ describe('CommandController', () => {
   });
 
   describe('getSupabaseClient', () => {
-    it('should return injected client', () => {
-      const result = commandController.getSupabaseClient();
+    it('should return injected client', async () => {
+      const result = await commandController.getSupabaseClient();
       expect(result).toBe(mockOptions.supabaseClient);
     });
 
-    it('should return null when no client available', () => {
+    it('should return null when no client available', async () => {
       const controller = new CommandController({
         ...mockOptions,
         supabaseClient: null
       });
       
       // 模拟getSupabaseClient方法直接返回null
-      controller.getSupabaseClient = jest.fn().mockReturnValue(null);
+      controller.getSupabaseClient = jest.fn().mockResolvedValue(null);
       
-      const result = controller.getSupabaseClient();
+      const result = await controller.getSupabaseClient();
       expect(result).toBeNull();
     });
   });
