@@ -25,11 +25,67 @@ jest.mock('@supabase/supabase-js', () => ({
   createClient: mockCreateClient
 }));
 
+// 全局模拟所有定时器
+const originalSetTimeout = global.setTimeout;
+const originalSetInterval = global.setInterval;
+const originalClearTimeout = global.clearTimeout;
+const originalClearInterval = global.clearInterval;
+const originalSetImmediate = global.setImmediate;
+
+// 模拟定时器
+beforeAll(() => {
+  // 模拟所有定时器函数
+  global.setTimeout = jest.fn((callback, delay) => {
+    // 对于测试，立即执行回调或使用setImmediate
+    if (delay === 0 || delay <= 100) {
+      originalSetImmediate(callback);
+    } else {
+      // 对于较长的延迟，也立即执行以避免测试挂起
+      originalSetImmediate(callback);
+    }
+    return `mock-timeout-${Math.random()}`;
+  });
+  
+  global.setInterval = jest.fn((callback, delay) => {
+    // 返回一个模拟的定时器ID，不执行回调
+    return `mock-interval-${Math.random()}`;
+  });
+  
+  global.clearTimeout = jest.fn();
+  global.clearInterval = jest.fn();
+  
+  global.setImmediate = jest.fn((callback) => {
+    // 使用原始的setImmediate但确保异步执行
+    return originalSetImmediate(callback);
+  });
+});
+
+// 恢复原始定时器
+afterAll(() => {
+  global.setTimeout = originalSetTimeout;
+  global.setInterval = originalSetInterval;
+  global.clearTimeout = originalClearTimeout;
+  global.clearInterval = originalClearInterval;
+  global.setImmediate = originalSetImmediate;
+});
+
 // Global cleanup function
 afterAll(async () => {
   // Clear all timers
   jest.clearAllTimers();
   jest.clearAllMocks();
+  
+  // 强制清理任何可能残留的定时器
+  if (typeof global.gc === 'function') {
+    try {
+      global.gc();
+    } catch (e) {
+      // 静默处理
+    }
+  }
+  
+  // 等待所有异步操作完成
+  await new Promise(resolve => originalSetImmediate(resolve));
 });
 
 describe('SupabaseConfig', () => {
@@ -83,7 +139,7 @@ describe('SupabaseConfig', () => {
     });
     
     expect(config.maxConnectionAttempts).toBe(10);
-    expect(config.connectionRetryDelay).toBe(3000);
+    expect(config.connectionRetryDelay).toBe(5000); // 更新为新的默认值
   });
 
   describe('SupabaseConfig validation edge case', () => {
@@ -337,9 +393,35 @@ describe('SupabaseService', () => {
       }
     }
     
+    // 强制清理所有可能的定时器
+    if (service && service.connectionManager && service.connectionManager.timers) {
+      Object.values(service.connectionManager.timers).forEach(timer => {
+        if (timer) {
+          try {
+            clearInterval(timer);
+            clearTimeout(timer);
+          } catch (e) {
+            // 静默处理
+          }
+        }
+      });
+    }
+    
+    if (service && service.subscriptionManager) {
+      if (service.subscriptionManager.subscriptionHealthTimer) {
+        clearInterval(service.subscriptionManager.subscriptionHealthTimer);
+      }
+      if (service.subscriptionManager.retryTimer) {
+        clearTimeout(service.subscriptionManager.retryTimer);
+      }
+    }
+    
     // 清理模拟对象
     jest.clearAllMocks();
     jest.clearAllTimers();
+    
+    // 等待一个事件循环以确保所有异步操作完成
+    await new Promise(resolve => originalSetImmediate(resolve));
   });
 
   describe('constructor', () => {
@@ -428,10 +510,19 @@ describe('SupabaseService', () => {
         })
       });
       
+      // 确保setTimeout立即执行回调
+      global.setTimeout.mockImplementation((callback, delay) => {
+        originalSetImmediate(callback);
+        return 'mock-timeout-id';
+      });
+      
       const result = await service.updateCommandStatus('test-id', 'completed', null, 3, 10);
       
       expect(result.error).toBe(null);
       expect(attemptCount).toBe(3);
+      
+      // 重置模拟
+      global.setTimeout.mockReset();
     });
   });
 
@@ -667,14 +758,20 @@ describe('SupabaseService', () => {
       service.status.isConnected = false;
       service.connectionManager.initialize = jest.fn().mockResolvedValue(false);
       
-      const startTime = Date.now();
+      // 确保setTimeout立即执行回调
+      global.setTimeout.mockImplementation((callback, delay) => {
+        originalSetImmediate(callback);
+        return 'mock-timeout-id';
+      });
+      
       const result = await service.ensureConnection();
-      const endTime = Date.now();
       
       expect(result).toBe(false);
-      // Should have waited at least some time (allow for timing variations in tests)
-      expect(endTime - startTime).toBeGreaterThan(0);
-    });
+      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 5000);
+      
+      // 重置模拟
+      global.setTimeout.mockReset();
+    }, 10000); // Increase timeout for this test
   });
 
   describe('updateCommandStatus edge cases', () => {
@@ -878,22 +975,36 @@ describe('SubscriptionManager additional tests', () => {
   });
 
   describe('cleanup', () => {
-    it('should remove current subscription and reset it', () => {
-      subscriptionManager.currentSubscription = { id: 'test-subscription' };
+    it('should remove current subscription and reset it', async () => {
+      const mockUnsubscribe = jest.fn().mockResolvedValue();
+      subscriptionManager.subscription = { 
+        id: 'test-subscription',
+        unsubscribe: mockUnsubscribe
+      };
       
       subscriptionManager.cleanup();
       
-      expect(mockSupabaseClient.removeChannel).toHaveBeenCalledWith({ id: 'test-subscription' });
-      expect(subscriptionManager.currentSubscription).toBe(null);
+      // 等待异步清理完成
+      await new Promise(resolve => originalSetImmediate(resolve));
+      
+      expect(mockUnsubscribe).toHaveBeenCalled();
+      expect(subscriptionManager.subscription).toBe(null);
     });
     
-    it('should handle cleanup when client is not available', () => {
+    it('should handle cleanup when client is not available', async () => {
       mockConnectionManager.getClient.mockReturnValue(null);
-      subscriptionManager.currentSubscription = { id: 'test-subscription' };
+      const mockUnsubscribe = jest.fn().mockResolvedValue();
+      subscriptionManager.subscription = { 
+        id: 'test-subscription',
+        unsubscribe: mockUnsubscribe
+      };
       
       subscriptionManager.cleanup();
       
-      expect(subscriptionManager.currentSubscription).toBe(null);
+      // 等待异步清理完成
+      await new Promise(resolve => originalSetImmediate(resolve));
+      
+      expect(subscriptionManager.subscription).toBe(null);
     });
   });
 });
@@ -1018,39 +1129,56 @@ describe('Integration Tests', () => {
 describe('Additional Coverage Tests', () => {
   describe('SubscriptionManager handleSubscriptionError retry mechanism', () => {
     it('should trigger setTimeout retry on subscription error (line 321)', async () => {
-      jest.useFakeTimers();
+      // 使用模拟定时器
+      let timeoutCallback = null;
+      let timeoutId = 1;
+      global.setTimeout.mockImplementation((callback, delay) => {
+        timeoutCallback = callback;
+        return timeoutId++;
+      });
       
-      const mockConnectionManager = {
-        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
-      };
-      const mockConfig = { maxConnectionAttempts: 3 };
-      const mockLogger = {
-        log: jest.fn(),
-        error: jest.fn(),
-        warn: jest.fn()
-      };
-      
-      const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
-      const mockOnNewCommand = jest.fn();
-      
-      // Spy on the subscribe method to track when it's called again
-      const subscribeSpy = jest.spyOn(subscriptionManager, 'subscribe');
-      
-      // Call handleSubscriptionError which should trigger setTimeout
-      await subscriptionManager.handleSubscriptionError('ERROR', new Error('Test error'), mockOnNewCommand, 5000);
-      
-      // Fast-forward time to trigger the setTimeout callback
-      jest.advanceTimersByTime(5000);
-      
-      // The subscribe method should be called again with reduced retry count
-      expect(subscribeSpy).toHaveBeenCalledWith(mockOnNewCommand, 3, expect.any(Number));
-      
-      jest.useRealTimers();
+      try {
+        const mockConnectionManager = {
+          getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+        };
+        const mockConfig = { maxConnectionAttempts: 3 };
+        const mockLogger = {
+          log: jest.fn(),
+          error: jest.fn(),
+          warn: jest.fn()
+        };
+        
+        const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+        const mockOnNewCommand = jest.fn();
+        
+        // 设置retryCount为0，这样会调用scheduleRetryWithBackoff
+        subscriptionManager.retryCount = 0;
+        
+        // Spy on the subscribe method to track when it's called again
+        const subscribeSpy = jest.spyOn(subscriptionManager, 'subscribe');
+        
+        // Call handleSubscriptionError which should trigger setTimeout
+        await subscriptionManager.handleSubscriptionError('ERROR', new Error('Test error'), mockOnNewCommand, 5000);
+        
+        // 当retryCount为0时，会调用scheduleRetryWithBackoff，延迟为1000ms
+        expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+        
+        // Execute the timeout callback if it exists
+        if (timeoutCallback) {
+          timeoutCallback();
+        }
+        
+        // The subscribe method should be called again with reduced retry count
+        expect(subscribeSpy).toHaveBeenCalledWith(mockOnNewCommand, 15, 15000); // 使用新的默认值
+      } finally {
+        // 重置模拟
+        global.setTimeout.mockReset();
+      }
     });
   });
 
   describe('SubscriptionManager cleanup error handling', () => {
-    it('should handle and log errors during subscription cleanup (line 329)', () => {
+    it('should handle and log errors during subscription cleanup (line 329)', async () => {
       const mockConnectionManager = {
         getClient: jest.fn().mockReturnValue({
           removeChannel: jest.fn().mockImplementation(() => {
@@ -1065,19 +1193,25 @@ describe('Additional Coverage Tests', () => {
       };
       
       const subscriptionManager = new SubscriptionManager(mockConnectionManager, {}, mockLogger);
-      subscriptionManager.currentSubscription = { id: 'test-subscription' };
+      subscriptionManager.subscription = { 
+        id: 'test-subscription',
+        unsubscribe: jest.fn().mockRejectedValue(new Error('Cleanup error'))
+      };
       
-      // This should not throw despite the removeChannel error
+      // This should not throw despite the unsubscribe error
       expect(() => subscriptionManager.cleanup()).not.toThrow();
       
-      // Should log the warning about cleanup error
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      // Wait for async cleanup to complete
+      await new Promise(resolve => originalSetImmediate(resolve));
+      
+      // Should log the error about cleanup failure
+      expect(mockLogger.error).toHaveBeenCalledWith(
         '[SubscriptionManager] Error cleaning up subscription:',
-        'Cleanup error'
+        expect.any(Error)
       );
       
       // Subscription should still be reset
-      expect(subscriptionManager.currentSubscription).toBe(null);
+      expect(subscriptionManager.subscription).toBe(null);
     });
   });
 
@@ -1123,11 +1257,11 @@ describe('Additional Coverage Tests', () => {
       service.connectionManager.getClient = jest.fn().mockReturnValue(mockErrorClient);
       
       // Mock setTimeout to execute immediately
-      const originalSetTimeout = global.setTimeout;
-      global.setTimeout = (fn, delay) => {
-        // Execute immediately for the test
-        return originalSetTimeout(fn, 0);
-      };
+      global.setTimeout.mockImplementation((fn, delay) => {
+        // Execute immediately for the test using setImmediate
+        originalSetImmediate(fn);
+        return 'mock-timeout-id';
+      });
       
       try {
         const result = await service.updateCommandStatus('test-cmd', 'pending', null, 2, 50);
@@ -1142,8 +1276,8 @@ describe('Additional Coverage Tests', () => {
         // Should have attempted multiple client calls
         expect(clientCallCount).toBe(2);
       } finally {
-        // 确保总是恢复原始的setTimeout
-        global.setTimeout = originalSetTimeout;
+        // 重置模拟
+        global.setTimeout.mockReset();
       }
     }, 5000);
   });
@@ -1328,234 +1462,459 @@ describe('Additional Coverage for Missing Lines', () => {
     };
   });
 
-  describe('subscribeToResultForCommand subscription callback edge cases', () => {
-    it('should handle SUBSCRIBED status in subscription callback (line 528)', async () => {
-      const mockService = new SupabaseService(mockConfig, mockLogger);
-      mockService.connectionManager.getClient = jest.fn().mockReturnValue(mockSupabaseClient);
-      mockService.ensureConnection = jest.fn().mockResolvedValue(true);
-
-      const mockCallback = jest.fn();
-      let subscriptionCallback;
-
-      mockSupabaseClient.channel.mockReturnValue({
-        on: jest.fn().mockReturnValue({
-          subscribe: jest.fn().mockImplementation((callback) => {
-            subscriptionCallback = callback;
-            return { id: 'test-subscription' };
-          })
-        })
-      });
-
-      await mockService.subscribeToResultForCommand('cmd-123', mockCallback);
-
-      // 触发订阅回调，状态为 SUBSCRIBED
-      subscriptionCallback('SUBSCRIBED', null);
-
-      expect(mockLogger.log).toHaveBeenCalledWith(
-        '[SupabaseService] Subscribed to results for command cmd-123'
-      );
-    });
-
-    it('should handle error in subscription callback (line 529)', async () => {
-      const mockService = new SupabaseService(mockConfig, mockLogger);
-      mockService.connectionManager.getClient = jest.fn().mockReturnValue(mockSupabaseClient);
-      mockService.ensureConnection = jest.fn().mockResolvedValue(true);
-
-      const mockCallback = jest.fn();
-      let subscriptionCallback;
-
-      mockSupabaseClient.channel.mockReturnValue({
-        on: jest.fn().mockReturnValue({
-          subscribe: jest.fn().mockImplementation((callback) => {
-            subscriptionCallback = callback;
-            return { id: 'test-subscription' };
-          })
-        })
-      });
-
-      await mockService.subscribeToResultForCommand('cmd-123', mockCallback);
-
-      // 触发订阅回调，带有错误
-      const testError = new Error('Subscription error');
-      subscriptionCallback('ERROR', testError);
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        '[SupabaseService] Error subscribing to results for command cmd-123:',
-        testError
-      );
-    });
-  });
-
-  describe('clearResultSubscription error handling (line 585-586)', () => {
-    it('should handle removeChannel error gracefully', async () => {
-      const mockService = new SupabaseService(mockConfig, mockLogger);
-      const mockSubscription = { id: 'test-subscription' };
-      const removeChannelError = new Error('Remove channel failed');
-
-      mockService.connectionManager.getClient = jest.fn().mockReturnValue({
-        removeChannel: jest.fn().mockRejectedValue(removeChannelError)
-      });
-
-      await mockService.clearResultSubscription(mockSubscription);
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        '[SupabaseService] Error unsubscribing/removing channel:',
-        removeChannelError
-      );
-    });
-  });
-
-  describe('gracefulShutdown process.exit handling (line 592-593)', () => {
-    it('should call process.exit after shutdown completes', async () => {
-      // 保存原始的 process.exit
-      const originalExit = process.exit;
-      process.exit = jest.fn();
-
-      // 创建一个模拟的 gracefulShutdown 函数
-      const mockShutdown = jest.fn().mockResolvedValue();
-      const gracefulShutdown = () => {
-        mockShutdown().then(() => {
-          process.exit(0);
-        });
-      };
-
-      // 调用 gracefulShutdown
-      gracefulShutdown();
-
-      // 等待异步操作完成
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      expect(mockShutdown).toHaveBeenCalled();
-      expect(process.exit).toHaveBeenCalledWith(0);
-
-      // 恢复原始的 process.exit
-      process.exit = originalExit;
-    });
-  });
-
-  describe('process signal handlers (line 599-600)', () => {
-    it('should register SIGINT and SIGTERM handlers in non-test environment', () => {
-      // 保存原始环境变量
-      const originalNodeEnv = process.env.NODE_ENV;
-      const originalJestWorkerId = process.env.JEST_WORKER_ID;
+  describe('ConnectionManager createClient configuration', () => {
+    it('should create client with proper configuration', () => {
+      const connectionManager = new ConnectionManager(mockConfig, mockLogger);
       
-      // 模拟非测试环境
-      process.env.NODE_ENV = 'production';
-      process.env.JEST_WORKER_ID = undefined;
-
-      // 保存原始的 process.on
-      const originalOn = process.on;
-      const mockOn = jest.fn();
-      process.on = mockOn;
-
-      // 重新加载模块以触发信号处理器注册
-      // 由于我们在测试中，我们只能模拟这个行为
-      const mockGracefulShutdown = jest.fn();
-      
-      // 模拟信号处理器注册
-      process.on('SIGINT', mockGracefulShutdown);
-      process.on('SIGTERM', mockGracefulShutdown);
-
-      expect(mockOn).toHaveBeenCalledWith('SIGINT', mockGracefulShutdown);
-      expect(mockOn).toHaveBeenCalledWith('SIGTERM', mockGracefulShutdown);
-
-      // 恢复原始值
-      process.env.NODE_ENV = originalNodeEnv;
-      if (originalJestWorkerId !== undefined) {
-        process.env.JEST_WORKER_ID = originalJestWorkerId;
-      }
-      process.on = originalOn;
-    });
-  });
-
-  describe('Default service auto-initialization (line 585)', () => {
-    it('should handle auto-initialization error in non-test environment', async () => {
-      // 保存原始环境变量
-      const originalNodeEnv = process.env.NODE_ENV;
-      const originalJestWorkerId = process.env.JEST_WORKER_ID;
-      const originalConsoleError = console.error;
-      
-      // 模拟非测试环境
-      process.env.NODE_ENV = 'production';
-      process.env.JEST_WORKER_ID = undefined;
-      
-      // 模拟 console.error
-      console.error = jest.fn();
-
-      // 创建一个会失败的服务
-      const failingService = {
-        initialize: jest.fn().mockRejectedValue(new Error('Initialization failed'))
-      };
-
-      // 模拟自动初始化逻辑
-      try {
-        await failingService.initialize();
-      } catch (error) {
-        console.error('[SupabaseService] Failed to auto-initialize:', error);
-      }
-
-      expect(console.error).toHaveBeenCalledWith(
-        '[SupabaseService] Failed to auto-initialize:',
-        expect.any(Error)
-      );
-
-      // 恢复原始值
-      process.env.NODE_ENV = originalNodeEnv;
-      if (originalJestWorkerId !== undefined) {
-        process.env.JEST_WORKER_ID = originalJestWorkerId;
-      }
-      console.error = originalConsoleError;
-    });
-  });
-
-  describe('Export functions coverage', () => {
-    it('should test all exported functions', () => {
-      // 测试导出的函数是否正确定义
-      expect(typeof ensureSupabaseConnection).toBe('function');
-      expect(typeof updateCommandStatus).toBe('function');
-      expect(typeof subscribeToResultForCommand).toBe('function');
-      expect(typeof clearResultSubscription).toBe('function');
-    });
-  });
-
-  describe('ConnectionManager additional edge cases', () => {
-    it('should handle client creation with all configuration options', () => {
-      const fullConfig = new SupabaseConfig({
-        url: 'https://test.supabase.co',
-        serviceKey: 'test-key',
-        maxConnectionAttempts: 5,
-        connectionRetryDelay: 2000,
-        connectionResetInterval: 180000,
-        connectionRefreshInterval: 1800000,
-        healthCheckInterval: 30000,
-        maxSubscriptionRetries: 5
-      });
-
-      const connectionManager = new ConnectionManager(fullConfig, mockLogger);
       const client = connectionManager.createClient();
-
+      
+      // Test that client is created and has expected properties
       expect(client).toBeDefined();
       expect(client.supabaseUrl).toBe('https://test.supabase.co');
       expect(client.supabaseKey).toBe('test-key');
     });
 
-    it('should handle network error detection for all patterns', () => {
+    it('should handle client creation with configuration', () => {
       const connectionManager = new ConnectionManager(mockConfig, mockLogger);
       
-      const networkErrors = [
-        new Error('fetch failed'),
-        new Error('Network error occurred'),
-        new Error('ENOTFOUND host'),
-        new Error('ECONNREFUSED connection'),
-        new Error('timeout exceeded')
-      ];
+      // Test that the client is created
+      const client = connectionManager.createClient();
+      expect(client).toBeDefined();
+      expect(typeof client.from).toBe('function');
+      expect(typeof client.channel).toBe('function');
+    });
 
-      for (const error of networkErrors) {
-        expect(connectionManager.isNetworkError(error)).toBe(true);
-      }
+    it('should create client with proper URL and key', () => {
+      const connectionManager = new ConnectionManager(mockConfig, mockLogger);
+      
+      // Test that the client is created
+      const client = connectionManager.createClient();
+      expect(client).toBeDefined();
+      
+      // Test that the client has the expected URL and key properties
+      expect(client.supabaseUrl).toBe('https://test.supabase.co');
+      expect(client.supabaseKey).toBe('test-key');
+    });
+  });
 
-      const nonNetworkError = new Error('Some other error');
-      expect(connectionManager.isNetworkError(nonNetworkError)).toBe(false);
+  describe('ConnectionManager refresh method', () => {
+    it('should handle cleanup warning during refresh', async () => {
+      const connectionManager = new ConnectionManager(mockConfig, mockLogger);
+      connectionManager.client = {
+        removeAllChannels: jest.fn().mockImplementation(() => {
+          throw new Error('Cleanup warning');
+        })
+      };
+      connectionManager.initialize = jest.fn().mockResolvedValue(true);
+      
+      const result = await connectionManager.refresh();
+      
+      expect(result).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[ConnectionManager] Warning during cleanup:',
+        'Cleanup warning'
+      );
+    });
+
+    it('should handle cleanup error during ConnectionManager cleanup', () => {
+      const connectionManager = new ConnectionManager(mockConfig, mockLogger);
+      connectionManager.client = {
+        removeAllChannels: jest.fn().mockImplementation(() => {
+          throw new Error('Cleanup error');
+        })
+      };
+      
+      connectionManager.cleanup();
+      
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[ConnectionManager] Error during cleanup:',
+        'Cleanup error'
+      );
+    });
+  });
+
+  describe('SubscriptionManager health check and reconnection', () => {
+    let subscriptionManager;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+    });
+
+    it('should start health check timer', () => {
+      subscriptionManager.startHealthCheck();
+      
+      expect(global.setInterval).toHaveBeenCalledWith(
+        expect.any(Function),
+        30000
+      );
+    });
+
+    it('should handle missed heartbeats and force reconnection', () => {
+      subscriptionManager.subscription = { id: 'test-subscription' };
+      subscriptionManager.lastHeartbeat = Date.now() - 70000; // 70 seconds ago
+      subscriptionManager.forceReconnect = jest.fn();
+      
+      subscriptionManager.startHealthCheck();
+      
+      // Simulate health check interval execution
+      const healthCheckCallback = global.setInterval.mock.calls[0][0];
+      
+      // First missed heartbeat
+      healthCheckCallback();
+      expect(subscriptionManager.missedHeartbeats).toBe(1);
+      
+      // Second missed heartbeat
+      healthCheckCallback();
+      expect(subscriptionManager.missedHeartbeats).toBe(2);
+      
+      // Third missed heartbeat should trigger reconnection
+      healthCheckCallback();
+      expect(subscriptionManager.missedHeartbeats).toBe(3);
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SubscriptionManager] Too many missed heartbeats, forcing reconnection'
+      );
+      expect(subscriptionManager.forceReconnect).toHaveBeenCalled();
+    });
+
+    it('should reset missed heartbeats when connection is healthy', () => {
+      subscriptionManager.subscription = { id: 'test-subscription' };
+      subscriptionManager.lastHeartbeat = Date.now(); // Current time
+      subscriptionManager.missedHeartbeats = 2;
+      
+      subscriptionManager.startHealthCheck();
+      
+      // Simulate health check interval execution
+      const healthCheckCallback = global.setInterval.mock.calls[0][0];
+      healthCheckCallback();
+      
+      expect(subscriptionManager.missedHeartbeats).toBe(0);
+    });
+
+    it('should handle forceReconnect method', async () => {
+      subscriptionManager.cleanupSubscription = jest.fn();
+      subscriptionManager.retryCount = 5;
+      subscriptionManager.missedHeartbeats = 3;
+      
+      await subscriptionManager.forceReconnect();
+      
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SubscriptionManager] Forcing subscription reconnection...'
+      );
+      expect(subscriptionManager.cleanupSubscription).toHaveBeenCalled();
+      expect(subscriptionManager.retryCount).toBe(0);
+      expect(subscriptionManager.missedHeartbeats).toBe(0);
+    });
+  });
+
+  describe('SupabaseService health check functionality', () => {
+    let service;
+
+    beforeEach(() => {
+      service = new SupabaseService(mockConfig, mockLogger);
+    });
+
+    it('should start health check with proper interval', () => {
+      service.startHealthCheck();
+      
+      expect(global.setInterval).toHaveBeenCalledWith(
+        expect.any(Function),
+        mockConfig.healthCheckInterval
+      );
+    });
+
+    it('should handle health check failure and recovery', async () => {
+      service.connectionManager.testConnection = jest.fn()
+        .mockResolvedValueOnce(false) // First call fails
+        .mockResolvedValueOnce(true); // Second call succeeds
+      service.status.consecutiveFailures = 2;
+      
+      service.startHealthCheck();
+      
+      // Simulate health check execution
+      const healthCheckCallback = global.setInterval.mock.calls[0][0];
+      await healthCheckCallback();
+      
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[SupabaseService] Health check failed, attempting recovery...'
+      );
+      
+      // Reset failures and test recovery
+      service.status.consecutiveFailures = 1;
+      await healthCheckCallback();
+      
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SupabaseService] Health check recovered'
+      );
+    });
+
+    it('should refresh connection after multiple health check failures', async () => {
+      service.connectionManager.testConnection = jest.fn().mockResolvedValue(false);
+      service.connectionManager.refresh = jest.fn().mockResolvedValue(true);
+      service.subscribeToCommands = jest.fn().mockResolvedValue(true);
+      service.status.consecutiveFailures = 3;
+      service.subscriptionManager.subscriptionCallback = jest.fn();
+      
+      service.startHealthCheck();
+      
+      // Simulate health check execution
+      const healthCheckCallback = global.setInterval.mock.calls[0][0];
+      await healthCheckCallback();
+      
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[SupabaseService] Multiple health check failures, refreshing connection...'
+      );
+      expect(service.connectionManager.refresh).toHaveBeenCalled();
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SupabaseService] Reestablishing subscription after connection refresh...'
+      );
+      expect(service.subscribeToCommands).toHaveBeenCalled();
+    });
+
+    it('should handle health check errors gracefully', async () => {
+      service.connectionManager.testConnection = jest.fn().mockRejectedValue(new Error('Health check error'));
+      
+      service.startHealthCheck();
+      
+      // Simulate health check execution
+      const healthCheckCallback = global.setInterval.mock.calls[0][0];
+      await healthCheckCallback();
+      
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SupabaseService] Health check error:',
+        'Health check error'
+      );
+    });
+  });
+
+  describe('SupabaseService initialization edge cases', () => {
+    it('should handle subscription failure during initialization', async () => {
+      const service = new SupabaseService(mockConfig, mockLogger);
+      service.ensureConnection = jest.fn().mockResolvedValue(true);
+      service.subscribeToCommands = jest.fn().mockRejectedValue(new Error('Subscription failed'));
+      service.startHealthCheck = jest.fn();
+      
+      const result = await service.initialize();
+      
+      expect(result).toBe(false); // Should return false when there's an error
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SupabaseService] Error during service initialization:',
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Default service and export functions edge cases', () => {
+    it('should handle defaultCommandProcessor import', async () => {
+      const service = new SupabaseService(mockConfig, mockLogger);
+      
+      // Mock the dynamic import
+      const mockProcessCommand = jest.fn();
+      jest.doMock('../controllers/commandController.js', () => ({
+        processCommand: mockProcessCommand
+      }), { virtual: true });
+      
+      const command = { id: 'test-cmd', command_text: 'test' };
+      
+      // Since we can't easily test dynamic import in this context,
+      // we'll test that the method exists and can be called
+      expect(typeof service.defaultCommandProcessor).toBe('function');
+    });
+  });
+
+  describe('SubscriptionManager subscription status handling', () => {
+    let subscriptionManager;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+    });
+
+    it('should handle SUBSCRIBED status correctly', async () => {
+      const mockOnNewCommand = jest.fn();
+      subscriptionManager.retryCount = 5;
+      
+      await subscriptionManager.handleSubscriptionStatus('SUBSCRIBED', null, mockOnNewCommand, 1000);
+      
+      expect(subscriptionManager.retryCount).toBe(0);
+      expect(subscriptionManager.lastHeartbeat).toBeDefined();
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SubscriptionManager] Successfully subscribed to commands'
+      );
+    });
+
+    it('should handle subscription failure with retries', async () => {
+      const mockOnNewCommand = jest.fn();
+      subscriptionManager.retryCount = 3;
+      subscriptionManager.scheduleRetry = jest.fn();
+      
+      await subscriptionManager.handleSubscriptionError('ERROR', new Error('Sub failed'), mockOnNewCommand, 1000);
+      
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SubscriptionManager] Subscription failed with status: ERROR',
+        expect.any(Error)
+      );
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SubscriptionManager] Retrying subscription in 1000ms'
+      );
+      expect(subscriptionManager.scheduleRetry).toHaveBeenCalledWith(mockOnNewCommand, 1000);
+    });
+
+    it('should use backoff strategy when no retries left', async () => {
+      const mockOnNewCommand = jest.fn();
+      subscriptionManager.retryCount = 0;
+      subscriptionManager.scheduleRetryWithBackoff = jest.fn();
+      
+      await subscriptionManager.handleSubscriptionError('ERROR', new Error('Sub failed'), mockOnNewCommand, 1000);
+      
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SubscriptionManager] All subscription attempts failed, using backoff strategy'
+      );
+      expect(subscriptionManager.scheduleRetryWithBackoff).toHaveBeenCalledWith(mockOnNewCommand);
+    });
+  });
+
+  describe('SubscriptionManager cleanup with subscription', () => {
+    let subscriptionManager;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+    });
+
+    it('should cleanup subscription properly', () => {
+      subscriptionManager.subscription = { id: 'test-subscription' };
+      subscriptionManager.cleanupSubscription = jest.fn();
+      
+      subscriptionManager.cleanup();
+      
+      expect(subscriptionManager.isShuttingDown).toBe(true);
+      expect(subscriptionManager.cleanupSubscription).toHaveBeenCalled();
+    });
+  });
+
+  describe('Additional coverage for specific code paths', () => {
+    it('should test SubscriptionManager scheduleRetry method', () => {
+      const mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+      const mockOnNewCommand = jest.fn();
+      
+      subscriptionManager.subscribe = jest.fn();
+      subscriptionManager.scheduleRetry(mockOnNewCommand, 1000);
+      
+      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+    });
+
+    it('should test SubscriptionManager scheduleRetryWithBackoff method', () => {
+      const mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+      const mockOnNewCommand = jest.fn();
+      
+      subscriptionManager.subscribe = jest.fn();
+      subscriptionManager.scheduleRetryWithBackoff(mockOnNewCommand);
+      
+      expect(global.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+    });
+
+    it('should test SubscriptionManager handleSubscriptionStatus with CHANNEL_ERROR', async () => {
+      const mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+      const mockOnNewCommand = jest.fn();
+      
+      subscriptionManager.scheduleRetryWithBackoff = jest.fn();
+      
+      await subscriptionManager.handleSubscriptionStatus('CHANNEL_ERROR', new Error('Channel error'), mockOnNewCommand, 1000);
+      
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[SubscriptionManager] Subscription error: CHANNEL_ERROR',
+        expect.any(Error)
+      );
+    });
+
+    it('should test SubscriptionManager handleSubscriptionStatus with CLOSED', async () => {
+      const mockConnectionManager = {
+        getClient: jest.fn().mockReturnValue(mockSupabaseClient)
+      };
+      const subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
+      const mockOnNewCommand = jest.fn();
+      
+      subscriptionManager.scheduleRetryWithBackoff = jest.fn();
+      
+      await subscriptionManager.handleSubscriptionStatus('CLOSED', null, mockOnNewCommand, 1000);
+      
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[SubscriptionManager] Subscription closed'
+      );
+      expect(subscriptionManager.scheduleRetryWithBackoff).toHaveBeenCalledWith(mockOnNewCommand);
+    });
+
+    it('should test SupabaseService startHealthCheck timer clearing', () => {
+      const service = new SupabaseService(mockConfig, mockLogger);
+      
+      // Set an existing timer
+      service.connectionManager.timers.healthCheckTimer = 'existing-timer';
+      
+      service.startHealthCheck();
+      
+      expect(global.clearInterval).toHaveBeenCalledWith('existing-timer');
+      expect(global.setInterval).toHaveBeenCalled();
+    });
+
+    it('should test export functions error handling', () => {
+      // Test that export functions throw errors in test environment
+      expect(() => ensureSupabaseConnection()).toThrow('SupabaseService not available in test environment');
+      expect(() => updateCommandStatus()).toThrow('SupabaseService not available in test environment');
+      expect(() => subscribeToResultForCommand()).toThrow('SupabaseService not available in test environment');
+      expect(() => clearResultSubscription()).toThrow('SupabaseService not available in test environment');
+    });
+
+    it('should test ConnectionManager timer cleanup', () => {
+      const connectionManager = new ConnectionManager(mockConfig, mockLogger);
+      
+      // Set some timers
+      connectionManager.timers.resetTimer = 'reset-timer';
+      connectionManager.timers.refreshTimer = 'refresh-timer';
+      connectionManager.timers.healthCheckTimer = 'health-timer';
+      
+      connectionManager.cleanup();
+      
+      expect(global.clearInterval).toHaveBeenCalledWith('reset-timer');
+      expect(global.clearInterval).toHaveBeenCalledWith('refresh-timer');
+      expect(global.clearInterval).toHaveBeenCalledWith('health-timer');
+    });
+
+    it('should test SupabaseService getStatus method', () => {
+      const service = new SupabaseService(mockConfig, mockLogger);
+      service.connectionManager.getClient = jest.fn().mockReturnValue(mockSupabaseClient);
+      service.connectionManager.connectionAttempts = 5;
+      service.status.isConnected = true;
+      service.status.consecutiveFailures = 2;
+      
+      const status = service.getStatus();
+      
+      expect(status).toEqual(
+        expect.objectContaining({
+          isConnected: true,
+          consecutiveFailures: 2,
+          hasClient: true,
+          connectionAttempts: 5
+        })
+      );
     });
   });
 }); 

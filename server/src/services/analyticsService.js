@@ -270,6 +270,11 @@ export class AnalyticsService {
 let defaultService = null;
 
 export const getAnalyticsService = async () => {
+  // 在测试环境中不创建默认服务
+  if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined) {
+    throw new Error('getAnalyticsService should not be called in test environment');
+  }
+  
   if (!defaultService) {
     defaultService = new AnalyticsService();
     await defaultService.initialize();

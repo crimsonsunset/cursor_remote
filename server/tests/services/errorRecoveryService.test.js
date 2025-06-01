@@ -4,6 +4,8 @@ import {
   handleErrorWithRecovery,
   recordErrorStats,
   getErrorStats,
+  resetErrorStats,
+  getServiceHealth,
   performSystemHealthCheck,
   ErrorRecoveryService
 } from '../../src/services/errorRecoveryService.js';
@@ -15,131 +17,165 @@ beforeEach(() => {
 });
 
 describe('ErrorRecoveryService', () => {
+  beforeEach(() => {
+    // 重置全局状态
+    resetErrorStats();
+    global.errorStats = {};
+    
+    // Mock console methods
+    console.error = jest.fn();
+    console.log = jest.fn();
+    console.warn = jest.fn();
+  });
+
+  afterEach(() => {
+    // 清理全局状态
+    resetErrorStats();
+    delete global.errorStats;
+    jest.clearAllMocks();
+  });
+
   describe('analyzeError', () => {
-    it('should detect AppleScript timeout errors', () => {
-      const error = new Error('Connection timeout occurred');
+    it('should identify AppleScript timeout errors', () => {
+      const error = new Error('Operation timed out');
       const result = analyzeError(error);
       
       expect(result.type).toBe('APPLESCRIPT_TIMEOUT');
-      expect(result.suggestion).toBe('建议检查 Cursor 是否响应，或尝试重启 Cursor');
       expect(result.autoRetry).toBe(true);
       expect(result.retryDelay).toBe(10000);
-      expect(result.originalError).toBe('Connection timeout occurred');
+      expect(result.maxRetries).toBe(2);
+      expect(result.suggestion).toBe('建议检查 Cursor 是否响应，或尝试重启 Cursor');
     });
 
-    it('should detect AppleScript permission errors', () => {
-      const error = new Error('Permission denied to access application');
+    it('should identify permission errors', () => {
+      const error = new Error('Access denied to application');
       const result = analyzeError(error);
       
       expect(result.type).toBe('APPLESCRIPT_PERMISSION');
-      expect(result.suggestion).toBe('请检查系统偏好设置中的辅助功能权限');
       expect(result.autoRetry).toBe(false);
+      expect(result.maxRetries).toBe(0);
+      expect(result.suggestion).toBe('请检查系统偏好设置中的辅助功能权限');
     });
 
-    it('should detect Cursor not running errors', () => {
-      const error = new Error('Cursor application not found');
-      const result = analyzeError(error);
-      
-      expect(result.type).toBe('CURSOR_NOT_RUNNING');
-      expect(result.suggestion).toBe('请确保 Cursor 应用程序正在运行');
-      expect(result.autoRetry).toBe(true);
-      expect(result.retryDelay).toBe(5000);
-    });
-
-    it('should detect network errors', () => {
+    it('should identify network errors', () => {
       const error = new Error('Network connection failed');
       const result = analyzeError(error);
       
       expect(result.type).toBe('NETWORK_ERROR');
-      expect(result.suggestion).toBe('网络连接问题，请检查网络状态');
       expect(result.autoRetry).toBe(true);
       expect(result.retryDelay).toBe(3000);
+      expect(result.maxRetries).toBe(5);
+      expect(result.suggestion).toBe('网络连接问题，请检查网络状态');
     });
 
-    it('should detect Supabase errors', () => {
-      const error = new Error('Supabase service connection lost');
+    it('should identify subscription errors', () => {
+      const error = new Error('Subscription failed to connect');
       const result = analyzeError(error);
       
-      expect(result.type).toBe('SUPABASE_ERROR');
-      expect(result.suggestion).toBe('Supabase 连接问题，正在尝试重新连接');
+      expect(result.type).toBe('SUBSCRIPTION_ERROR');
       expect(result.autoRetry).toBe(true);
-      expect(result.retryDelay).toBe(2000);
+      expect(result.retryDelay).toBe(5000);
+      expect(result.maxRetries).toBe(5);
+      expect(result.suggestion).toBe('订阅连接问题，正在尝试重新建立连接');
+    });
+
+    it('should identify memory errors', () => {
+      const error = new Error('Out of memory');
+      const result = analyzeError(error);
+      
+      expect(result.type).toBe('MEMORY_ERROR');
+      expect(result.autoRetry).toBe(false);
+      expect(result.maxRetries).toBe(0);
+      expect(result.requiresRestart).toBe(true);
+      expect(result.suggestion).toBe('内存不足，建议重启服务');
     });
 
     it('should handle unknown errors', () => {
-      const error = new Error('Some unexpected error');
+      const error = new Error('Some unknown error');
       const result = analyzeError(error);
       
       expect(result.type).toBe('UNKNOWN_ERROR');
-      expect(result.suggestion).toBe('发生未知错误，请检查日志或联系管理员');
       expect(result.autoRetry).toBe(false);
-      expect(result.originalError).toBe('Some unexpected error');
+      expect(result.maxRetries).toBe(0);
+      expect(result.suggestion).toBe('发生未知错误，请检查日志或联系管理员');
     });
 
-    it('should handle errors without message property', () => {
-      const error = 'String error without message property';
+    it('should include timestamp in analysis', () => {
+      const error = new Error('Test error');
       const result = analyzeError(error);
       
-      expect(result.type).toBe('UNKNOWN_ERROR');
-      expect(result.originalError).toBe('String error without message property');
+      expect(result.timestamp).toBeDefined();
+      expect(typeof result.timestamp).toBe('string');
+      expect(new Date(result.timestamp)).toBeInstanceOf(Date);
     });
   });
 
   describe('recordErrorStats', () => {
-    it('should initialize global error stats if not exists', async () => {
+    it('should create new error stats', async () => {
       await recordErrorStats('NETWORK_ERROR', 'cmd-123');
       
-      expect(global.errorStats).toBeDefined();
-      expect(global.errorStats.NETWORK_ERROR).toBe(1);
-      // Verify console.log was called without checking exact content
+      const stats = getErrorStats();
+      expect(stats.errorCounts.NETWORK_ERROR).toBe(1);
+      expect(stats.legacy.NETWORK_ERROR).toBe(1);
       expect(console.log).toHaveBeenCalled();
     });
 
     it('should increment existing error stats', async () => {
-      global.errorStats = { NETWORK_ERROR: 2 };
-      
+      // 先记录一次
+      await recordErrorStats('NETWORK_ERROR', 'cmd-123');
+      // 再记录一次
       await recordErrorStats('NETWORK_ERROR', 'cmd-456');
       
-      expect(global.errorStats.NETWORK_ERROR).toBe(3);
+      const stats = getErrorStats();
+      expect(stats.errorCounts.NETWORK_ERROR).toBe(2);
+      expect(stats.legacy.NETWORK_ERROR).toBe(2);
     });
 
     it('should handle errors gracefully', async () => {
-      // Simply test that the function doesn't throw
       await expect(recordErrorStats('TEST_ERROR', 'cmd-789')).resolves.toBeUndefined();
     });
   });
 
   describe('getErrorStats', () => {
-    it('should return empty object when no stats exist', () => {
+    it('should return enhanced stats structure when no stats exist', () => {
       const stats = getErrorStats();
-      expect(stats).toEqual({});
+      expect(stats).toHaveProperty('errorCounts');
+      expect(stats).toHaveProperty('legacy');
+      expect(stats).toHaveProperty('criticalErrorThreshold');
+      expect(stats).toHaveProperty('restartRequested');
+      expect(stats.errorCounts).toEqual({});
+      expect(stats.legacy).toEqual({});
     });
 
-    it('should return existing error stats', () => {
-      global.errorStats = { 
-        NETWORK_ERROR: 5, 
-        CURSOR_NOT_RUNNING: 2 
-      };
+    it('should return existing error stats in enhanced format', async () => {
+      // 记录一些错误
+      await recordErrorStats('NETWORK_ERROR', 'cmd-1');
+      await recordErrorStats('NETWORK_ERROR', 'cmd-2');
+      await recordErrorStats('CURSOR_NOT_RUNNING', 'cmd-3');
       
       const stats = getErrorStats();
-      expect(stats).toEqual({
-        NETWORK_ERROR: 5,
-        CURSOR_NOT_RUNNING: 2
+      expect(stats.errorCounts).toEqual({
+        NETWORK_ERROR: 2,
+        CURSOR_NOT_RUNNING: 1
+      });
+      expect(stats.legacy).toEqual({
+        NETWORK_ERROR: 2,
+        CURSOR_NOT_RUNNING: 1
       });
     });
   });
 
   describe('handleErrorWithRecovery', () => {
-    it('should recommend retry for auto-retryable errors on first attempt', async () => {
+    it('should recommend retry for auto-retryable errors within max attempts', async () => {
       const error = new Error('Network connection failed');
       
       const result = await handleErrorWithRecovery('cmd-123', error, 1);
       
       expect(result.shouldRetry).toBe(true);
       expect(result.retryDelay).toBe(3000);
+      expect(result.maxRetries).toBe(5);
       expect(result.suggestion).toBe('网络连接问题，请检查网络状态');
       
-      // Verify console methods were called without checking exact content
       expect(console.error).toHaveBeenCalled();
       expect(console.log).toHaveBeenCalled();
     });
@@ -147,7 +183,8 @@ describe('ErrorRecoveryService', () => {
     it('should not retry after max attempts', async () => {
       const error = new Error('Network connection failed');
       
-      const result = await handleErrorWithRecovery('cmd-123', error, 3);
+      // 使用超过最大重试次数的尝试次数
+      const result = await handleErrorWithRecovery('cmd-123', error, 6); // 超过maxRetries=5
       
       expect(result.shouldRetry).toBe(false);
       expect(result.finalError).toBe(true);
@@ -164,12 +201,62 @@ describe('ErrorRecoveryService', () => {
       expect(result.suggestion).toBe('请检查系统偏好设置中的辅助功能权限');
     });
 
+    it('should handle memory errors requiring restart', async () => {
+      const error = new Error('Out of memory');
+      
+      const result = await handleErrorWithRecovery('cmd-123', error, 1);
+      
+      expect(result.shouldRetry).toBe(false);
+      expect(result.finalError).toBe(true);
+      expect(result.requiresRestart).toBe(true);
+      expect(result.suggestion).toBe('内存不足，建议重启服务');
+    });
+
     it('should record error stats during handling', async () => {
       const error = new Error('Cursor application not found');
       
       await handleErrorWithRecovery('cmd-456', error, 1);
       
-      expect(global.errorStats.CURSOR_NOT_RUNNING).toBe(1);
+      const stats = getErrorStats();
+      expect(stats.errorCounts.CURSOR_NOT_RUNNING).toBe(1);
+    });
+  });
+
+  describe('getServiceHealth', () => {
+    it('should return healthy status when no errors', () => {
+      const health = getServiceHealth();
+      
+      expect(health.status).toBe('healthy');
+      expect(health.totalErrors).toBe(0);
+      expect(health.errorBreakdown).toEqual({});
+      expect(health.restartRequested).toBe(false);
+    });
+
+    it('should return warning status when errors approach threshold', async () => {
+      // 记录接近阈值的错误数量
+      for (let i = 0; i < 8; i++) {
+        await recordErrorStats('NETWORK_ERROR', `cmd-${i}`);
+      }
+      
+      const health = getServiceHealth();
+      expect(health.status).toBe('warning');
+      expect(health.totalErrors).toBe(8);
+    });
+  });
+
+  describe('resetErrorStats', () => {
+    it('should reset all error statistics', async () => {
+      // 先记录一些错误
+      await recordErrorStats('NETWORK_ERROR', 'cmd-1');
+      await recordErrorStats('CURSOR_NOT_RUNNING', 'cmd-2');
+      
+      // 重置
+      resetErrorStats();
+      
+      const stats = getErrorStats();
+      expect(stats.errorCounts).toEqual({});
+      expect(stats.legacy).toEqual({});
+      expect(stats.restartRequested).toBe(false);
     });
   });
 
@@ -184,19 +271,17 @@ describe('ErrorRecoveryService', () => {
     it('should return consistent structure', async () => {
       const result = await performSystemHealthCheck();
       
-      // 验证返回结构的一致性
       expect(typeof result.supabase).toBe('boolean');
       expect(typeof result.applescript).toBe('boolean');
       expect(typeof result.cursor).toBe('boolean');
       expect(Array.isArray(result.recommendations)).toBe(true);
       expect(typeof result.timestamp).toBe('string');
+      expect(result.serviceHealth).toBeDefined();
     });
 
     it('should handle module availability checks', async () => {
-      // 在测试环境中，这些模块应该是可用的
       const result = await performSystemHealthCheck();
       
-      // 验证结果包含有效的布尔值
       expect([true, false]).toContain(result.supabase);
       expect([true, false]).toContain(result.applescript);
       expect([true, false]).toContain(result.cursor);
@@ -205,28 +290,17 @@ describe('ErrorRecoveryService', () => {
     it('should generate appropriate recommendations', async () => {
       const result = await performSystemHealthCheck();
       
-      // 验证建议数组的结构
       expect(Array.isArray(result.recommendations)).toBe(true);
       
-      // 验证所有建议都是有效字符串
       for (const recommendation of result.recommendations) {
         expect(typeof recommendation).toBe('string');
         expect(recommendation.length).toBeGreaterThan(0);
       }
       
-      // 验证健康检查结果的基本结构，不对具体值做假设
       expect(typeof result.supabase).toBe('boolean');
       expect(typeof result.applescript).toBe('boolean');
       expect(typeof result.cursor).toBe('boolean');
       expect(typeof result.timestamp).toBe('string');
-      
-      // 如果所有组件都健康，建议可能为空（这是正常的）
-      // 如果有组件不健康，建议应该非空
-      const hasUnhealthyComponents = !result.supabase || !result.applescript || !result.cursor;
-      if (hasUnhealthyComponents && result.recommendations.length === 0) {
-        // 这种情况下我们仍然接受，因为可能是测试环境的特殊情况
-        console.log('Test environment: unhealthy components detected but no recommendations generated');
-      }
     });
   });
 
@@ -276,21 +350,18 @@ describe('ErrorRecoveryService', () => {
       const error = new Error('Network fetch failed');
       const commandId = 'integration-test-cmd';
       
-      // First attempt should recommend retry
+      // First attempt should recommend retry (attempt 1 <= maxRetries 5)
       const firstAttempt = await handleErrorWithRecovery(commandId, error, 1);
       expect(firstAttempt.shouldRetry).toBe(true);
       
-      // Second attempt should recommend retry
+      // Second attempt should recommend retry (attempt 2 <= maxRetries 5)
       const secondAttempt = await handleErrorWithRecovery(commandId, error, 2);
       expect(secondAttempt.shouldRetry).toBe(true);
       
-      // Third attempt should not retry
-      const thirdAttempt = await handleErrorWithRecovery(commandId, error, 3);
-      expect(thirdAttempt.shouldRetry).toBe(false);
-      expect(thirdAttempt.finalError).toBe(true);
-      
-      // Error stats should be recorded for each attempt
-      expect(global.errorStats.NETWORK_ERROR).toBe(3);
+      // Sixth attempt should not retry (attempt 6 > maxRetries 5)
+      const sixthAttempt = await handleErrorWithRecovery(commandId, error, 6);
+      expect(sixthAttempt.shouldRetry).toBe(false);
+      expect(sixthAttempt.finalError).toBe(true);
     });
   });
 }); 

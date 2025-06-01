@@ -35,16 +35,19 @@ const config = {
   emergencyResetInterval: 43200000, // 12小时后重置紧急重启计数
   
   criticalErrorPatterns: [
-    /errorRecoveryService\.handleError is not a function/i,
+    /errorRecoveryService\.handleErrorWithRecovery is not a function/i,
     /TypeError.*is not a function/i,
     /Cannot read property.*of undefined/i,
     /ReferenceError/i,
     /Failed to ensure Supabase connection/i,
     /Max connection attempts.*reached/i,
     /ECONNREFUSED/i,
-    /ENOTFOUND/i
-    // 订阅相关的错误现在通过更智能的方式处理
-    // 只有在频繁出现时才认为是严重错误
+    /ENOTFOUND/i,
+    /out of memory|heap.*out of memory/i,
+    /Maximum call stack size exceeded/i,
+    /Process out of memory/i,
+    /Error: spawn.*ENOENT/i,
+    /UnhandledPromiseRejectionWarning/i
   ],
   
   // 新增：订阅问题检测配置
@@ -190,11 +193,26 @@ const testServiceHealth = async () => {
   const testClient = createTestClient();
   
   try {
-    // 测试基本连接
-    const { data, error } = await testClient
+    // 首先检查服务进程是否还在运行
+    if (!state.serviceProcess || state.serviceProcess.killed) {
+      return {
+        success: false,
+        reason: 'Service process is not running',
+        details: { processStatus: 'not_running', shouldRestart: true }
+      };
+    }
+    
+    // 测试基本连接（增加超时）
+    const connectionPromise = testClient
       .from('commands')
       .select('id')
       .limit(1);
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Connection test timeout')), 10000);
+    });
+    
+    const { data, error } = await Promise.race([connectionPromise, timeoutPromise]);
     
     if (error) {
       throw new Error(`Database query failed: ${error.message}`);
@@ -230,6 +248,22 @@ const testServiceHealth = async () => {
       };
     }
     
+    // 检查处理中的命令是否过多（可能表示服务卡住）
+    const { data: processingCommands, error: processingError } = await testClient
+      .from('commands')
+      .select('id, created_at')
+      .eq('status', 'processing')
+      .lt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString()); // 15分钟前的处理中命令
+    
+    if (!processingError && processingCommands && processingCommands.length > 3) {
+      console.warn(`⚠️ 发现 ${processingCommands.length} 个长时间处理中的命令`);
+      return {
+        success: false,
+        reason: `Found ${processingCommands.length} long-running processing commands`,
+        details: { processingCommands: processingCommands.length, shouldRestart: true }
+      };
+    }
+    
     // 如果最近有严重错误且频率过高，建议重启
     if (state.criticalErrorCount > config.criticalErrorThreshold && 
         state.lastCriticalErrorTime && 
@@ -241,21 +275,67 @@ const testServiceHealth = async () => {
       };
     }
     
+    // 检查内存使用情况（如果可能）
+    let memoryUsage = null;
+    try {
+      if (state.serviceProcess && state.serviceProcess.pid) {
+        // 这里可以添加内存检查逻辑
+        // 但需要额外的依赖，暂时跳过
+      }
+    } catch (memError) {
+      // 忽略内存检查错误
+    }
+    
     return {
       success: true,
       details: {
         recentCommands: recentCommands?.length || 0,
         stuckCommands: stuckCommands?.length || 0,
-        criticalErrors: state.criticalErrorCount
+        processingCommands: processingCommands?.length || 0,
+        criticalErrors: state.criticalErrorCount,
+        memoryUsage: memoryUsage
       }
     };
     
   } catch (error) {
+    // 区分不同类型的错误
+    let shouldRestart = true;
+    let errorType = 'unknown';
+    
+    if (error.message.includes('timeout')) {
+      errorType = 'timeout';
+      console.error('❌ 健康检查超时');
+    } else if (error.message.includes('ECONNREFUSED')) {
+      errorType = 'connection_refused';
+      console.error('❌ 数据库连接被拒绝');
+    } else if (error.message.includes('ENOTFOUND')) {
+      errorType = 'dns_error';
+      console.error('❌ DNS解析失败');
+    } else if (error.message.includes('fetch failed')) {
+      errorType = 'network_error';
+      console.error('❌ 网络请求失败');
+    } else {
+      console.error('❌ 健康检查失败:', error.message);
+    }
+    
     return {
       success: false,
       reason: error.message,
-      details: { error: error.message, shouldRestart: true }
+      details: { 
+        error: error.message, 
+        errorType: errorType,
+        shouldRestart: shouldRestart 
+      }
     };
+  } finally {
+    // 确保测试客户端被清理
+    try {
+      if (testClient && typeof testClient.removeAllChannels === 'function') {
+        testClient.removeAllChannels();
+      }
+    } catch (cleanupError) {
+      // 忽略清理错误
+    }
   }
 };
 
@@ -264,17 +344,34 @@ const startService = () => {
   return new Promise((resolve, reject) => {
     console.log('🚀 启动 CursorRemote 服务...');
     
-    const serviceProcess = spawn('node', ['src/services/supabaseService.js'], {
+    // 增强的启动参数，包括内存和性能优化
+    const nodeArgs = [
+      '--max-old-space-size=2048', // 增加内存限制到2GB
+      '--max-semi-space-size=128', // 优化垃圾回收
+      '--optimize-for-size', // 优化内存使用
+      'src/services/supabaseService.js'
+    ];
+    
+    const serviceProcess = spawn('node', nodeArgs, {
       cwd: __dirname,
       stdio: ['pipe', 'pipe', 'pipe'],
-      detached: false
+      detached: false,
+      env: {
+        ...process.env,
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        // 增加一些性能相关的环境变量
+        UV_THREADPOOL_SIZE: '16', // 增加线程池大小
+        NODE_OPTIONS: '--max-old-space-size=2048'
+      }
     });
     
     const startupTimeout = setTimeout(() => {
       console.error('❌ 服务启动超时');
-      serviceProcess.kill();
+      serviceProcess.kill('SIGKILL'); // 使用SIGKILL确保进程被终止
       reject(new Error('Service startup timeout'));
-    }, 30000); // 30秒启动超时
+    }, 45000); // 增加到45秒启动超时
+    
+    let startupSuccessDetected = false;
     
     serviceProcess.stdout.on('data', (data) => {
       const output = data.toString();
@@ -283,13 +380,19 @@ const startService = () => {
       // 检测严重错误
       detectCriticalErrors(output);
       
-      // 检测服务启动成功的标志
-      if (output.includes('Service initialization completed') || 
-          output.includes('Supabase client initialized')) {
+      // 检测服务启动成功的标志（更全面的检测）
+      if (!startupSuccessDetected && (
+          output.includes('Service initialization completed') || 
+          output.includes('Supabase client initialized') ||
+          output.includes('Successfully subscribed to commands') ||
+          output.includes('Health check timer started')
+        )) {
+        startupSuccessDetected = true;
         clearTimeout(startupTimeout);
         state.isServiceRunning = true;
         state.serviceProcess = serviceProcess;
         state.criticalErrorCount = 0; // 重置错误计数
+        state.consecutiveFailures = 0; // 重置失败计数
         console.log('✅ 服务启动成功');
         resolve(serviceProcess);
       }
@@ -307,6 +410,16 @@ const startService = () => {
         console.warn('🚨 检测到严重错误，将在下次检查时考虑重启服务');
         state.consecutiveFailures++; // 增加失败计数
       }
+      
+      // 检测特定的启动失败模式
+      if (output.includes('EADDRINUSE') || 
+          output.includes('port already in use') ||
+          output.includes('listen EADDRINUSE')) {
+        console.error('❌ 端口已被占用，服务启动失败');
+        clearTimeout(startupTimeout);
+        serviceProcess.kill();
+        reject(new Error('Port already in use'));
+      }
     });
     
     serviceProcess.on('exit', (code, signal) => {
@@ -319,6 +432,15 @@ const startService = () => {
       } else {
         console.error(`❌ 服务异常退出 (code: ${code}, signal: ${signal})`);
         state.consecutiveFailures++;
+        
+        // 记录异常退出的详细信息
+        if (code === 1) {
+          console.error('   退出代码1: 通常表示未捕获的异常');
+        } else if (code === 137) {
+          console.error('   退出代码137: 进程被SIGKILL终止（可能是内存不足）');
+        } else if (code === 143) {
+          console.error('   退出代码143: 进程被SIGTERM终止');
+        }
       }
     });
     
@@ -326,8 +448,30 @@ const startService = () => {
       clearTimeout(startupTimeout);
       console.error('❌ 服务启动失败:', error.message);
       state.consecutiveFailures++;
+      
+      // 检查是否是权限问题
+      if (error.code === 'EACCES') {
+        console.error('   权限错误: 请检查文件权限');
+      } else if (error.code === 'ENOENT') {
+        console.error('   文件不存在: 请检查Node.js是否正确安装');
+      }
+      
       reject(error);
     });
+    
+    // 添加进程内存监控
+    const memoryMonitor = setInterval(() => {
+      if (serviceProcess && !serviceProcess.killed) {
+        try {
+          // 这里可以添加内存使用监控逻辑
+          // 但需要注意不要过于频繁地检查
+        } catch (err) {
+          // 忽略监控错误
+        }
+      } else {
+        clearInterval(memoryMonitor);
+      }
+    }, 60000); // 每分钟检查一次
   });
 };
 
@@ -335,28 +479,75 @@ const startService = () => {
 const stopService = () => {
   return new Promise((resolve) => {
     if (!state.serviceProcess) {
+      console.log('ℹ️ 没有运行中的服务进程');
       resolve();
       return;
     }
     
     console.log('🛑 停止服务...');
     
-    // 发送 SIGTERM 信号
-    state.serviceProcess.kill('SIGTERM');
+    let processExited = false;
+    
+    // 设置退出监听器
+    const onExit = () => {
+      if (!processExited) {
+        processExited = true;
+        clearTimeout(gracefulTimeout);
+        clearTimeout(forceTimeout);
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        console.log('✅ 服务已停止');
+        resolve();
+      }
+    };
+    
+    state.serviceProcess.once('exit', onExit);
+    state.serviceProcess.once('close', onExit);
+    
+    // 首先尝试优雅关闭 - 发送 SIGTERM 信号
+    try {
+      state.serviceProcess.kill('SIGTERM');
+      console.log('📤 已发送SIGTERM信号，等待优雅关闭...');
+    } catch (error) {
+      console.warn('⚠️ 发送SIGTERM失败:', error.message);
+      // 如果SIGTERM失败，直接尝试SIGKILL
+      try {
+        state.serviceProcess.kill('SIGKILL');
+        console.log('📤 已发送SIGKILL信号');
+      } catch (killError) {
+        console.error('❌ 强制终止失败:', killError.message);
+        // 即使失败也要清理状态
+        processExited = true;
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        resolve();
+      }
+      return;
+    }
     
     // 等待服务优雅关闭
     const gracefulTimeout = setTimeout(() => {
-      console.warn('⚠️ 服务未在规定时间内关闭，强制终止');
-      state.serviceProcess.kill('SIGKILL');
+      if (!processExited) {
+        console.warn('⚠️ 服务未在10秒内优雅关闭，发送SIGKILL信号...');
+        try {
+          state.serviceProcess.kill('SIGKILL');
+        } catch (error) {
+          console.error('❌ 发送SIGKILL失败:', error.message);
+        }
+      }
     }, 10000); // 10秒优雅关闭时间
     
-    state.serviceProcess.on('exit', () => {
-      clearTimeout(gracefulTimeout);
-      state.isServiceRunning = false;
-      state.serviceProcess = null;
-      console.log('✅ 服务已停止');
-      resolve();
-    });
+    // 最终超时保护
+    const forceTimeout = setTimeout(() => {
+      if (!processExited) {
+        console.error('❌ 服务强制终止超时，清理状态');
+        processExited = true;
+        clearTimeout(gracefulTimeout);
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        resolve();
+      }
+    }, 15000); // 15秒最终超时
   });
 };
 

@@ -234,212 +234,217 @@ export class SubscriptionManager {
     this.connectionManager = connectionManager;
     this.config = config;
     this.logger = logger;
-    this.currentSubscription = null;
-    this.retryAttempts = 0;
-    this.lastRetryTime = null;
-    this.isSubscribing = false;
-    this.subscriptionCallback = null;
+    this.subscription = null;
+    this.retryCount = 0;
+    this.isShuttingDown = false;
     this.retryTimer = null;
-    this.consecutiveFailures = 0;
-    this.lastSuccessTime = null;
-    this.minRetryDelay = 5000;  // 最小重试延迟 5 秒
-    this.maxRetryDelay = 300000; // 最大重试延迟 5 分钟
+    this.lastSuccessfulSubscription = null;
+    this.subscriptionHealthTimer = null;
+    this.maxRetryAttempts = config.maxSubscriptionRetries || 15;
+    
+    // 新增：连接健康检查
+    this.healthCheckInterval = 30000; // 30秒检查一次
+    this.lastHeartbeat = null;
+    this.missedHeartbeats = 0;
+    this.maxMissedHeartbeats = 3;
+  }
+
+  // 新增：订阅健康检查
+  startHealthCheck() {
+    if (this.subscriptionHealthTimer) {
+      clearInterval(this.subscriptionHealthTimer);
+    }
+    
+    this.subscriptionHealthTimer = setInterval(() => {
+      if (this.subscription && !this.isShuttingDown) {
+        const now = Date.now();
+        if (this.lastHeartbeat && (now - this.lastHeartbeat) > this.healthCheckInterval * 2) {
+          this.missedHeartbeats++;
+          this.logger.warn(`[SubscriptionManager] Missed heartbeat ${this.missedHeartbeats}/${this.maxMissedHeartbeats}`);
+          
+          if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
+            this.logger.error('[SubscriptionManager] Too many missed heartbeats, forcing reconnection');
+            this.forceReconnect();
+          }
+        } else {
+          this.missedHeartbeats = 0;
+        }
+      }
+    }, this.healthCheckInterval);
+  }
+
+  // 新增：强制重连
+  async forceReconnect() {
+    this.logger.log('[SubscriptionManager] Forcing subscription reconnection...');
+    await this.cleanupSubscription();
+    this.retryCount = 0;
+    this.missedHeartbeats = 0;
+    // 延迟重连以避免频繁重连
+    setTimeout(() => {
+      if (!this.isShuttingDown && this.lastSuccessfulSubscription) {
+        this.scheduleRetryWithBackoff(this.lastSuccessfulSubscription);
+      }
+    }, 5000);
   }
 
   async subscribe(onNewCommand, retryCount = 5, retryDelay = 15000) {
-    // 防止重复订阅
-    if (this.isSubscribing) {
-      this.logger.warn('[SubscriptionManager] Already in subscribing process, skipping...');
+    if (this.isShuttingDown) {
+      this.logger.log('[SubscriptionManager] Skipping subscription - service is shutting down');
       return null;
     }
 
-    this.isSubscribing = true;
-    this.subscriptionCallback = onNewCommand;
+    this.lastSuccessfulSubscription = onNewCommand;
+    this.retryCount = retryCount;
 
-    // 清除任何现有的重试定时器
+    try {
+      const client = this.connectionManager.getClient();
+      if (!client) {
+        throw new Error('No Supabase client available');
+      }
+
+      this.logger.log(`[SubscriptionManager] Setting up subscription (attempt ${this.config.maxSubscriptionRetries - retryCount + 1}/${this.config.maxSubscriptionRetries})`);
+
+      // 清理现有订阅
+      await this.cleanupSubscription();
+
+      // 创建新订阅，增加更多事件监听
+      this.subscription = client
+        .channel('commands-channel')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'commands',
+          filter: 'status=eq.pending'
+        }, (payload) => {
+          this.lastHeartbeat = Date.now();
+          this.missedHeartbeats = 0;
+          this.logger.log('[SubscriptionManager] Received new command:', payload.new?.id);
+          if (onNewCommand && typeof onNewCommand === 'function') {
+            try {
+              onNewCommand(payload);
+            } catch (error) {
+              this.logger.error('[SubscriptionManager] Error in command callback:', error);
+            }
+          }
+        })
+        .on('system', {}, (status, err) => {
+          this.handleSubscriptionStatus(status, err, onNewCommand, retryDelay);
+        })
+        .subscribe((status, err) => {
+          this.handleSubscriptionError(status, err, onNewCommand, retryDelay);
+        });
+
+      // 启动健康检查
+      this.startHealthCheck();
+
+      return this.subscription;
+
+    } catch (error) {
+      this.logger.error('[SubscriptionManager] Error setting up subscription:', error);
+      
+      if (retryCount > 0 && !this.isShuttingDown) {
+        this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms (${retryCount} attempts left)`);
+        this.scheduleRetry(onNewCommand, retryDelay);
+      } else {
+        this.logger.error('[SubscriptionManager] Max subscription retry attempts reached');
+        // 不要完全放弃，而是使用指数退避重试
+        this.scheduleRetryWithBackoff(onNewCommand);
+      }
+      
+      return null;
+    }
+  }
+
+  async cleanupSubscription() {
+    if (this.subscriptionHealthTimer) {
+      clearInterval(this.subscriptionHealthTimer);
+      this.subscriptionHealthTimer = null;
+    }
+    
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
     }
 
-    this.retryAttempts++;
-
-    if (this.retryAttempts > this.config.maxSubscriptionRetries) {
-      this.logger.error(
-        `[SubscriptionManager] Max retry attempts (${this.config.maxSubscriptionRetries}) reached, entering backoff mode`
-      );
-      this.isSubscribing = false;
-      
-      // 进入长时间退避模式
-      this.scheduleRetryWithBackoff(onNewCommand);
-      return null;
-    }
-
-    this.logger.log(
-      `[SubscriptionManager] Attempting to subscribe (attempt ${this.retryAttempts}/${this.config.maxSubscriptionRetries})...`
-    );
-
-    const client = this.connectionManager.getClient();
-    if (!client) {
-      this.logger.error('[SubscriptionManager] No client available for subscription');
-      this.isSubscribing = false;
-      this.scheduleRetry(onNewCommand, retryDelay);
-      return null;
-    }
-
-    try {
-      // 确保完全清理之前的订阅
-      await this.cleanupSubscription();
-
-      this.currentSubscription = client
-        .channel(`public_commands_changes_${Date.now()}`) // 使用唯一的频道名
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
-          (payload) => {
-            try {
-              this.logger.log('[SubscriptionManager] New command inserted:', payload.new.id);
-              onNewCommand(payload);
-            } catch (error) {
-              this.logger.error('[SubscriptionManager] Error handling new command:', error);
-            }
-          }
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
-          (payload) => {
-            try {
-              if (payload.old.status !== 'pending' && payload.new.status === 'pending') {
-                this.logger.log('[SubscriptionManager] Command status updated to pending:', payload.new.id);
-                onNewCommand(payload);
-              }
-            } catch (error) {
-              this.logger.error('[SubscriptionManager] Error handling updated command:', error);
-            }
-          }
-        )
-        .subscribe(async (status, err) => {
-          await this.handleSubscriptionStatus(status, err, onNewCommand, retryDelay);
-        });
-
-      this.isSubscribing = false;
-      return this.currentSubscription;
-    } catch (error) {
-      this.logger.error('[SubscriptionManager] Exception while setting up subscription:', error);
-      this.currentSubscription = null;
-      this.isSubscribing = false;
-      this.scheduleRetry(onNewCommand, retryDelay);
-      return null;
-    }
-  }
-
-  // 清理订阅的专用方法
-  async cleanupSubscription() {
-    if (this.currentSubscription) {
+    if (this.subscription) {
       try {
-        const client = this.connectionManager.getClient();
-        if (client) {
-          await client.removeChannel(this.currentSubscription);
-          // 等待一小段时间确保清理完成
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+        await this.subscription.unsubscribe();
+        this.logger.log('[SubscriptionManager] Subscription cleaned up successfully');
       } catch (error) {
-        this.logger.warn('[SubscriptionManager] Error cleaning up previous subscription:', error.message);
+        this.logger.error('[SubscriptionManager] Error cleaning up subscription:', error);
+      } finally {
+        this.subscription = null;
       }
-      this.currentSubscription = null;
     }
   }
 
-  // 智能重试调度
   scheduleRetry(onNewCommand, baseDelay) {
-    // 计算退避延迟
-    const backoffMultiplier = Math.min(this.consecutiveFailures, 10); // 最多10倍退避
-    const jitter = Math.random() * 1000; // 添加随机抖动
-    const delay = Math.min(
-      Math.max(baseDelay * Math.pow(1.5, backoffMultiplier) + jitter, this.minRetryDelay),
-      this.maxRetryDelay
-    );
-
-    this.logger.log(`[SubscriptionManager] Scheduling retry in ${Math.round(delay / 1000)}s...`);
+    if (this.isShuttingDown) return;
     
     this.retryTimer = setTimeout(() => {
-      this.subscribe(onNewCommand);
-    }, delay);
+      this.subscribe(onNewCommand, this.retryCount - 1, baseDelay);
+    }, baseDelay);
   }
 
-  // 长时间退避重试
+  // 增强的指数退避重试
   scheduleRetryWithBackoff(onNewCommand) {
-    const backoffDelay = this.maxRetryDelay; // 5分钟
-    this.logger.log(`[SubscriptionManager] Entering backoff mode, retry in ${Math.round(backoffDelay / 60000)} minutes...`);
+    if (this.isShuttingDown) return;
+    
+    const backoffDelay = Math.min(1000 * Math.pow(2, this.retryCount), 300000); // 最大5分钟
+    this.logger.log(`[SubscriptionManager] Scheduling retry with backoff in ${backoffDelay}ms`);
     
     this.retryTimer = setTimeout(() => {
-      // 重置重试计数器，重新开始
-      this.retryAttempts = 0;
-      this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1); // 减少失败计数
-      this.subscribe(onNewCommand);
+      this.retryCount++;
+      this.subscribe(onNewCommand, this.maxRetryAttempts, 15000);
     }, backoffDelay);
   }
 
   async handleSubscriptionStatus(status, err, onNewCommand, retryDelay) {
+    this.logger.log(`[SubscriptionManager] Subscription status: ${status}`);
+    
     if (status === 'SUBSCRIBED') {
-      this.logger.log('[SubscriptionManager] Successfully subscribed to commands!');
-      this.retryAttempts = 0;
-      this.consecutiveFailures = 0;
-      this.lastSuccessTime = new Date();
-    } else if (['TIMED_OUT', 'CHANNEL_ERROR', 'CLOSED'].includes(status)) {
-      this.consecutiveFailures++;
-      this.logger.error(`[SubscriptionManager] Subscription ${status}. Will attempt to reconnect...`);
-      
-      // 重要：等待一段时间再重连，避免立即重试
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await this.handleSubscriptionError(status, err, onNewCommand, retryDelay);
-    } else {
-      this.logger.warn(`[SubscriptionManager] Subscription status changed to ${status}`);
-      if (status !== 'SUBSCRIBING') { // SUBSCRIBING 状态是正常的，不需要重连
-        await this.handleSubscriptionError(status, err, onNewCommand, retryDelay);
+      this.retryCount = 0;
+      this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
+      this.logger.log('[SubscriptionManager] Successfully subscribed to commands');
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      this.logger.error(`[SubscriptionManager] Subscription error: ${status}`, err);
+      if (!this.isShuttingDown) {
+        // 延迟重连以避免频繁重试
+        setTimeout(() => {
+          this.scheduleRetryWithBackoff(onNewCommand);
+        }, 5000);
+      }
+    } else if (status === 'CLOSED') {
+      this.logger.warn('[SubscriptionManager] Subscription closed');
+      if (!this.isShuttingDown) {
+        this.scheduleRetryWithBackoff(onNewCommand);
       }
     }
   }
 
   async handleSubscriptionError(status, error, onNewCommand, retryDelay) {
-    // 清理当前订阅
-    await this.cleanupSubscription();
-    
-    // 如果连续失败次数过多，强制刷新连接
-    if (this.consecutiveFailures >= 3) {
-      this.logger.warn('[SubscriptionManager] Too many consecutive failures, refreshing connection...');
-      try {
-        await this.connectionManager.refresh();
-        // 重置失败计数，给新连接一个机会
-        this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 2);
-      } catch (refreshError) {
-        this.logger.error('[SubscriptionManager] Failed to refresh connection:', refreshError.message);
-      }
+    if (status === 'SUBSCRIBED') {
+      this.retryCount = 0;
+      this.lastHeartbeat = Date.now();
+      this.logger.log('[SubscriptionManager] Subscription established successfully');
+      return;
     }
+
+    this.logger.error(`[SubscriptionManager] Subscription failed with status: ${status}`, error);
     
-    // 使用智能重试策略
-    this.scheduleRetry(onNewCommand, retryDelay);
+    if (!this.isShuttingDown && this.retryCount > 0) {
+      this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms`);
+      this.scheduleRetry(onNewCommand, retryDelay);
+    } else if (!this.isShuttingDown) {
+      this.logger.error('[SubscriptionManager] All subscription attempts failed, using backoff strategy');
+      this.scheduleRetryWithBackoff(onNewCommand);
+    }
   }
 
   cleanup() {
-    // 清除重试定时器
-    if (this.retryTimer) {
-      clearTimeout(this.retryTimer);
-      this.retryTimer = null;
-    }
-    
-    this.isSubscribing = false;
-    
-    // 清理订阅
-    if (this.currentSubscription && this.connectionManager.getClient()) {
-      try {
-        this.connectionManager.getClient().removeChannel(this.currentSubscription);
-      } catch (error) {
-        this.logger.warn('[SubscriptionManager] Error cleaning up subscription:', error.message);
-      }
-    }
-    this.currentSubscription = null;
+    this.isShuttingDown = true;
+    this.cleanupSubscription();
   }
 }
 
@@ -724,38 +729,61 @@ export class SupabaseService {
   }
 }
 
-// Create and export default instance
-const defaultConfig = new SupabaseConfig();
-const defaultService = new SupabaseService(defaultConfig);
+// Create and export default instance only in non-test environments
+let defaultService = null;
 
-// Auto-initialize the default service only in non-test environments
 if (process.env.NODE_ENV !== 'test' && process.env.JEST_WORKER_ID === undefined) {
+  const defaultConfig = new SupabaseConfig();
+  defaultService = new SupabaseService(defaultConfig);
+
+  // Auto-initialize the default service
   defaultService.initialize().catch(error => {
     console.error('[SupabaseService] Failed to auto-initialize:', error);
   });
-}
 
-// Handle graceful shutdown for default instance
-const gracefulShutdown = () => {
-  defaultService.shutdown().then(() => {
-    process.exit(0);
-  });
-};
+  // Handle graceful shutdown for default instance
+  const gracefulShutdown = () => {
+    defaultService.shutdown().then(() => {
+      process.exit(0);
+    });
+  };
 
-// Only register process handlers in non-test environments
-if (process.env.NODE_ENV !== 'test' && process.env.JEST_WORKER_ID === undefined) {
+  // Register process handlers
   process.on('SIGINT', gracefulShutdown);
   process.on('SIGTERM', gracefulShutdown);
 }
 
 // Export named functions for backward compatibility
-export const ensureSupabaseConnection = () => defaultService.ensureConnection();
-export const updateCommandStatus = (...args) => defaultService.updateCommandStatus(...args);
-export const subscribeToResultForCommand = (...args) => defaultService.subscribeToResultForCommand(...args);
-export const clearResultSubscription = (...args) => defaultService.clearResultSubscription(...args);
+export const ensureSupabaseConnection = () => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.ensureConnection();
+};
+
+export const updateCommandStatus = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.updateCommandStatus(...args);
+};
+
+export const subscribeToResultForCommand = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.subscribeToResultForCommand(...args);
+};
+
+export const clearResultSubscription = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.clearResultSubscription(...args);
+};
 
 // Export default client for backward compatibility
-export default defaultService.getClient();
+export default defaultService?.getClient() || null;
 
 // Export the service instance and classes for testing
 export { defaultService as supabaseService };

@@ -554,9 +554,9 @@ describe('CommandQueueManager', () => {
       queueManager.isProcessing = true;
       
       // 模拟处理在一段时间后完成
-      setTimeout(() => {
+      setImmediate(() => {
         queueManager.isProcessing = false;
-      }, 100);
+      });
       
       const result = await queueManager.shutdown(5000);
       

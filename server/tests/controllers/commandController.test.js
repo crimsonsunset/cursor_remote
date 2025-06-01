@@ -690,10 +690,11 @@ describe('CommandController', () => {
       commandController.pollForResult = jest.fn().mockRejectedValue(new Error('Polling backup failed'));
       
       // 模拟延迟后启动轮询备用机制，但不触发主超时
+      let pollingBackupCallback = null;
       const mockTimer = {
         setTimeout: jest.fn().mockImplementation((callback, delay) => {
           if (delay === 30000) { // 轮询备用延迟
-            setTimeout(callback, 0); // 立即触发轮询备用
+            pollingBackupCallback = callback;
           }
           // 不触发主超时，让轮询备用失败被忽略
           return 'timeout-id';
@@ -705,8 +706,12 @@ describe('CommandController', () => {
       // 创建Promise但不等待解析，因为我们只想测试轮询备用失败的日志
       const resultPromise = commandController.createResultPromise('cmd-123');
       
-      // 等待轮询备用执行
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // 等待异步函数完成，然后手动触发轮询备用
+      await new Promise(resolve => setImmediate(resolve));
+      
+      if (pollingBackupCallback) {
+        await pollingBackupCallback();
+      }
       
       expect(mockOptions.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('Polling backup failed for command cmd-123:'),
