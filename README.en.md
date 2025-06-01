@@ -46,7 +46,6 @@ The demo server now includes multiple MCP functionalities, allowing you to test 
 **Test Suggestions**:
 - Try asking: "Help me generate a Python function to calculate the area of a circle, and execute it using the execute_code tool for a circle with radius 10 cm"
 - Or: "Generate the first 20 terms of a Fibonacci sequence using Python and execute it"
-- Or: "Create a simple data analysis script to analyze statistical characteristics of random data"
 
 The system will automatically use the appropriate MCP services to fetch the latest information or execute code and return results.
 
