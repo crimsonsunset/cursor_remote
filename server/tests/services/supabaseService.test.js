@@ -1544,45 +1544,55 @@ describe('Additional Coverage for Missing Lines', () => {
       subscriptionManager = new SubscriptionManager(mockConnectionManager, mockConfig, mockLogger);
     });
 
-    it('should start health check timer', () => {
+    it('should start health check timer when enabled', () => {
+      subscriptionManager.enableHeartbeatCheck = true;
       subscriptionManager.startHealthCheck();
       
       expect(global.setInterval).toHaveBeenCalledWith(
         expect.any(Function),
-        60000
+        300000
       );
     });
 
-    it('should handle missed heartbeats and force reconnection', () => {
+    it('should not start health check timer when disabled', () => {
+      subscriptionManager.enableHeartbeatCheck = false;
+      subscriptionManager.startHealthCheck();
+      
+      expect(global.setInterval).not.toHaveBeenCalled();
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        '[SubscriptionManager] Heartbeat check is disabled for stability'
+      );
+    });
+
+    it('should handle missed heartbeats and force reconnection', async () => {
       subscriptionManager.subscription = { id: 'test-subscription' };
-      subscriptionManager.lastHeartbeat = Date.now() - 200000; // 200 seconds ago (beyond 180s timeout)
+      subscriptionManager.lastHeartbeat = Date.now() - 700000; // 700 seconds ago (beyond 600s timeout)
       subscriptionManager.forceReconnect = jest.fn();
+      subscriptionManager.verifyConnectionLoss = jest.fn().mockResolvedValue(true); // Mock connection loss verification
+      subscriptionManager.enableHeartbeatCheck = true; // Enable heartbeat check for this test
       
       subscriptionManager.startHealthCheck();
       
       // Simulate health check interval execution
       const healthCheckCallback = global.setInterval.mock.calls[0][0];
       
-      // First missed heartbeat (should not log warning yet)
-      healthCheckCallback();
-      expect(subscriptionManager.missedHeartbeats).toBe(1);
-      expect(mockLogger.warn).not.toHaveBeenCalled();
+      // Continue until we reach the threshold (10 missed heartbeats)
+      for (let i = 1; i <= 10; i++) {
+        await healthCheckCallback();
+        expect(subscriptionManager.missedHeartbeats).toBe(i);
+        
+        if (i >= 5 && i < 10) {
+          // Should log warning at halfway point
+          expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.stringContaining(`[SubscriptionManager] Long silence detected ${i}/10`)
+          );
+        }
+      }
       
-      // Second missed heartbeat (should log warning now)
-      healthCheckCallback();
-      expect(subscriptionManager.missedHeartbeats).toBe(2);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('[SubscriptionManager] Missed heartbeat 2/5')
-      );
-      
-      // Continue until we reach the threshold (5 missed heartbeats)
-      healthCheckCallback(); // 3rd
-      healthCheckCallback(); // 4th
-      healthCheckCallback(); // 5th - should trigger reconnection
-      
-      expect(subscriptionManager.missedHeartbeats).toBe(5);
+      // At the 10th missed heartbeat, should verify connection and force reconnect
+      expect(subscriptionManager.verifyConnectionLoss).toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
-        '[SubscriptionManager] Too many missed heartbeats, forcing reconnection'
+        '[SubscriptionManager] Connection loss confirmed, forcing reconnection'
       );
       expect(subscriptionManager.forceReconnect).toHaveBeenCalled();
     });
@@ -1591,6 +1601,7 @@ describe('Additional Coverage for Missing Lines', () => {
       subscriptionManager.subscription = { id: 'test-subscription' };
       subscriptionManager.lastHeartbeat = Date.now(); // Current time
       subscriptionManager.missedHeartbeats = 2;
+      subscriptionManager.enableHeartbeatCheck = true; // Enable heartbeat check for this test
       
       subscriptionManager.startHealthCheck();
       

@@ -26,26 +26,35 @@
 
 ## 优化方案
 
-### 新配置参数
-- **健康检查间隔**: 60秒（从30秒增加）
-- **心跳超时**: 180秒（3分钟，从60秒增加）
-- **最大丢失次数**: 5次（从3次增加）
-- **警告阈值**: 2次丢失后才开始记录警告
+### 新配置参数（极度保守版本）
+- **心跳检查**: 默认禁用（通过环境变量启用）
+- **健康检查间隔**: 5分钟（从30秒大幅增加）
+- **心跳超时**: 10分钟（从60秒大幅增加）
+- **最大丢失次数**: 10次（从3次大幅增加）
+- **警告阈值**: 5次丢失后才开始记录警告
+- **连接验证**: 在重连前进行额外的数据库查询验证
 
 ### 优化特性
 
-#### 1. 更宽松的超时时间
+#### 1. 极度保守的超时时间
 ```javascript
-this.healthCheckInterval = 60000; // 60秒检查一次
-this.heartbeatTimeout = 180000; // 3分钟心跳超时
-this.maxMissedHeartbeats = 5; // 允许5次丢失
+this.healthCheckInterval = 300000; // 5分钟检查一次
+this.heartbeatTimeout = 600000; // 10分钟心跳超时
+this.maxMissedHeartbeats = 10; // 允许10次丢失
+this.enableHeartbeatCheck = false; // 默认禁用
 ```
 
-#### 2. 智能日志记录
+#### 2. 智能连接验证
 ```javascript
-// 只在达到警告阈值时才记录日志，减少噪音
-if (this.missedHeartbeats >= 2) {
-  this.logger.warn(`[SubscriptionManager] Missed heartbeat ${this.missedHeartbeats}/${this.maxMissedHeartbeats} (${Math.round((now - this.lastHeartbeat) / 1000)}s since last)`);
+// 在重连前进行额外的连接验证
+const isReallyDisconnected = await this.verifyConnectionLoss();
+if (isReallyDisconnected) {
+  this.logger.error('[SubscriptionManager] Connection loss confirmed, forcing reconnection');
+  this.forceReconnect();
+} else {
+  this.logger.log('[SubscriptionManager] Connection test passed, resetting heartbeat counter');
+  this.lastHeartbeat = Date.now();
+  this.missedHeartbeats = 0;
 }
 ```
 
@@ -74,10 +83,11 @@ this.missedHeartbeats = 0;
 - 日志噪音较多
 
 ### 优化后
-- 心跳丢失大幅减少
-- 需要180秒无响应才算丢失
-- 连续5次丢失才强制重连
-- 只在真正需要时才记录警告
+- 心跳检查默认禁用，避免误报
+- 需要600秒（10分钟）无响应才算丢失
+- 连续10次丢失才考虑重连
+- 重连前进行额外的连接验证
+- 只在真正连接断开时才重连
 
 ## 测试验证
 
@@ -117,24 +127,36 @@ npm test -- --testNamePattern="missed heartbeat"
 
 ## 配置建议
 
-### 开发环境
-- 使用默认的优化配置
-- 可以通过环境变量进一步调整
+### 默认配置（推荐）
+- **心跳检查**: 禁用（避免误报）
+- **依赖**: 仅依赖 Supabase 自身的重连机制
+- **适用**: 大多数稳定的网络环境
 
-### 生产环境
-- 建议保持优化后的配置
-- 如果网络环境特别稳定，可以适当降低超时时间
+### 启用心跳检查（仅在必要时）
+如果您的网络环境极不稳定，可以启用心跳检查：
+
+```bash
+# 通过环境变量启用
+export ENABLE_HEARTBEAT_CHECK=true
+
+# 或在 .env 文件中添加
+ENABLE_HEARTBEAT_CHECK=true
+```
 
 ### 自定义配置
 ```javascript
 const config = new SupabaseConfig({
   // ... 其他配置
-  healthCheckInterval: 60000, // 自定义检查间隔
+  enableHeartbeatCheck: true, // 启用心跳检查
+  healthCheckInterval: 300000, // 5分钟检查间隔
 });
-
-// 或通过环境变量
-process.env.HEARTBEAT_TIMEOUT = '240000'; // 4分钟
 ```
+
+### 何时启用心跳检查
+- 网络环境极不稳定
+- 经常出现长时间的网络中断
+- 需要更快的故障检测
+- 已确认网络问题不是由心跳检查本身引起的
 
 ## 监控建议
 

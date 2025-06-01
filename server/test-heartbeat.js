@@ -15,7 +15,8 @@ const config = new SupabaseConfig({
   maxConnectionRetries: 3,
   connectionRetryDelay: 5000,
   maxSubscriptionRetries: 5,
-  healthCheckInterval: 30000 // 30秒用于测试
+  healthCheckInterval: 30000, // 30秒用于测试
+  enableHeartbeatCheck: true // 启用心跳检查用于测试
 });
 
 // 创建自定义日志器来显示心跳信息
@@ -58,6 +59,7 @@ async function testHeartbeat() {
     
     // 显示心跳配置
     console.log(`📊 订阅管理器配置:`);
+    console.log(`   - 心跳检查启用: ${service.subscriptionManager.enableHeartbeatCheck ? '✅ 是' : '❌ 否'}`);
     console.log(`   - 健康检查间隔: ${service.subscriptionManager.healthCheckInterval / 1000}秒`);
     console.log(`   - 心跳超时时间: ${service.subscriptionManager.heartbeatTimeout / 1000}秒`);
     console.log(`   - 最大丢失次数: ${service.subscriptionManager.maxMissedHeartbeats}次`);

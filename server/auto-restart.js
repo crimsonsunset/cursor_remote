@@ -50,15 +50,17 @@ const config = {
     /UnhandledPromiseRejectionWarning/i
   ],
   
-  // 新增：订阅问题检测配置
+  // 新增：订阅问题检测配置 - 更保守的设置
   subscriptionErrorPatterns: [
     /CHANNEL_ERROR/i,
     /subscription.*failed/i,
     /Subscription CLOSED/i,
     /Max retry attempts.*reached/i
   ],
-  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 20, // 可通过环境变量调整
-  subscriptionErrorWindow: 300000, // 5分钟窗口
+  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 50, // 大幅提高阈值（从20改为50）
+  subscriptionErrorWindow: 600000, // 10分钟窗口（从5分钟改为10分钟）
+  ignoreHeartbeatErrors: true, // 忽略心跳相关的错误
+  enableSubscriptionErrorDetection: process.env.ENABLE_SUBSCRIPTION_ERROR_DETECTION === 'true', // 默认禁用订阅错误检测
   // 新增：更严格的重启条件
   stuckCommandThreshold: 30, // 30分钟未处理才算卡住（从10分钟改为30分钟）
   criticalErrorThreshold: 10, // 严重错误阈值提高到10个（从5个改为10个）
@@ -126,9 +128,19 @@ const detectCriticalErrors = (output) => {
       }
     }
     
-    // 检测订阅错误
+    // 检测订阅错误（忽略心跳相关错误）
     for (const pattern of config.subscriptionErrorPatterns) {
       if (pattern.test(line)) {
+        // 如果启用了忽略心跳错误，则跳过心跳相关的错误
+        if (config.ignoreHeartbeatErrors && (
+          line.includes('Missed heartbeat') ||
+          line.includes('heartbeat') ||
+          line.includes('Long silence detected') ||
+          line.includes('Connection test passed')
+        )) {
+          continue; // 跳过心跳相关的错误
+        }
+        
         subscriptionErrors.push({
           pattern: pattern.source,
           line: line.trim(),
@@ -155,8 +167,8 @@ const detectCriticalErrors = (output) => {
     }
   }
   
-  // 处理订阅错误
-  if (subscriptionErrors.length > 0) {
+  // 处理订阅错误（仅在启用时）
+  if (subscriptionErrors.length > 0 && config.enableSubscriptionErrorDetection) {
     state.subscriptionErrors.push(...subscriptionErrors);
     state.subscriptionErrorCount += subscriptionErrors.length;
     state.lastSubscriptionErrorTime = new Date();
@@ -171,16 +183,20 @@ const detectCriticalErrors = (output) => {
     );
     
     if (recentSubscriptionErrors.length >= config.subscriptionErrorThreshold) {
-      console.warn(`⚠️ 检测到频繁的订阅错误 (${recentSubscriptionErrors.length}次)，升级为严重错误`);
-      state.criticalErrorCount += Math.floor(recentSubscriptionErrors.length / 10); // 每10次订阅错误算1次严重错误
-      state.lastCriticalErrorTime = new Date();
+      console.warn(`⚠️ 检测到频繁的订阅错误 (${recentSubscriptionErrors.length}次)，但不会触发重启`);
+      console.warn(`💡 提示：大多数订阅错误是正常的网络波动，Supabase 会自动重连`);
+      
+      // 不再将订阅错误升级为严重错误，只记录
+      // state.criticalErrorCount += Math.floor(recentSubscriptionErrors.length / 10);
+      // state.lastCriticalErrorTime = new Date();
+      
       // 清空订阅错误计数，避免重复计算
       state.subscriptionErrors = [];
-      return true;
+      return false; // 不触发重启
     } else {
-      // 只记录但不触发重启
-      if (subscriptionErrors.length > 5) { // 只有连续多次才显示
-        console.warn(`⚠️ 检测到 ${subscriptionErrors.length} 个订阅错误（${recentSubscriptionErrors.length}/${config.subscriptionErrorThreshold}）`);
+      // 只记录但不触发重启，并且提高显示阈值
+      if (subscriptionErrors.length > 10) { // 提高阈值（从5改为10）
+        console.warn(`⚠️ 检测到 ${subscriptionErrors.length} 个订阅错误（${recentSubscriptionErrors.length}/${config.subscriptionErrorThreshold}）- 正常网络波动`);
       }
     }
   }
@@ -845,8 +861,14 @@ const main = async () => {
   console.log(`🚨 紧急重启: ${config.maxEmergencyRestarts}次`);
   console.log(`⏰ 延长间隔: ${config.extendedCheckInterval / 60000}分钟`);
   console.log(`🔧 自动重启: ${config.enableAutoRestart ? '✅ 启用' : '❌ 禁用'}`);
+  console.log(`📡 订阅错误检测: ${config.enableSubscriptionErrorDetection ? '✅ 启用' : '❌ 禁用'}`);
+  console.log(`💓 忽略心跳错误: ${config.ignoreHeartbeatErrors ? '✅ 是' : '❌ 否'}`);
+  
   if (!config.enableAutoRestart) {
     console.log('💡 要启用自动重启，请设置环境变量: ENABLE_AUTO_RESTART=true');
+  }
+  if (!config.enableSubscriptionErrorDetection) {
+    console.log('💡 订阅错误检测已禁用，只监控真正的严重错误');
   }
   console.log('');
   

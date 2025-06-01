@@ -19,6 +19,11 @@ export class SupabaseConfig {
     this.connectionRefreshInterval = options.connectionRefreshInterval || 60 * 60 * 1000; // 1小时
     this.healthCheckInterval = options.healthCheckInterval || 2 * 60 * 1000; // 2分钟
     this.maxSubscriptionRetries = options.maxSubscriptionRetries || 15; // 增加重试次数
+    
+    // 新增：心跳检查配置
+    this.enableHeartbeatCheck = options.enableHeartbeatCheck !== undefined 
+      ? options.enableHeartbeatCheck 
+      : (process.env.ENABLE_HEARTBEAT_CHECK === 'true'); // 默认禁用，通过环境变量启用
   }
 
   validate() {
@@ -242,34 +247,53 @@ export class SubscriptionManager {
     this.subscriptionHealthTimer = null;
     this.maxRetryAttempts = config.maxSubscriptionRetries || 15;
     
-    // 新增：连接健康检查 - 优化参数减少误报
-    this.healthCheckInterval = 60000; // 60秒检查一次（从30秒增加到60秒）
+    // 新增：连接健康检查 - 极度保守的参数设置
+    this.healthCheckInterval = 300000; // 5分钟检查一次（大幅减少检查频率）
     this.lastHeartbeat = null;
     this.missedHeartbeats = 0;
-    this.maxMissedHeartbeats = 5; // 允许5次丢失（从3次增加到5次）
-    this.heartbeatTimeout = 180000; // 3分钟心跳超时（从60秒增加到180秒）
+    this.maxMissedHeartbeats = 10; // 允许10次丢失（大幅增加容忍度）
+    this.heartbeatTimeout = 600000; // 10分钟心跳超时（大幅增加超时时间）
+    this.enableHeartbeatCheck = config.enableHeartbeatCheck || false; // 从配置中读取心跳检查设置
   }
 
-  // 新增：订阅健康检查
+  // 新增：订阅健康检查 - 极度保守的实现
   startHealthCheck() {
+    // 如果心跳检查被禁用，则不启动
+    if (!this.enableHeartbeatCheck) {
+      this.logger.log('[SubscriptionManager] Heartbeat check is disabled for stability');
+      return;
+    }
+    
     if (this.subscriptionHealthTimer) {
       clearInterval(this.subscriptionHealthTimer);
     }
     
-    this.subscriptionHealthTimer = setInterval(() => {
+    this.subscriptionHealthTimer = setInterval(async () => {
       if (this.subscription && !this.isShuttingDown) {
         const now = Date.now();
-        // 使用更宽松的心跳超时时间
+        
+        // 使用极度宽松的心跳超时时间
         if (this.lastHeartbeat && (now - this.lastHeartbeat) > this.heartbeatTimeout) {
           this.missedHeartbeats++;
-          // 只在达到警告阈值时才记录日志，减少噪音
-          if (this.missedHeartbeats >= 2) {
-            this.logger.warn(`[SubscriptionManager] Missed heartbeat ${this.missedHeartbeats}/${this.maxMissedHeartbeats} (${Math.round((now - this.lastHeartbeat) / 1000)}s since last)`);
-          }
           
+          // 在触发重连前，先进行额外的连接验证
           if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
-            this.logger.error('[SubscriptionManager] Too many missed heartbeats, forcing reconnection');
-            this.forceReconnect();
+            this.logger.warn(`[SubscriptionManager] Potential connection issue detected (${Math.round((now - this.lastHeartbeat) / 1000)}s since last heartbeat)`);
+            
+            // 进行额外的连接测试
+            const isReallyDisconnected = await this.verifyConnectionLoss();
+            
+            if (isReallyDisconnected) {
+              this.logger.error('[SubscriptionManager] Connection loss confirmed, forcing reconnection');
+              this.forceReconnect();
+            } else {
+              this.logger.log('[SubscriptionManager] Connection test passed, resetting heartbeat counter');
+              this.lastHeartbeat = Date.now(); // 重置心跳时间
+              this.missedHeartbeats = 0; // 重置计数器
+            }
+          } else if (this.missedHeartbeats >= 5) {
+            // 只在达到一半阈值时才记录警告
+            this.logger.warn(`[SubscriptionManager] Long silence detected ${this.missedHeartbeats}/${this.maxMissedHeartbeats} (${Math.round((now - this.lastHeartbeat) / 1000)}s since last)`);
           }
         } else {
           // 重置计数器，但不记录日志以减少噪音
@@ -279,6 +303,34 @@ export class SubscriptionManager {
         }
       }
     }, this.healthCheckInterval);
+  }
+
+  // 新增：验证连接是否真的丢失
+  async verifyConnectionLoss() {
+    try {
+      // 尝试进行一个简单的数据库查询来验证连接
+      const client = this.connectionManager.getClient();
+      if (!client) {
+        return true; // 没有客户端，确实断开了
+      }
+
+      // 执行一个轻量级的查询
+      const { data, error } = await client
+        .from('commands')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        this.logger.warn('[SubscriptionManager] Connection verification failed:', error.message);
+        return true; // 查询失败，可能真的断开了
+      }
+
+      // 查询成功，连接可能是正常的
+      return false;
+    } catch (error) {
+      this.logger.warn('[SubscriptionManager] Connection verification error:', error.message);
+      return true; // 出现异常，可能真的断开了
+    }
   }
 
   // 新增：强制重连
