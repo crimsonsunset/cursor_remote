@@ -114,13 +114,15 @@ export class CommandController {
   /**
    * 轮询检查命令结果（备用机制）
    */
-  async pollForResult(commandId, maxAttempts = 60, intervalMs = 5000) {
+  async pollForResult(commandId, maxAttempts = 120, intervalMs = 5000) {
+    this.logger.log(`[CommandController] Starting polling for command ${commandId} (${maxAttempts} attempts, ${intervalMs}ms interval)`);
+    
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         // 直接查询results表
         const client = this.connectionManager?.getClient() || await this.getSupabaseClient();
         if (!client) {
-          this.logger.warn(`[CommandController] No Supabase client available for polling attempt ${attempt}`);
+          this.logger.warn(`[CommandController] No Supabase client available for polling attempt ${attempt}/${maxAttempts}`);
           await new Promise(res => this.timer.setTimeout(res, intervalMs));
           continue;
         }
@@ -133,10 +135,15 @@ export class CommandController {
           .limit(1);
 
         if (error) {
-          this.logger.error(`[CommandController] Error polling for result ${commandId} (attempt ${attempt}):`, error);
+          this.logger.error(`[CommandController] Error polling for result ${commandId} (attempt ${attempt}/${maxAttempts}):`, error);
         } else if (data && data.length > 0) {
-          this.logger.log(`[CommandController] Found result for command ${commandId} via polling:`, data[0]);
+          this.logger.log(`[CommandController] Found result for command ${commandId} via polling on attempt ${attempt}:`, data[0]);
           return data[0];
+        }
+
+        // 每10次尝试记录一次进度
+        if (attempt % 10 === 0) {
+          this.logger.log(`[CommandController] Polling progress for command ${commandId}: ${attempt}/${maxAttempts} attempts completed`);
         }
 
         // 等待下一次轮询
@@ -144,14 +151,32 @@ export class CommandController {
           await new Promise(res => this.timer.setTimeout(res, intervalMs));
         }
       } catch (err) {
-        this.logger.error(`[CommandController] Exception during polling for command ${commandId} (attempt ${attempt}):`, err);
+        this.logger.error(`[CommandController] Exception during polling for command ${commandId} (attempt ${attempt}/${maxAttempts}):`, err);
         if (attempt < maxAttempts) {
           await new Promise(res => this.timer.setTimeout(res, intervalMs));
         }
       }
     }
     
-    throw new Error(`Polling timeout: No result found for command ${commandId} after ${maxAttempts} attempts`);
+    // 在抛出错误前，尝试检查命令状态
+    try {
+      const client = this.connectionManager?.getClient() || await this.getSupabaseClient();
+      if (client) {
+        const { data: commandData, error: commandError } = await client
+          .from('commands')
+          .select('status, last_error')
+          .eq('id', commandId)
+          .single();
+        
+        if (!commandError && commandData) {
+          this.logger.warn(`[CommandController] Command ${commandId} status: ${commandData.status}, last_error: ${commandData.last_error || 'none'}`);
+        }
+      }
+    } catch (statusCheckError) {
+      this.logger.warn(`[CommandController] Failed to check command status for ${commandId}:`, statusCheckError);
+    }
+    
+    throw new Error(`Polling timeout: No result found for command ${commandId} after ${maxAttempts} attempts (${(maxAttempts * intervalMs) / 1000}s total)`);
   }
 
   /**
@@ -228,15 +253,17 @@ export class CommandController {
         pollTimeoutId = this.timer.setTimeout(async () => {
           if (isResolved) return;
           
-          this.logger.log(`[CommandController] Starting polling backup for command ${commandId}`);
+          this.logger.log(`[CommandController] Starting polling backup for command ${commandId} (subscription may be slow)`);
           try {
-            const result = await this.pollForResult(commandId, 12, 5000);
+            // 使用更长的轮询时间，因为任务可能需要更长时间完成
+            const result = await this.pollForResult(commandId, 60, 5000); // 5分钟轮询
             safeResolve(result);
           } catch (pollError) {
             this.logger.warn(`[CommandController] Polling backup failed for command ${commandId}:`, pollError.message);
+            this.logger.warn(`[CommandController] This may indicate the command is taking longer than expected or failed to execute`);
             // 不要因为轮询失败就拒绝Promise，让主超时处理
           }
-        }, 30000); // 30秒后启动轮询备用
+        }, 60000); // 60秒后启动轮询备用（给订阅更多时间）
       };
       
       // 使用立即执行的异步函数处理异步逻辑
@@ -248,10 +275,13 @@ export class CommandController {
             // 如果订阅失败，立即启动轮询
             this.logger.warn(`[CommandController] Subscription failed for command ${commandId}, starting polling immediately`);
             try {
-              const result = await this.pollForResult(commandId, 60, 5000);
+              // 使用更长的轮询时间，因为没有订阅作为备份
+              const result = await this.pollForResult(commandId, 120, 5000); // 10分钟轮询
               safeResolve(result);
               return;
             } catch (pollError) {
+              this.logger.error(`[CommandController] Both subscription and polling failed for command ${commandId}`);
+              this.logger.error(`[CommandController] This may indicate a serious connectivity issue or the command failed to execute`);
               safeReject(new Error(`Failed to initialize result subscription and polling for command ${commandId}: ${pollError.message}`));
               return;
             }

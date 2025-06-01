@@ -610,7 +610,7 @@ describe('CommandController', () => {
       const result = await commandController.createResultPromise('cmd-123');
       
       expect(result).toBe(mockResult);
-      expect(commandController.pollForResult).toHaveBeenCalledWith('cmd-123', 60, 5000);
+      expect(commandController.pollForResult).toHaveBeenCalledWith('cmd-123', 120, 5000);
     });
 
     it('should handle subscription setup exception and fallback to polling', async () => {
@@ -668,7 +668,7 @@ describe('CommandController', () => {
       // 模拟延迟后启动轮询备用机制
       const mockTimer = {
         setTimeout: jest.fn().mockImplementation((callback, delay) => {
-          if (delay === 30000) { // 轮询备用延迟
+          if (delay === 60000) { // 轮询备用延迟
             setTimeout(callback, 0); // 立即触发轮询备用
           }
           return 'timeout-id';
@@ -680,7 +680,7 @@ describe('CommandController', () => {
       const result = await commandController.createResultPromise('cmd-123');
       
       expect(result).toBe(mockResult);
-      expect(commandController.pollForResult).toHaveBeenCalledWith('cmd-123', 12, 5000);
+      expect(commandController.pollForResult).toHaveBeenCalledWith('cmd-123', 60, 5000);
     });
 
     it('should handle polling backup failure gracefully', async () => {
@@ -693,7 +693,7 @@ describe('CommandController', () => {
       let pollingBackupCallback = null;
       const mockTimer = {
         setTimeout: jest.fn().mockImplementation((callback, delay) => {
-          if (delay === 30000) { // 轮询备用延迟
+          if (delay === 60000) { // 轮询备用延迟
             pollingBackupCallback = callback;
           }
           // 不触发主超时，让轮询备用失败被忽略
@@ -737,7 +737,7 @@ describe('CommandController', () => {
       // 模拟延迟后启动轮询备用机制
       const mockTimer = {
         setTimeout: jest.fn().mockImplementation((callback, delay) => {
-          if (delay === 30000) { // 轮询备用延迟
+          if (delay === 60000) { // 轮询备用延迟
             setTimeout(callback, 0); // 立即触发轮询备用
           }
           return 'timeout-id';
