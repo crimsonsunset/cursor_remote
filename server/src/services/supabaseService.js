@@ -8,874 +8,1004 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-
-// 增强的配置验证
-if (!supabaseUrl) {
-  console.error('Error: SUPABASE_URL must be defined in your .env file');
-  process.exit(1);
-}
-if (!supabaseServiceKey) {
-  console.error('Error: SUPABASE_SERVICE_KEY must be defined in your .env file');
-  process.exit(1);
-}
-
-let supabase = null;
-let connectionAttempts = 0;
-const MAX_CONNECTION_ATTEMPTS = 10;
-const CONNECTION_RETRY_DELAY = 3000; // 3秒，减少重试延迟
-const CONNECTION_RESET_INTERVAL = 3 * 60 * 1000; // 3分钟重置连接尝试计数器，缩短重置间隔
-const CONNECTION_REFRESH_INTERVAL = 30 * 60 * 1000; // 30分钟强制刷新连接
-const HEALTH_CHECK_INTERVAL = 60 * 1000; // 1分钟健康检查间隔
-
-// 服务状态跟踪
-const serviceStatus = {
-  isConnected: false,
-  lastConnectionAttempt: null,
-  consecutiveFailures: 0,
-  isShuttingDown: false,
-  isDegraded: false,
-  lastSuccessfulConnection: null,
-  lastConnectionRefresh: null,
-  connectionCreatedAt: null
-};
-
-// 移除旧的队列处理逻辑，现在使用 CommandQueueManager
-
-// 订阅状态跟踪
-let currentSubscription = null;
-let subscriptionRetryAttempts = 0;
-const MAX_SUBSCRIPTION_RETRIES = 10;
-
-// 连接重置定时器
-let connectionResetTimer = null;
-let connectionRefreshTimer = null;
-
-// 优雅关闭处理
-const gracefulShutdown = () => {
-  console.log('[SupabaseService] Received shutdown signal, cleaning up...');
-  serviceStatus.isShuttingDown = true;
-  
-  // 停止健康检查
-  stopConnectionHealthCheck();
-  
-  // 清理连接重置定时器
-  if (connectionResetTimer) {
-    clearInterval(connectionResetTimer);
-    connectionResetTimer = null;
+// Configuration class for better testability
+export class SupabaseConfig {
+  constructor(options = {}) {
+    this.url = options.url || process.env.SUPABASE_URL;
+    this.serviceKey = options.serviceKey || process.env.SUPABASE_SERVICE_KEY;
+    this.maxConnectionAttempts = options.maxConnectionAttempts || 10;
+    this.connectionRetryDelay = options.connectionRetryDelay || 5000; // 增加到5秒
+    this.connectionResetInterval = options.connectionResetInterval || 5 * 60 * 1000; // 5分钟
+    this.connectionRefreshInterval = options.connectionRefreshInterval || 60 * 60 * 1000; // 1小时
+    this.healthCheckInterval = options.healthCheckInterval || 2 * 60 * 1000; // 2分钟
+    this.maxSubscriptionRetries = options.maxSubscriptionRetries || 15; // 增加重试次数
+    
+    // 新增：心跳检查配置
+    this.enableHeartbeatCheck = options.enableHeartbeatCheck !== undefined 
+      ? options.enableHeartbeatCheck 
+      : (process.env.ENABLE_HEARTBEAT_CHECK === 'true'); // 默认禁用，通过环境变量启用
   }
-  
-  // 清理连接刷新定时器
-  if (connectionRefreshTimer) {
-    clearInterval(connectionRefreshTimer);
-    connectionRefreshTimer = null;
-  }
-  
-  // 清理订阅
-  if (supabase) {
-    try {
-      supabase.removeAllChannels();
-    } catch (error) {
-      console.warn('[SupabaseService] Error cleaning up channels:', error.message);
+
+  validate() {
+    if (!this.url) {
+      throw new Error('SUPABASE_URL must be defined');
+    }
+    if (!this.serviceKey) {
+      throw new Error('SUPABASE_SERVICE_KEY must be defined');
     }
   }
-  
-  // 等待一段时间后强制退出
-  setTimeout(() => {
-    console.log('[SupabaseService] Graceful shutdown completed');
-    process.exit(0);
-  }, 5000); // 5秒后退出
-};
+}
 
-// 注册信号处理器
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
-
-// 捕获未处理的异常
-process.on('uncaughtException', (error) => {
-  console.error('[SupabaseService] Uncaught Exception:', error);
-  // 不要立即退出，尝试继续运行
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[SupabaseService] Unhandled Rejection at:', promise, 'reason:', reason);
-  // 不要立即退出，尝试继续运行
-});
-
-// 连接测试函数
-const testConnection = async () => {
-  if (!supabase) {
-    return false;
+// Service status tracker
+export class ServiceStatus {
+  constructor() {
+    this.isConnected = false;
+    this.lastConnectionAttempt = null;
+    this.consecutiveFailures = 0;
+    this.isShuttingDown = false;
+    this.isDegraded = false;
+    this.lastSuccessfulConnection = null;
+    this.lastConnectionRefresh = null;
+    this.connectionCreatedAt = null;
   }
-  
-  try {
-    const { data, error } = await supabase.from('commands').select('id').limit(1);
-    if (error) {
-      console.error('[SupabaseService] Connection test failed:', error.message);
-      // 如果是网络相关错误，标记需要重置客户端
-      if (error.message.includes('fetch failed') || error.message.includes('Network')) {
-        console.warn('[SupabaseService] Network error detected, will reset client on next connection attempt');
-        serviceStatus.isConnected = false;
-        serviceStatus.consecutiveFailures++;
+
+  reset() {
+    this.isConnected = false;
+    this.consecutiveFailures = 0;
+    this.isDegraded = false;
+    this.lastConnectionAttempt = null;
+  }
+
+  markSuccess() {
+    this.isConnected = true;
+    this.consecutiveFailures = 0;
+    this.lastSuccessfulConnection = new Date();
+    this.isDegraded = false;
+  }
+
+  markFailure() {
+    this.isConnected = false;
+    this.consecutiveFailures++;
+    this.lastConnectionAttempt = new Date();
+  }
+}
+
+// Connection manager for handling Supabase client lifecycle
+export class ConnectionManager {
+  constructor(config, logger = console) {
+    this.config = config;
+    this.logger = logger;
+    this.client = null;
+    this.connectionAttempts = 0;
+    this.timers = {
+      resetTimer: null,
+      refreshTimer: null,
+      healthCheckTimer: null
+    };
+  }
+
+  // Create a new Supabase client with proper configuration
+  createClient() {
+    return createClient(this.config.url, this.config.serviceKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: false,
+        detectSessionInUrl: false
+      },
+      global: {
+        fetch: (...args) => {
+          return fetch(...args).catch(err => {
+            this.logger.error('[ConnectionManager] Fetch error:', err.message);
+            throw err;
+          });
+        },
+        headers: {
+          'x-custom-app-name': 'CursorRemote',
+          'x-client-info': 'NodeJS Server',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      },
+      realtime: {
+        timeout: 60000, // 增加到60秒
+        heartbeatIntervalMs: 30000, // 增加到30秒
+        reconnectAfterMs: (tries) => {
+          // 更温和的重连策略
+          const baseDelay = 1000;
+          const maxDelay = 30000; // 最大30秒
+          const delay = Math.min(baseDelay * Math.pow(1.5, tries), maxDelay);
+          return delay;
+        },
+        params: {
+          eventsPerSecond: 5 // 降低事件频率
+        }
+      },
+      db: {
+        schema: 'public'
+      }
+    });
+  }
+
+  // Test the current connection
+  async testConnection() {
+    if (!this.client) {
+      return false;
+    }
+
+    try {
+      const { data, error } = await this.client.from('commands').select('id').limit(1);
+      if (error) {
+        this.logger.error('[ConnectionManager] Connection test failed:', error.message);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      this.logger.error('[ConnectionManager] Connection test exception:', error.message);
+      if (this.isNetworkError(error)) {
+        this.client = null; // Force recreation
       }
       return false;
     }
-    return true;
-  } catch (error) {
-    console.error('[SupabaseService] Connection test exception:', error.message);
-    // 检测常见的网络错误模式
-    if (error.message.includes('fetch failed') || 
-        error.message.includes('Network') || 
-        error.message.includes('ENOTFOUND') ||
-        error.message.includes('ECONNREFUSED') ||
-        error.message.includes('timeout')) {
-      console.warn('[SupabaseService] Network connectivity issue detected, forcing client reset');
-      serviceStatus.isConnected = false;
-      serviceStatus.consecutiveFailures++;
-      // 强制重置客户端以便下次重新初始化
-      supabase = null;
-    }
-    return false;
   }
-};
 
-// 强制刷新连接的函数
-const forceRefreshConnection = async () => {
-  if (serviceStatus.isShuttingDown) {
-    return false;
+  isNetworkError(error) {
+    const networkErrorPatterns = [
+      'fetch failed',
+      'Network',
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'timeout'
+    ];
+    return networkErrorPatterns.some(pattern => 
+      error.message.includes(pattern)
+    );
   }
-  
-  console.log('[SupabaseService] Performing scheduled connection refresh...');
-  
-  // 清理现有连接
-  if (supabase) {
+
+  // Initialize or recreate the client
+  async initialize() {
+    this.connectionAttempts++;
+
+    if (this.connectionAttempts > this.config.maxConnectionAttempts) {
+      this.logger.error(
+        `[ConnectionManager] Max connection attempts (${this.config.maxConnectionAttempts}) reached`
+      );
+      return false;
+    }
+
     try {
-      supabase.removeAllChannels();
-    } catch (error) {
-      console.warn('[SupabaseService] Warning during connection cleanup:', error.message);
-    }
-  }
-  
-  // 重置状态
-  supabase = null;
-  currentSubscription = null;
-  serviceStatus.isConnected = false;
-  connectionAttempts = 0;
-  subscriptionRetryAttempts = 0;
-  
-  // 重新初始化
-  const reconnected = await ensureSupabaseConnection();
-  if (reconnected) {
-    console.log('[SupabaseService] Connection refresh successful');
-    serviceStatus.lastConnectionRefresh = new Date();
-    
-    // 重新启动订阅
-    await subscribeToCommands();
-    return true;
-  } else {
-    console.error('[SupabaseService] Connection refresh failed');
-    return false;
-  }
-};
+      this.logger.log(
+        `[ConnectionManager] Initializing client (attempt ${this.connectionAttempts}/${this.config.maxConnectionAttempts})...`
+      );
 
-// Function to initialize Supabase client if not already initialized
-const initializeSupabase = async () => {
-  if (serviceStatus.isShuttingDown) {
-    return false;
-  }
-  
-  connectionAttempts++;
-  
-  if (connectionAttempts > MAX_CONNECTION_ATTEMPTS) {
-    if (!serviceStatus.isDegraded) {
-      console.error(`[SupabaseService] Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached. Entering degraded mode.`);
-      serviceStatus.isDegraded = true;
+      this.client = this.createClient();
       
-      // 启动连接重置定时器
-      if (!connectionResetTimer) {
-        connectionResetTimer = setInterval(() => {
-          console.log('[SupabaseService] Resetting connection attempts counter to allow recovery from degraded mode...');
-          connectionAttempts = 0;
-          subscriptionRetryAttempts = 0;
-          serviceStatus.isDegraded = false;
-        }, CONNECTION_RESET_INTERVAL);
-      }
-    }
-    return false;
-  }
-  
-  try {
-    if (!supabase && supabaseUrl && supabaseServiceKey) {
-      console.log(`[SupabaseService] Initializing Supabase client (attempt ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS})...`);
-      
-      supabase = createClient(supabaseUrl, supabaseServiceKey, {
-        auth: {
-          autoRefreshToken: true,
-          persistSession: false,
-          detectSessionInUrl: false
-        },
-        // 增强的连接配置
-        global: {
-          fetch: (...args) => {
-            return fetch(...args).catch(err => {
-              console.error('[SupabaseService] Fetch error in Supabase client:', err.message);
-              // 标记连接状态为不健康
-              serviceStatus.isConnected = false;
-              serviceStatus.consecutiveFailures++;
-              
-              // 如果是严重的网络错误，立即触发重连
-              if (err.message.includes('fetch failed') || 
-                  err.message.includes('ENOTFOUND') ||
-                  err.message.includes('ECONNREFUSED')) {
-                console.warn('[SupabaseService] Critical network error detected, forcing immediate reconnection attempt');
-                // 异步触发重连，不阻塞当前调用
-                setTimeout(async () => {
-                  supabase = null;
-                  await ensureSupabaseConnection();
-                }, 1000);
-              }
-              
-              throw err;
-            });
-          },
-          headers: {
-            'x-custom-app-name': 'CursorRemote',
-            'x-client-info': 'NodeJS Server',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        },
-        realtime: {
-          timeout: 30000,  // 减少到30秒超时，更快发现问题
-          heartbeatIntervalMs: 15000, // 减少到15秒心跳，更频繁检测
-          reconnectAfterMs: (tries) => Math.min(tries * 500, 10000), // 更快的重连，最大10秒
-          params: {
-            eventsPerSecond: 10
-          }
-        },
-        // 添加连接池配置
-        db: {
-          schema: 'public'
-        }
-      });
-      
-      // 测试连接
-      const testResult = await testConnection();
+      const testResult = await this.testConnection();
       if (testResult) {
-        serviceStatus.isConnected = true;
-        serviceStatus.consecutiveFailures = 0;
-        serviceStatus.lastSuccessfulConnection = new Date();
-        serviceStatus.connectionCreatedAt = new Date();
-        serviceStatus.isDegraded = false;
-        
-        // 重置连接尝试计数器
-        connectionAttempts = 0;
-        subscriptionRetryAttempts = 0;
-        
-        // 清理连接重置定时器
-        if (connectionResetTimer) {
-          clearInterval(connectionResetTimer);
-          connectionResetTimer = null;
-        }
-        
-        // 启动定期连接刷新
-        if (!connectionRefreshTimer) {
-          connectionRefreshTimer = setInterval(forceRefreshConnection, CONNECTION_REFRESH_INTERVAL);
-          console.log(`[SupabaseService] Scheduled connection refresh every ${CONNECTION_REFRESH_INTERVAL / 60000} minutes`);
-        }
-        
-        console.log('[SupabaseService] Supabase client initialized and connection verified successfully.');
+        this.connectionAttempts = 0;
+        this.logger.log('[ConnectionManager] Client initialized successfully');
         return true;
       }
-      supabase = null;
-      serviceStatus.isConnected = false;
+
+      this.client = null;
+      return false;
+    } catch (error) {
+      this.logger.error('[ConnectionManager] Error initializing client:', error.message);
+      this.client = null;
       return false;
     }
-  } catch (error) {
-    console.error('[SupabaseService] Error initializing Supabase client:', error.message);
-    supabase = null;
-    serviceStatus.isConnected = false;
-    serviceStatus.consecutiveFailures++;
-    return false;
   }
-  
-  return false;
-};
 
-// 添加一个函数用于检查和重新初始化Supabase连接
-export const ensureSupabaseConnection = async () => {
-  if (serviceStatus.isShuttingDown) {
-    return false;
+  // Force refresh the connection
+  async refresh() {
+    this.logger.log('[ConnectionManager] Performing connection refresh...');
+    
+    if (this.client) {
+      try {
+        this.client.removeAllChannels();
+      } catch (error) {
+        this.logger.warn('[ConnectionManager] Warning during cleanup:', error.message);
+      }
+    }
+
+    this.client = null;
+    this.connectionAttempts = 0;
+    
+    return await this.initialize();
   }
-  
-  serviceStatus.lastConnectionAttempt = new Date();
-  
-  // 如果客户端未初始化或连接状态不好，尝试初始化
-  if (!supabase || !serviceStatus.isConnected) {
-    const initialized = await initializeSupabase();
-    if (initialized) {
-      return true;
+
+  // Clean up resources
+  cleanup() {
+    for (const timer of Object.values(this.timers)) {
+      if (timer) clearInterval(timer);
     }
     
-    // 如果初始化失败，等待一段时间后再次尝试
-    await new Promise(resolve => setTimeout(resolve, CONNECTION_RETRY_DELAY));
-    return false;
+    if (this.client) {
+      try {
+        this.client.removeAllChannels();
+      } catch (error) {
+        this.logger.warn('[ConnectionManager] Error during cleanup:', error.message);
+      }
+    }
   }
-  
-  // 如果客户端已初始化，测试连接
-  const connectionValid = await testConnection();
-  if (connectionValid) {
-    // 如果之前是降级状态，现在恢复了，记录恢复
-    if (serviceStatus.isDegraded) {
-      console.log('[SupabaseService] Connection recovered from degraded mode!');
+
+  getClient() {
+    return this.client;
+  }
+}
+
+// Subscription manager for handling realtime subscriptions
+export class SubscriptionManager {
+  constructor(connectionManager, config, logger = console) {
+    this.connectionManager = connectionManager;
+    this.config = config;
+    this.logger = logger;
+    this.subscription = null;
+    this.retryCount = 0;
+    this.isShuttingDown = false;
+    this.retryTimer = null;
+    this.lastSuccessfulSubscription = null;
+    this.subscriptionHealthTimer = null;
+    this.maxRetryAttempts = config.maxSubscriptionRetries || 15;
+    
+    // 新增：连接健康检查 - 极度保守的参数设置
+    this.healthCheckInterval = 300000; // 5分钟检查一次（大幅减少检查频率）
+    this.lastHeartbeat = null;
+    this.missedHeartbeats = 0;
+    this.maxMissedHeartbeats = 10; // 允许10次丢失（大幅增加容忍度）
+    this.heartbeatTimeout = 600000; // 10分钟心跳超时（大幅增加超时时间）
+    this.enableHeartbeatCheck = config.enableHeartbeatCheck || false; // 从配置中读取心跳检查设置
+  }
+
+  // 新增：订阅健康检查 - 极度保守的实现
+  startHealthCheck() {
+    // 如果心跳检查被禁用，则不启动
+    if (!this.enableHeartbeatCheck) {
+      this.logger.log('[SubscriptionManager] Heartbeat check is disabled for stability');
+      return;
     }
     
-    serviceStatus.isConnected = true;
-    serviceStatus.consecutiveFailures = 0;
-    serviceStatus.lastSuccessfulConnection = new Date();
-    serviceStatus.isDegraded = false;
-    
-    // 清理连接重置定时器
-    if (connectionResetTimer) {
-      clearInterval(connectionResetTimer);
-      connectionResetTimer = null;
+    if (this.subscriptionHealthTimer) {
+      clearInterval(this.subscriptionHealthTimer);
     }
     
-    return true;
-  }
-  
-  serviceStatus.isConnected = false;
-  serviceStatus.consecutiveFailures++;
-  
-  // 如果连续失败次数过多，重置客户端
-  if (serviceStatus.consecutiveFailures >= 3) {
-    console.warn(`[SupabaseService] ${serviceStatus.consecutiveFailures} consecutive connection failures, resetting client...`);
-    supabase = null;
-    connectionAttempts = 0; // 重置连接尝试计数器
-  }
-  
-  return false;
-};
-
-// NEW: Function to update command status with retry mechanism
-export const updateCommandStatus = async (commandId, status, errorMessage = null, retryCount = 3, retryDelay = 1000) => {
-  // 检查并确保Supabase连接可用
-  if (!await ensureSupabaseConnection()) {
-    console.error('[SupabaseService] Failed to ensure Supabase connection. Cannot update command status.');
-    return { data: null, error: new Error('Failed to establish Supabase connection after multiple attempts.') };
-  }
-  
-  let lastError = null;
-  
-  // 重试逻辑
-  for (let attempt = 1; attempt <= retryCount; attempt++) {
-    try {
-      const updatePayload = { status: status, last_error: errorMessage };
-
-      const { data, error } = await supabase
-        .from('commands')
-        .update(updatePayload)
-        .eq('id', commandId)
-        .select();
-
-      if (error) {
-        console.error(`[SupabaseService] Error updating command ${commandId} to '${status}' (attempt ${attempt}/${retryCount}):`, error);
-        lastError = error;
+    this.subscriptionHealthTimer = setInterval(async () => {
+      if (this.subscription && !this.isShuttingDown) {
+        const now = Date.now();
         
-        // 如果是连接错误并且还有重试机会，尝试重新初始化连接
-        if (attempt < retryCount) {
-          console.log(`[SupabaseService] Checking Supabase connection and retrying update for command ${commandId}...`);
-          await ensureSupabaseConnection(); // 尝试重新建立连接
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-          continue;
-        }
-      } else {
-        // 只输出重要的状态更新日志
-        if (status === 'completed' || status === 'error') {
-          console.log(`[SupabaseService] Command ${commandId} status successfully updated to '${status}'.`);
-        }
-        if ((!data || data.length === 0) && !error) {
-          console.warn(`[SupabaseService] Command ${commandId} not found or no change when trying to update status to '${status}', but no explicit error from Supabase.`);
-        }
-        return { data, error: null };
-      }
-    } catch (e) {
-      console.error(`[SupabaseService] Unexpected error in updateCommandStatus for command ${commandId} (attempt ${attempt}/${retryCount}):`, e);
-      lastError = e;
-      
-      // 如果是网络错误，并且还有重试机会，则尝试重新建立连接并重试
-      if (attempt < retryCount) {
-        console.log(`[SupabaseService] Checking Supabase connection and retrying update for command ${commandId} after error: ${e.message}`);
-        await ensureSupabaseConnection(); // 尝试重新建立连接
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        continue;
-      }
-    }
-  }
-  
-  console.error(`[SupabaseService] All ${retryCount} attempts to update command ${commandId} status failed. Last error:`, lastError);
-  return { data: null, error: lastError };
-};
-
-// MODIFIED: handleNewCommand now uses the new queue manager
-const handleNewCommand = async (payload) => {
-  const newCommand = payload.new;
-  console.log('[SupabaseService] New command received:', newCommand.id);
-
-  if (!newCommand || !newCommand.id || !newCommand.command_text) {
-    console.error('[SupabaseService] Received invalid command data from subscription, missing ID or command_text.');
-    return;
-  }
-  
-  try {
-    // 使用新的命令控制器处理命令
-    const { processCommand } = await import('../controllers/commandController.js');
-    await processCommand(newCommand);
-  } catch (error) {
-    console.error(`[SupabaseService] Error processing command ${newCommand.id}:`, error.message);
-    
-    // 尝试更新命令状态为错误
-    try {
-      await updateCommandStatus(newCommand.id, 'error', `Service error: ${error.message}`);
-    } catch (updateError) {
-      console.error(`[SupabaseService] Failed to update error status for command ${newCommand.id}:`, updateError.message);
-    }
-  }
-};
-
-// 旧的队列处理函数已移除，现在使用 CommandQueueManager
-
-// NEW: Function to subscribe to results for a specific command_id with improved error handling
-export const subscribeToResultForCommand = async (commandId, callback) => {
-  // 确保Supabase连接有效
-  if (!await ensureSupabaseConnection()) {
-    console.error('[SupabaseService] Failed to ensure Supabase connection. Cannot subscribe to results.');
-    return null;
-  }
-  
-  try {
-    const channelName = `result_for_command_${commandId}`.replace(/-/g, '_'); // Sanitize for channel name
-    const subscription = supabase
-      .channel(channelName) // Unique channel per command for result
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'results', filter: `command_id=eq.${commandId}` },
-        callback
-      )
-      .subscribe(async (status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`[SupabaseService] Subscribed to results for command ${commandId}.`);
-        } else if (err) {
-          console.error(`[SupabaseService] Error subscribing to results for command ${commandId}:`, err);
+        // 使用极度宽松的心跳超时时间
+        if (this.lastHeartbeat && (now - this.lastHeartbeat) > this.heartbeatTimeout) {
+          this.missedHeartbeats++;
           
-          // 尝试重新连接和重新订阅
-          setTimeout(async () => {
-            if (await ensureSupabaseConnection()) {
-              const newSubscription = await subscribeToResultForCommand(commandId, callback);
-              if (newSubscription) {
-                console.log(`[SupabaseService] Re-subscribed to results for command ${commandId}.`);
-              }
-            }
-          }, 2000);
-        } else {
-          if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-            console.warn(`[SupabaseService] Result subscription for command ${commandId} status: ${status}. Reconnecting...`);
+          // 在触发重连前，先进行额外的连接验证
+          if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
+            this.logger.warn(`[SubscriptionManager] Potential connection issue detected (${Math.round((now - this.lastHeartbeat) / 1000)}s since last heartbeat)`);
             
-            // 尝试重新连接和重新订阅
-            setTimeout(async () => {
-              if (await ensureSupabaseConnection()) {
-                const newSubscription = await subscribeToResultForCommand(commandId, callback);
-                if (newSubscription) {
-                  console.log(`[SupabaseService] Re-subscribed to results for command ${commandId}.`);
-                }
-              }
-            }, 2000);
+            // 进行额外的连接测试
+            const isReallyDisconnected = await this.verifyConnectionLoss();
+            
+            if (isReallyDisconnected) {
+              this.logger.error('[SubscriptionManager] Connection loss confirmed, forcing reconnection');
+              this.forceReconnect();
+            } else {
+              this.logger.log('[SubscriptionManager] Connection test passed, resetting heartbeat counter');
+              this.lastHeartbeat = Date.now(); // 重置心跳时间
+              this.missedHeartbeats = 0; // 重置计数器
+            }
+          } else if (this.missedHeartbeats >= 5) {
+            // 只在达到一半阈值时才记录警告
+            this.logger.warn(`[SubscriptionManager] Long silence detected ${this.missedHeartbeats}/${this.maxMissedHeartbeats} (${Math.round((now - this.lastHeartbeat) / 1000)}s since last)`);
+          }
+        } else {
+          // 重置计数器，但不记录日志以减少噪音
+          if (this.missedHeartbeats > 0) {
+            this.missedHeartbeats = 0;
           }
         }
-      });
-    return subscription;
-  } catch (e) {
-    console.error(`[SupabaseService] Exception when trying to subscribe to results for command ${commandId}:`, e);
-    return null;
+      }
+    }, this.healthCheckInterval);
   }
-};
 
-// NEW: Function to clear/unsubscribe from a Supabase channel subscription
-export const clearResultSubscription = async (subscription) => {
-  if (subscription && typeof subscription.unsubscribe === 'function') {
+  // 新增：验证连接是否真的丢失
+  async verifyConnectionLoss() {
     try {
-      await supabase.removeChannel(subscription);
+      // 尝试进行一个简单的数据库查询来验证连接
+      const client = this.connectionManager.getClient();
+      if (!client) {
+        return true; // 没有客户端，确实断开了
+      }
+
+      // 执行一个轻量级的查询
+      const { data, error } = await client
+        .from('commands')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        this.logger.warn('[SubscriptionManager] Connection verification failed:', error.message);
+        return true; // 查询失败，可能真的断开了
+      }
+
+      // 查询成功，连接可能是正常的
+      return false;
     } catch (error) {
-      console.error("[SupabaseService] Error unsubscribing/removing channel:", error);
+      this.logger.warn('[SubscriptionManager] Connection verification error:', error.message);
+      return true; // 出现异常，可能真的断开了
     }
   }
-};
 
-// 订阅错误处理函数
-const handleSubscriptionError = async (status, error, retryDelay) => {
-  if (serviceStatus.isShuttingDown) {
-    return;
+  // 新增：强制重连
+  async forceReconnect() {
+    this.logger.log('[SubscriptionManager] Forcing subscription reconnection...');
+    await this.cleanupSubscription();
+    this.retryCount = 0;
+    this.missedHeartbeats = 0;
+    // 延迟重连以避免频繁重连
+    setTimeout(() => {
+      if (!this.isShuttingDown && this.lastSuccessfulSubscription) {
+        this.scheduleRetryWithBackoff(this.lastSuccessfulSubscription);
+      }
+    }, 5000);
   }
-  
-  // 清理当前订阅
-  currentSubscription = null;
-  
-  // 重置连接状态
-  serviceStatus.isConnected = false;
-  serviceStatus.consecutiveFailures++;
-  
-  // 尝试重新建立连接
-  await ensureSupabaseConnection();
-  
-  // 指数退避重试策略
-  const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
-  setTimeout(() => subscribeToCommands(3, nextRetryDelay), nextRetryDelay);
-};
 
-// Main subscription to new commands with enhanced error handling
-const subscribeToCommands = async (retryCount = 5, retryDelay = 15000) => {
-  if (serviceStatus.isShuttingDown) {
-    console.log('[SupabaseService] Service is shutting down, not attempting to subscribe');
-    return null;
-  }
-  
-  subscriptionRetryAttempts++;
-  
-  if (subscriptionRetryAttempts > MAX_SUBSCRIPTION_RETRIES) {
-    if (!serviceStatus.isDegraded) {
-      console.error(`[SupabaseService] Max subscription retry attempts (${MAX_SUBSCRIPTION_RETRIES}) reached. Service will continue attempting recovery.`);
+  async subscribe(onNewCommand, retryCount = 5, retryDelay = 15000) {
+    if (this.isShuttingDown) {
+      this.logger.log('[SubscriptionManager] Skipping subscription - service is shutting down');
+      return null;
     }
-    // 不要立即返回 null，允许在连接重置后继续尝试
-    if (serviceStatus.isDegraded && connectionResetTimer) {
+
+    // 检查是否已经有活跃的订阅
+    if (this.subscription && this.subscription.state === 'subscribed') {
+      this.logger.warn('[SubscriptionManager] Active subscription already exists, skipping duplicate subscription');
+      return this.subscription;
+    }
+
+    this.lastSuccessfulSubscription = onNewCommand;
+    this.retryCount = retryCount;
+
+    try {
+      const client = this.connectionManager.getClient();
+      if (!client) {
+        throw new Error('No Supabase client available');
+      }
+
+      this.logger.log(`[SubscriptionManager] Setting up subscription (attempt ${this.config.maxSubscriptionRetries - retryCount + 1}/${this.config.maxSubscriptionRetries})`);
+
+      // 清理现有订阅
+      await this.cleanupSubscription();
+
+      // 创建新订阅，增加更多事件监听
+      this.subscription = client
+        .channel('commands-channel')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'commands',
+          filter: 'status=eq.pending'
+        }, (payload) => {
+          this.lastHeartbeat = Date.now();
+          this.missedHeartbeats = 0;
+          this.logger.log('[SubscriptionManager] Received new command:', payload.new?.id);
+          if (onNewCommand && typeof onNewCommand === 'function') {
+            try {
+              onNewCommand(payload);
+            } catch (error) {
+              this.logger.error('[SubscriptionManager] Error in command callback:', error);
+            }
+          }
+        })
+        .on('system', {}, (status, err) => {
+          // 系统事件也算作心跳活动
+          this.lastHeartbeat = Date.now();
+          this.handleSubscriptionStatus(status, err, onNewCommand, retryDelay);
+        })
+        .subscribe((status, err) => {
+          this.handleSubscriptionError(status, err, onNewCommand, retryDelay);
+        });
+
+      // 设置初始心跳时间
+      this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
+      
+      // 启动健康检查
+      this.startHealthCheck();
+
+      return this.subscription;
+
+    } catch (error) {
+      this.logger.error('[SubscriptionManager] Error setting up subscription:', error);
+      
+      if (retryCount > 0 && !this.isShuttingDown) {
+        this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms (${retryCount} attempts left)`);
+        this.scheduleRetry(onNewCommand, retryDelay);
+      } else {
+        this.logger.error('[SubscriptionManager] Max subscription retry attempts reached');
+        // 不要完全放弃，而是使用指数退避重试
+        this.scheduleRetryWithBackoff(onNewCommand);
+      }
+      
       return null;
     }
   }
-  
-  console.log(`[SupabaseService] Attempting to subscribe to commands (attempt ${subscriptionRetryAttempts}/${MAX_SUBSCRIPTION_RETRIES})...`);
-  
-  // 确保客户端初始化并且连接有效
-  if (!await ensureSupabaseConnection()) { 
-    console.error('[SupabaseService] Failed to ensure Supabase connection. Will retry command subscription later.');
-    
-    // 指数退避重试策略
-    const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
-    setTimeout(() => subscribeToCommands(retryCount, nextRetryDelay), nextRetryDelay);
-    return null;
-  }
 
-  try {
-    // 清理之前的订阅
-    if (currentSubscription) {
+  async cleanupSubscription() {
+    if (this.subscriptionHealthTimer) {
+      clearInterval(this.subscriptionHealthTimer);
+      this.subscriptionHealthTimer = null;
+    }
+    
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
+    if (this.subscription) {
       try {
-        await supabase.removeChannel(currentSubscription);
-      } catch (cleanupError) {
-        console.warn('[SupabaseService] Warning: Could not cleanly remove previous subscription:', cleanupError.message);
+        await this.subscription.unsubscribe();
+        this.logger.log('[SubscriptionManager] Subscription cleaned up successfully');
+      } catch (error) {
+        this.logger.error('[SubscriptionManager] Error cleaning up subscription:', error);
+      } finally {
+        this.subscription = null;
       }
     }
+  }
 
-    // 验证 supabase 客户端仍然有效
-    if (!supabase) {
-      throw new Error('Supabase client is null after connection check');
+  scheduleRetry(onNewCommand, baseDelay) {
+    if (this.isShuttingDown) return;
+    
+    this.retryTimer = setTimeout(() => {
+      this.subscribe(onNewCommand, this.retryCount - 1, baseDelay);
+    }, baseDelay);
+  }
+
+  // 增强的指数退避重试
+  scheduleRetryWithBackoff(onNewCommand) {
+    if (this.isShuttingDown) return;
+    
+    // 改进退避算法：起始延迟更长，增长更缓慢
+    const baseDelay = 5000; // 5秒起始延迟
+    const backoffDelay = Math.min(baseDelay * Math.pow(1.5, this.retryCount), 300000); // 最大5分钟，增长因子1.5
+    this.logger.log(`[SubscriptionManager] Scheduling retry with backoff in ${Math.round(backoffDelay/1000)}s (attempt ${this.retryCount + 1})`);
+    
+    this.retryTimer = setTimeout(() => {
+      this.retryCount++;
+      // 重置重试计数，避免无限增长
+      if (this.retryCount > 10) {
+        this.retryCount = 5; // 重置到中等水平
+        this.logger.log('[SubscriptionManager] Resetting retry count to prevent infinite backoff');
+      }
+      this.subscribe(onNewCommand, this.maxRetryAttempts, 15000);
+    }, backoffDelay);
+  }
+
+  async handleSubscriptionStatus(status, err, onNewCommand, retryDelay) {
+    // 改进状态日志显示和状态检查
+    const statusStr = typeof status === 'object' ? JSON.stringify(status) : status;
+    
+    // 检查是否是成功的订阅状态（包括对象形式的状态）
+    const isSubscribed = status === 'SUBSCRIBED' || 
+                        (typeof status === 'object' && status?.status === 'ok' && status?.message?.includes('Subscribed'));
+    
+    if (isSubscribed) {
+      this.retryCount = 0;
+      this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
+      this.logger.log('[SubscriptionManager] Successfully subscribed to commands');
+      return; // 早期返回，避免记录为未知状态
+    }
+    
+    // 只在非成功状态时记录详细状态
+    this.logger.log(`[SubscriptionManager] Subscription status: ${statusStr}`);
+    
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      this.logger.error(`[SubscriptionManager] Subscription error: ${statusStr}`, err);
+      if (!this.isShuttingDown) {
+        // 延迟重连以避免频繁重试
+        setTimeout(() => {
+          this.scheduleRetryWithBackoff(onNewCommand);
+        }, 5000);
+      }
+    } else if (status === 'CLOSED') {
+      this.logger.warn(`[SubscriptionManager] Subscription closed: ${statusStr}`);
+      if (!this.isShuttingDown) {
+        // 对于CLOSED状态，使用更长的延迟避免立即重连
+        setTimeout(() => {
+          this.scheduleRetryWithBackoff(onNewCommand);
+        }, 10000); // 10秒延迟
+      }
+    } else if (typeof status === 'object' && status?.status === 'ok') {
+      // 处理其他成功状态的对象，但不是订阅确认
+      this.lastHeartbeat = Date.now();
+      this.logger.log(`[SubscriptionManager] Received status update: ${status.message || 'OK'}`);
+    } else {
+      // 处理真正的未知状态
+      this.logger.warn(`[SubscriptionManager] Unknown subscription status: ${statusStr}`, err);
+    }
+  }
+
+  async handleSubscriptionError(status, error, onNewCommand, retryDelay) {
+    if (status === 'SUBSCRIBED') {
+      this.retryCount = 0;
+      this.lastHeartbeat = Date.now();
+      this.missedHeartbeats = 0;
+      this.logger.log('[SubscriptionManager] Subscription established successfully');
+      return;
     }
 
-    currentSubscription = supabase
-      .channel('public_commands_changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
-        (payload) => {
-          try {
-            console.log('[SupabaseService] New command inserted:', payload.new.id);
-            handleNewCommand(payload);
-          } catch (error) {
-            console.error('[SupabaseService] Error handling new command:', error);
+    // 改进错误状态显示
+    const statusStr = typeof status === 'object' ? JSON.stringify(status) : status;
+    const errorStr = error ? (error.message || error.toString()) : 'undefined';
+    this.logger.error(`[SubscriptionManager] Subscription failed with status: ${statusStr} ${errorStr}`);
+    
+    if (!this.isShuttingDown && this.retryCount > 0) {
+      this.logger.log(`[SubscriptionManager] Retrying subscription in ${retryDelay}ms (${this.retryCount} attempts left)`);
+      this.scheduleRetry(onNewCommand, retryDelay);
+    } else if (!this.isShuttingDown) {
+      this.logger.warn('[SubscriptionManager] All subscription attempts failed, using backoff strategy');
+      this.scheduleRetryWithBackoff(onNewCommand);
+    }
+  }
+
+  cleanup() {
+    this.isShuttingDown = true;
+    this.cleanupSubscription();
+  }
+}
+
+// Main Supabase service class
+export class SupabaseService {
+  constructor(config = new SupabaseConfig(), logger = console, options = {}) {
+    this.config = config;
+    this.logger = logger;
+    this.status = new ServiceStatus();
+    this.connectionManager = new ConnectionManager(config, logger);
+    this.subscriptionManager = new SubscriptionManager(this.connectionManager, config, logger);
+    
+    // Allow dependency injection for testing
+    this.commandProcessor = options.commandProcessor || this.defaultCommandProcessor;
+    this.queueManager = options.queueManager || null; // 队列管理器引用，用于删除命令
+    
+    // 新增：重复命令检测
+    this.processedCommands = new Set();
+    this.commandProcessingTimeout = 5 * 60 * 1000; // 5分钟后清理已处理命令记录
+    
+    // Validate configuration
+    this.config.validate();
+    
+    // 定期清理已处理命令记录
+    setInterval(() => {
+      this.cleanupProcessedCommands();
+    }, this.commandProcessingTimeout);
+  }
+
+  async defaultCommandProcessor(command) {
+    const { processCommand } = await import('../controllers/commandController.js');
+    await processCommand(command);
+  }
+
+  // Ensure connection is available
+  async ensureConnection() {
+    if (this.status.isShuttingDown) {
+      return false;
+    }
+
+    this.status.lastConnectionAttempt = new Date();
+
+    if (!this.connectionManager.getClient() || !this.status.isConnected) {
+      const initialized = await this.connectionManager.initialize();
+      if (initialized) {
+        this.status.markSuccess();
+        this.status.connectionCreatedAt = new Date();
+        return true;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, this.config.connectionRetryDelay));
+      return false;
+    }
+
+    const connectionValid = await this.connectionManager.testConnection();
+    if (connectionValid) {
+      if (this.status.isDegraded) {
+        this.logger.log('[SupabaseService] Connection recovered from degraded mode!');
+      }
+      this.status.markSuccess();
+      return true;
+    }
+
+    this.status.markFailure();
+
+    if (this.status.consecutiveFailures >= 3) {
+      this.logger.warn(
+        `[SupabaseService] ${this.status.consecutiveFailures} consecutive failures, resetting client...`
+      );
+      this.connectionManager.client = null;
+      this.connectionManager.connectionAttempts = 0;
+    }
+
+    return false;
+  }
+
+  // Update command status with retry mechanism
+  async updateCommandStatus(commandId, status, errorMessage = null, retryCount = 3, retryDelay = 1000) {
+    if (!await this.ensureConnection()) {
+      this.logger.error('[SupabaseService] Failed to ensure connection for command status update');
+      return { data: null, error: new Error('Failed to establish connection') };
+    }
+
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+      try {
+        const updatePayload = { status: status, last_error: errorMessage };
+        const client = this.connectionManager.getClient();
+
+        const { data, error } = await client
+          .from('commands')
+          .update(updatePayload)
+          .eq('id', commandId)
+          .select();
+
+        if (error) {
+          this.logger.error(
+            `[SupabaseService] Error updating command ${commandId} (attempt ${attempt}/${retryCount}):`,
+            error
+          );
+          lastError = error;
+
+          if (attempt < retryCount) {
+            await this.ensureConnection();
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'commands', filter: 'status=eq.pending' },
-        (payload) => {
-          try {
-            // 只处理状态变为 pending 的命令（从其他状态更新而来）
-            if (payload.old.status !== 'pending' && payload.new.status === 'pending') {
-              console.log('[SupabaseService] Command status updated to pending:', payload.new.id);
-              handleNewCommand(payload);
-            }
-          } catch (error) {
-            console.error('[SupabaseService] Error handling updated command:', error);
-          }
-        }
-      )
-      .subscribe(async (status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[SupabaseService] Successfully subscribed to new commands!');
-          subscriptionRetryAttempts = 0; // 重置重试计数器
-          
-          // 如果从降级模式恢复，记录恢复状态
-          if (serviceStatus.isDegraded) {
-            console.log('[SupabaseService] Service recovered from degraded mode - subscription active!');
-            serviceStatus.isDegraded = false;
-            
-            // 清理连接重置定时器
-            if (connectionResetTimer) {
-              clearInterval(connectionResetTimer);
-              connectionResetTimer = null;
-            }
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[SupabaseService] Subscription to commands timed out. Will attempt to reconnect in', retryDelay / 1000, 'seconds...');
-          await handleSubscriptionError('TIMED_OUT', err, retryDelay);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('[SupabaseService] Channel error on command subscription. Will attempt to reconnect in', retryDelay / 1000, 'seconds... Error:', err || '(No specific error details)');
-          await handleSubscriptionError('CHANNEL_ERROR', err, retryDelay);
-        } else if (status === 'CLOSED') {
-          console.warn('[SupabaseService] Command subscription closed unexpectedly. Will attempt to reconnect in', retryDelay / 1000, 'seconds... Error:', err || '(No specific error details)');
-          await handleSubscriptionError('CLOSED', err, retryDelay);
         } else {
-          console.warn(`[SupabaseService] Command subscription status changed to ${status}. Error:`, err || '(No specific error details)');
-          await handleSubscriptionError(status, err, retryDelay);
+          if (status === 'completed' || status === 'error') {
+            this.logger.log(`[SupabaseService] Command ${commandId} status updated to '${status}'`);
+          }
+          return { data, error: null };
         }
-      });
+      } catch (e) {
+        this.logger.error(
+          `[SupabaseService] Unexpected error updating command ${commandId} (attempt ${attempt}/${retryCount}):`,
+          e
+        );
+        lastError = e;
 
-    return currentSubscription;
-    
-  } catch (error) {
-    console.error('[SupabaseService] Exception while setting up command subscription:', error);
-    currentSubscription = null;
-    
-    // 指数退避重试策略
-    const nextRetryDelay = Math.min(retryDelay * (1.5 ** (subscriptionRetryAttempts - 1)), 60000);
-    setTimeout(() => subscribeToCommands(retryCount, nextRetryDelay), nextRetryDelay);
-    return null;
-  }
-};
-
-// 在文件末尾添加定期连接健康检查机制
-let connectionHealthCheckInterval = null;
-
-// 启动定期连接健康检查
-export const startConnectionHealthCheck = (checkInterval = HEALTH_CHECK_INTERVAL) => {
-  if (connectionHealthCheckInterval) {
-    clearInterval(connectionHealthCheckInterval);
-  }
-  
-  // 立即执行一次连接检查（静默模式）
-  ensureSupabaseConnection().then(isConnected => {
-    if (!isConnected) {
-      console.warn('[SupabaseService] Initial connection health check: Connection is unhealthy, attempting to reconnect');
+        if (attempt < retryCount) {
+          await this.ensureConnection();
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
     }
-  }).catch(error => {
-    console.error('[SupabaseService] Error during initial connection health check:', error);
-  });
-  
-  // 设置定期检查
-  connectionHealthCheckInterval = setInterval(async () => {
+
+    this.logger.error(
+      `[SupabaseService] All ${retryCount} attempts to update command ${commandId} failed`
+    );
+    return { data: null, error: lastError };
+  }
+
+  // Handle new command
+  async handleNewCommand(payload) {
+    const newCommand = payload.new;
+    this.logger.log('[SupabaseService] New command received:', newCommand.id);
+
+    if (!newCommand || !newCommand.id || !newCommand.command_text) {
+      this.logger.error('[SupabaseService] Invalid command data received');
+      return;
+    }
+
+    // 检查是否已经处理过这个命令
+    if (this.processedCommands.has(newCommand.id)) {
+      this.logger.warn(`[SupabaseService] Command ${newCommand.id} already processed, skipping duplicate`);
+      return;
+    }
+
+    // 标记命令为正在处理
+    this.processedCommands.add(newCommand.id);
+
     try {
-      // 检查连接是否过期（超过45分钟强制刷新）
-      const connectionAge = serviceStatus.connectionCreatedAt ? 
-        Date.now() - serviceStatus.connectionCreatedAt.getTime() : 0;
+      await this.commandProcessor(newCommand);
+    } catch (error) {
+      this.logger.error(`[SupabaseService] Error processing command ${newCommand.id}:`, error.message);
+
+      try {
+        await this.updateCommandStatus(newCommand.id, 'error', `Service error: ${error.message}`);
+      } catch (updateError) {
+        this.logger.error(
+          `[SupabaseService] Failed to update error status for command ${newCommand.id}:`,
+          updateError.message
+        );
+      }
+    }
+  }
+
+  // Subscribe to result for specific command
+  async subscribeToResultForCommand(commandId, callback) {
+    if (!await this.ensureConnection()) {
+      this.logger.error('[SupabaseService] Failed to ensure connection for result subscription');
+      return null;
+    }
+
+    try {
+      const channelName = `result_for_command_${commandId}`.replace(/-/g, '_');
+      const client = this.connectionManager.getClient();
       
-      if (connectionAge > 45 * 60 * 1000) {
-        console.log('[SupabaseService] Connection age exceeded 45 minutes, forcing refresh...');
-        await forceRefreshConnection();
-        return;
+      const subscription = client
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'results', filter: `command_id=eq.${commandId}` },
+          callback
+        )
+        .subscribe(async (status, err) => {
+          if (status === 'SUBSCRIBED') {
+            this.logger.log(`[SupabaseService] Subscribed to results for command ${commandId}`);
+          } else if (err) {
+            this.logger.error(`[SupabaseService] Error subscribing to results for command ${commandId}:`, err);
+          }
+        });
+      
+      return subscription;
+    } catch (e) {
+      this.logger.error(`[SupabaseService] Exception subscribing to results for command ${commandId}:`, e);
+      return null;
+    }
+  }
+
+  // Clear result subscription
+  async clearResultSubscription(subscription) {
+    if (subscription && this.connectionManager.getClient()) {
+      try {
+        await this.connectionManager.getClient().removeChannel(subscription);
+      } catch (error) {
+        this.logger.error("[SupabaseService] Error unsubscribing/removing channel:", error);
+      }
+    }
+  }
+
+  // Subscribe to commands
+  async subscribeToCommands() {
+    return await this.subscriptionManager.subscribe(
+      (payload) => this.handleNewCommand(payload)
+    );
+  }
+
+  // Subscribe to command deletions
+  async subscribeToCommandDeletions() {
+    if (!await this.ensureConnection()) {
+      this.logger.error('[SupabaseService] Failed to ensure connection for command deletion subscription');
+      return null;
+    }
+
+    try {
+      const client = this.connectionManager.getClient();
+      
+      const subscription = client
+        .channel('command-deletions-channel')
+        .on('postgres_changes', {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'commands'
+        }, (payload) => {
+          this.handleCommandDeletion(payload);
+        })
+        .subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            this.logger.log('[SupabaseService] Successfully subscribed to command deletions');
+          } else if (err) {
+            this.logger.error('[SupabaseService] Error subscribing to command deletions:', err);
+          }
+        });
+      
+      return subscription;
+    } catch (error) {
+      this.logger.error('[SupabaseService] Exception subscribing to command deletions:', error);
+      return null;
+    }
+  }
+
+  // Handle command deletion
+  async handleCommandDeletion(payload) {
+    const deletedCommand = payload.old;
+    if (!deletedCommand || !deletedCommand.id) {
+      this.logger.warn('[SupabaseService] Invalid command deletion payload received');
+      return;
+    }
+
+    this.logger.log(`[SupabaseService] Command deleted: ${deletedCommand.id}`);
+
+    // 从已处理命令集合中移除
+    if (this.processedCommands.has(deletedCommand.id)) {
+      this.processedCommands.delete(deletedCommand.id);
+      this.logger.log(`[SupabaseService] Removed deleted command ${deletedCommand.id} from processed commands set`);
+    }
+
+    // 从队列中移除（如果存在）
+    try {
+      // 优先使用注入的队列管理器
+      let queueManager = this.queueManager;
+      
+      // 如果没有注入的队列管理器，尝试获取全局实例
+      if (!queueManager) {
+        const { getQueueManager } = await import('./queueManager.js');
+        queueManager = getQueueManager();
       }
       
-      const isConnected = await ensureSupabaseConnection();
-      if (!isConnected) {
-        const status = serviceStatus.isDegraded ? 'degraded mode' : 'attempting reconnection';
-        console.warn(`[SupabaseService] Periodic connection health check: Connection is unhealthy (${status})`);
-        
-        // 如果连续失败超过3次，强制刷新连接
-        if (serviceStatus.consecutiveFailures >= 3) {
-          console.log('[SupabaseService] Multiple consecutive failures detected, forcing connection refresh...');
-          await forceRefreshConnection();
+      if (queueManager && queueManager.hasCommand && queueManager.removeCommand) {
+        if (queueManager.hasCommand(deletedCommand.id)) {
+          const removed = queueManager.removeCommand(deletedCommand.id);
+          if (removed) {
+            this.logger.log(`[SupabaseService] Removed deleted command ${deletedCommand.id} from processing queue`);
+          }
+        } else {
+          this.logger.log(`[SupabaseService] Command ${deletedCommand.id} was not in the processing queue`);
         }
       } else {
-        // 连接正常时，偶尔输出状态信息
-        if (Math.random() < 0.1) { // 10% 概率输出状态
-          const uptime = connectionAge ? Math.floor(connectionAge / 60000) : 0;
-          console.log(`[SupabaseService] Connection healthy (uptime: ${uptime} minutes)`);
-        }
+        this.logger.warn('[SupabaseService] Queue manager not available for command removal');
       }
     } catch (error) {
-      console.error('[SupabaseService] Error during periodic connection health check:', error);
-      serviceStatus.consecutiveFailures++;
+      this.logger.error(`[SupabaseService] Error removing deleted command from queue:`, error);
     }
-  }, checkInterval);
-  
-  const intervalMinutes = checkInterval < 60000 ? 
-    `${Math.floor(checkInterval / 1000)} seconds` : 
-    `${Math.floor(checkInterval / 60000)} minutes`;
-  console.log(`[SupabaseService] Enhanced connection health check scheduled every ${intervalMinutes}`);
-  return connectionHealthCheckInterval;
-};
-
-// 停止定期连接健康检查
-export const stopConnectionHealthCheck = () => {
-  if (connectionHealthCheckInterval) {
-    clearInterval(connectionHealthCheckInterval);
-    connectionHealthCheckInterval = null;
-    console.log('[SupabaseService] Supabase connection health check stopped');
   }
-};
 
-// 添加智能重连机制
-const startIntelligentReconnect = () => {
-  // 更频繁的重连尝试，在网络问题时
-  setInterval(async () => {
-    if (serviceStatus.isShuttingDown) {
-      return;
-    }
-    
-    // 检查是否需要智能重连
-    const needsReconnect = (
-      serviceStatus.consecutiveFailures >= 2 && 
-      !serviceStatus.isConnected
-    ) || (
-      // 或者连接超过1小时且最近有失败
-      serviceStatus.connectionCreatedAt &&
-      Date.now() - serviceStatus.connectionCreatedAt.getTime() > 60 * 60 * 1000 &&
-      serviceStatus.consecutiveFailures > 0
-    );
-    
-    if (needsReconnect) {
-      console.log('[SupabaseService] Intelligent reconnect: Attempting to recover from connection issues...');
+  // Initialize the service
+  async initialize() {
+    this.logger.log('[SupabaseService] Starting service initialization...');
+
+    try {
+      const connected = await this.ensureConnection();
+      if (!connected) {
+        this.logger.error('[SupabaseService] Failed to establish initial connection');
+      }
+
+      await this.subscribeToCommands();
       
-      // 使用强制刷新连接而不是手动重置
-      const reconnected = await forceRefreshConnection();
-      if (reconnected) {
-        console.log('[SupabaseService] Intelligent reconnect: Successfully restored connection!');
-      } else {
-        console.warn('[SupabaseService] Intelligent reconnect: Failed to restore connection, will retry later');
-      }
+      // 订阅命令删除事件
+      await this.subscribeToCommandDeletions();
+      
+      // 启动健康检查定时器
+      this.startHealthCheck();
+      
+      this.logger.log('[SupabaseService] Service initialization completed');
+      
+      return connected;
+    } catch (error) {
+      this.logger.error('[SupabaseService] Error during service initialization:', error);
+      return false;
     }
-  }, 30000); // 每30秒检查一次
-};
-
-// 定期检查卡住命令的机制
-const startStuckCommandMonitor = () => {
-  setInterval(async () => {
-    if (serviceStatus.isShuttingDown || !serviceStatus.isConnected) {
-      return;
-    }
-    
-    // 每15分钟检查一次卡住的命令
-    await recoverStuckCommands();
-  }, 15 * 60 * 1000); // 15分钟间隔
-};
-
-// 自动恢复卡住的命令
-const recoverStuckCommands = async () => {
-  if (!await ensureSupabaseConnection()) {
-    console.warn('[SupabaseService] Cannot recover stuck commands - no database connection');
-    return;
   }
-  
-  try {
-    console.log('[SupabaseService] Checking for stuck commands...');
-    
-    // 查找超过10分钟的 pending 命令
-    const pendingCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    const { data: stuckPending, error: pendingError } = await supabase
-      .from('commands')
-      .select('id, command_text, created_at')
-      .eq('status', 'pending')
-      .lt('created_at', pendingCutoff);
-    
-    // 查找超过30分钟的 processing 命令
-    const processingCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: stuckProcessing, error: processingError } = await supabase
-      .from('commands')
-      .select('id, command_text, created_at')
-      .eq('status', 'processing')
-      .lt('created_at', processingCutoff);
-    
-    if (pendingError || processingError) {
-      console.error('[SupabaseService] Error checking stuck commands:', pendingError || processingError);
-      return;
+
+  // 启动健康检查
+  startHealthCheck() {
+    // 清理现有的定时器
+    if (this.connectionManager.timers.healthCheckTimer) {
+      clearInterval(this.connectionManager.timers.healthCheckTimer);
     }
-    
-    const totalStuck = (stuckPending?.length || 0) + (stuckProcessing?.length || 0);
-    
-    if (totalStuck === 0) {
-      console.log('[SupabaseService] No stuck commands found');
-      return;
-    }
-    
-    console.log(`[SupabaseService] Found ${totalStuck} stuck commands, recovering...`);
-    
-    // 重置卡住的 pending 命令并手动触发处理
-    if (stuckPending && stuckPending.length > 0) {
-      for (const cmd of stuckPending) {
-        const ageMinutes = Math.floor((Date.now() - new Date(cmd.created_at).getTime()) / 60000);
-        console.log(`[SupabaseService] Resetting stuck pending command ${cmd.id} (age: ${ageMinutes}min)`);
-        
-        await updateCommandStatus(cmd.id, 'pending');
-        
-        // 手动触发命令处理
-        try {
-          console.log(`[SupabaseService] Manually triggering processing for recovered command ${cmd.id}`);
-          await handleNewCommand({ new: cmd });
-        } catch (error) {
-          console.error(`[SupabaseService] Error manually processing recovered command ${cmd.id}:`, error);
+
+    this.connectionManager.timers.healthCheckTimer = setInterval(async () => {
+      try {
+        const isHealthy = await this.connectionManager.testConnection();
+        if (!isHealthy) {
+          this.logger.warn('[SupabaseService] Health check failed, attempting recovery...');
+          this.status.markFailure();
+          
+          // 如果连续失败多次，强制刷新连接
+          if (this.status.consecutiveFailures >= 3) {
+            this.logger.warn('[SupabaseService] Multiple health check failures, refreshing connection...');
+            
+            // 先清理现有订阅，避免重复订阅
+            await this.subscriptionManager.cleanupSubscription();
+            
+            // 刷新连接
+            await this.connectionManager.refresh();
+            
+            // 重新订阅（只有在之前有订阅回调时才重新订阅）
+            if (this.subscriptionManager.lastSuccessfulSubscription) {
+              this.logger.log('[SupabaseService] Reestablishing subscription after connection refresh...');
+              await this.subscribeToCommands();
+            }
+          }
+        } else if (this.status.consecutiveFailures > 0) {
+          this.logger.log('[SupabaseService] Health check recovered');
+          this.status.markSuccess();
         }
+      } catch (error) {
+        this.logger.error('[SupabaseService] Health check error:', error.message);
+        this.status.markFailure();
       }
-    }
-    
-    // 将卡住的 processing 命令标记为错误
-    if (stuckProcessing && stuckProcessing.length > 0) {
-      for (const cmd of stuckProcessing) {
-        const ageMinutes = Math.floor((Date.now() - new Date(cmd.created_at).getTime()) / 60000);
-        console.log(`[SupabaseService] Marking stuck processing command ${cmd.id} as error (age: ${ageMinutes}min)`);
-        
-        await updateCommandStatus(cmd.id, 'error', `命令处理超时 (${ageMinutes}分钟) - 服务重启时自动标记为错误`);
-      }
-    }
-    
-    console.log(`[SupabaseService] Successfully recovered ${totalStuck} stuck commands`);
-    
-  } catch (error) {
-    console.error('[SupabaseService] Error during stuck command recovery:', error);
+    }, this.config.healthCheckInterval);
   }
+
+  // Graceful shutdown
+  async shutdown() {
+    this.logger.log('[SupabaseService] Starting graceful shutdown...');
+    this.status.isShuttingDown = true;
+
+    this.subscriptionManager.cleanup();
+    this.connectionManager.cleanup();
+
+    this.logger.log('[SupabaseService] Graceful shutdown completed');
+  }
+
+  // Get service status
+  getStatus() {
+    return {
+      ...this.status,
+      hasClient: !!this.connectionManager.getClient(),
+      connectionAttempts: this.connectionManager.connectionAttempts
+    };
+  }
+
+  // Get client for direct access (use sparingly)
+  getClient() {
+    return this.connectionManager.getClient();
+  }
+
+  // 新增：清理已处理命令记录
+  cleanupProcessedCommands() {
+    const oldSize = this.processedCommands.size;
+    // 简单的清理策略：定期清空所有记录
+    // 在生产环境中，可以考虑更复杂的基于时间戳的清理策略
+    this.processedCommands.clear();
+    if (oldSize > 0) {
+      this.logger.log(`[SupabaseService] Cleaned up ${oldSize} processed command records`);
+    }
+  }
+}
+
+// Create and export default instance only in non-test environments
+let defaultService = null;
+
+if (process.env.NODE_ENV !== 'test' && process.env.JEST_WORKER_ID === undefined) {
+  const defaultConfig = new SupabaseConfig();
+  defaultService = new SupabaseService(defaultConfig);
+
+  // Auto-initialize the default service
+  defaultService.initialize().catch(error => {
+    console.error('[SupabaseService] Failed to auto-initialize:', error);
+  });
+
+  // Handle graceful shutdown for default instance
+  const gracefulShutdown = () => {
+    defaultService.shutdown().then(() => {
+      process.exit(0);
+    });
+  };
+
+  // Register process handlers
+  process.on('SIGINT', gracefulShutdown);
+  process.on('SIGTERM', gracefulShutdown);
+}
+
+// Export named functions for backward compatibility
+export const ensureSupabaseConnection = () => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.ensureConnection();
 };
 
-// 服务初始化
-const initializeService = async () => {
-  console.log('[SupabaseService] Starting service initialization...');
-  
-  try {
-    // 初始化 Supabase 连接
-    const connected = await ensureSupabaseConnection();
-    if (!connected) {
-      console.error('[SupabaseService] Failed to establish initial connection. Service will continue trying to reconnect.');
-    } else {
-      // 连接成功后，恢复卡住的命令
-      await recoverStuckCommands();
-    }
-    
-    // 启动健康检查（缩短到2分钟间隔）
-    startConnectionHealthCheck();
-    
-    // 启动智能重连机制
-    startIntelligentReconnect();
-    
-    // 启动卡住命令监控
-    startStuckCommandMonitor();
-    
-    // 启动命令订阅
-    await subscribeToCommands();
-    
-    console.log('[SupabaseService] Service initialization completed');
-  } catch (error) {
-    console.error('[SupabaseService] Error during service initialization:', error);
-    // 不要退出进程，而是继续尝试重连
+export const updateCommandStatus = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
   }
+  return defaultService.updateCommandStatus(...args);
 };
 
-// 启动服务
-initializeService();
+export const subscribeToResultForCommand = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.subscribeToResultForCommand(...args);
+};
 
-export default supabase;
+export const clearResultSubscription = (...args) => {
+  if (!defaultService) {
+    throw new Error('SupabaseService not available in test environment');
+  }
+  return defaultService.clearResultSubscription(...args);
+};
+
+// Export default client for backward compatibility
+export default defaultService?.getClient() || null;
+
+// Export the service instance and classes for testing
+export { defaultService as supabaseService };

@@ -20,13 +20,22 @@ console.log('🔄 CursorRemote 自动重启监控器启动中...\n');
 
 // 监控配置
 const config = {
-  checkInterval: 60000, // 1分钟检查一次
-  failureThreshold: 3, // 连续失败3次后重启
-  restartCooldown: 30000, // 重启后30秒冷却期
-  maxRestarts: 10, // 增加最大重启次数到10次
+  checkInterval: 120000, // 2分钟检查一次（从1分钟改为2分钟）
+  failureThreshold: 5, // 连续失败5次后重启（从3次改为5次）
+  restartCooldown: 120000, // 重启后2分钟冷却期（从30秒改为2分钟）
+  maxRestarts: 5, // 减少最大重启次数到5次（从10次改为5次）
   resetInterval: 3600000, // 1小时后重置重启计数
+  enableAutoRestart: process.env.ENABLE_AUTO_RESTART !== 'false', // 允许通过环境变量禁用自动重启
+  
+  // 新增：持续运行策略配置
+  extendedCheckInterval: 600000, // 达到最大重启次数后，延长检查间隔到10分钟
+  forceResetInterval: 21600000, // 6小时后强制重置重启计数（即使没有成功）
+  emergencyRestartThreshold: 10, // 紧急重启阈值：连续失败10次后强制重启
+  maxEmergencyRestarts: 3, // 紧急重启的最大次数
+  emergencyResetInterval: 43200000, // 12小时后重置紧急重启计数
+  
   criticalErrorPatterns: [
-    /errorRecoveryService\.handleError is not a function/i,
+    /errorRecoveryService\.handleErrorWithRecovery is not a function/i,
     /TypeError.*is not a function/i,
     /Cannot read property.*of undefined/i,
     /ReferenceError/i,
@@ -34,9 +43,28 @@ const config = {
     /Max connection attempts.*reached/i,
     /ECONNREFUSED/i,
     /ENOTFOUND/i,
+    /out of memory|heap.*out of memory/i,
+    /Maximum call stack size exceeded/i,
+    /Process out of memory/i,
+    /Error: spawn.*ENOENT/i,
+    /UnhandledPromiseRejectionWarning/i
+  ],
+  
+  // 新增：订阅问题检测配置 - 更保守的设置
+  subscriptionErrorPatterns: [
     /CHANNEL_ERROR/i,
-    /subscription.*failed/i
-  ]
+    /subscription.*failed/i,
+    /Subscription CLOSED/i,
+    /Max retry attempts.*reached/i
+  ],
+  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 100, // 大幅提高阈值（从50改为100）
+  subscriptionErrorWindow: 900000, // 15分钟窗口（从10分钟改为15分钟）
+  ignoreHeartbeatErrors: true, // 忽略心跳相关的错误
+  enableSubscriptionErrorDetection: process.env.ENABLE_SUBSCRIPTION_ERROR_DETECTION === 'true', // 默认禁用订阅错误检测
+  // 新增：更严格的重启条件
+  stuckCommandThreshold: 45, // 45分钟未处理才算卡住（从30分钟改为45分钟）
+  criticalErrorThreshold: 15, // 严重错误阈值提高到15个（从10个改为15个）
+  criticalErrorWindow: 900000 // 严重错误检查窗口改为15分钟（从10分钟改为15分钟）
 };
 
 // 监控状态
@@ -50,7 +78,19 @@ const state = {
   startTime: new Date(),
   criticalErrorCount: 0,
   lastCriticalErrorTime: null,
-  errorHistory: []
+  errorHistory: [],
+  
+  // 新增：持续运行状态
+  emergencyRestartCount: 0,
+  lastEmergencyRestartTime: null,
+  lastForceResetTime: null,
+  isInExtendedMode: false, // 是否处于延长检查模式
+  totalFailuresSinceLastSuccess: 0, // 自上次成功以来的总失败次数
+  
+  // 新增：订阅错误追踪
+  subscriptionErrors: [],
+  subscriptionErrorCount: 0,
+  lastSubscriptionErrorTime: null
 };
 
 // 创建测试客户端
@@ -73,9 +113,11 @@ const createTestClient = () => {
 // 检测服务输出中的关键错误
 const detectCriticalErrors = (output) => {
   const errors = [];
+  const subscriptionErrors = [];
   const lines = output.split('\n');
   
   for (const line of lines) {
+    // 检测严重错误
     for (const pattern of config.criticalErrorPatterns) {
       if (pattern.test(line)) {
         errors.push({
@@ -85,8 +127,30 @@ const detectCriticalErrors = (output) => {
         });
       }
     }
+    
+    // 检测订阅错误（忽略心跳相关错误）
+    for (const pattern of config.subscriptionErrorPatterns) {
+      if (pattern.test(line)) {
+        // 如果启用了忽略心跳错误，则跳过心跳相关的错误
+        if (config.ignoreHeartbeatErrors && (
+          line.includes('Missed heartbeat') ||
+          line.includes('heartbeat') ||
+          line.includes('Long silence detected') ||
+          line.includes('Connection test passed')
+        )) {
+          continue; // 跳过心跳相关的错误
+        }
+        
+        subscriptionErrors.push({
+          pattern: pattern.source,
+          line: line.trim(),
+          timestamp: new Date()
+        });
+      }
+    }
   }
   
+  // 处理严重错误
   if (errors.length > 0) {
     state.criticalErrorCount += errors.length;
     state.lastCriticalErrorTime = new Date();
@@ -101,11 +165,43 @@ const detectCriticalErrors = (output) => {
     for (const error of errors) {
       console.error(`   - ${error.line}`);
     }
-    
-    return true;
   }
   
-  return false;
+  // 处理订阅错误（仅在启用时）
+  if (subscriptionErrors.length > 0 && config.enableSubscriptionErrorDetection) {
+    state.subscriptionErrors.push(...subscriptionErrors);
+    state.subscriptionErrorCount += subscriptionErrors.length;
+    state.lastSubscriptionErrorTime = new Date();
+    
+    // 清理旧的订阅错误记录（保留最近5分钟的）
+    const cutoffTime = Date.now() - config.subscriptionErrorWindow;
+    state.subscriptionErrors = state.subscriptionErrors.filter(err => err.timestamp.getTime() > cutoffTime);
+    
+    // 如果订阅错误频率过高，将其升级为严重错误
+    const recentSubscriptionErrors = state.subscriptionErrors.filter(
+      err => (Date.now() - err.timestamp.getTime()) < config.subscriptionErrorWindow
+    );
+    
+    if (recentSubscriptionErrors.length >= config.subscriptionErrorThreshold) {
+      console.warn(`⚠️ 检测到频繁的订阅错误 (${recentSubscriptionErrors.length}次)，但不会触发重启`);
+      console.warn(`💡 提示：大多数订阅错误是正常的网络波动，Supabase 会自动重连`);
+      
+      // 不再将订阅错误升级为严重错误，只记录
+      // state.criticalErrorCount += Math.floor(recentSubscriptionErrors.length / 10);
+      // state.lastCriticalErrorTime = new Date();
+      
+      // 清空订阅错误计数，避免重复计算
+      state.subscriptionErrors = [];
+      return false; // 不触发重启
+    } else {
+      // 只记录但不触发重启，并且提高显示阈值
+      if (subscriptionErrors.length > 10) { // 提高阈值（从5改为10）
+        console.warn(`⚠️ 检测到 ${subscriptionErrors.length} 个订阅错误（${recentSubscriptionErrors.length}/${config.subscriptionErrorThreshold}）- 正常网络波动`);
+      }
+    }
+  }
+  
+  return errors.length > 0;
 };
 
 // 测试服务连接
@@ -113,11 +209,26 @@ const testServiceHealth = async () => {
   const testClient = createTestClient();
   
   try {
-    // 测试基本连接
-    const { data, error } = await testClient
+    // 首先检查服务进程是否还在运行
+    if (!state.serviceProcess || state.serviceProcess.killed) {
+      return {
+        success: false,
+        reason: 'Service process is not running',
+        details: { processStatus: 'not_running', shouldRestart: true }
+      };
+    }
+    
+    // 测试基本连接（增加超时）
+    const connectionPromise = testClient
       .from('commands')
       .select('id')
       .limit(1);
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Connection test timeout')), 10000);
+    });
+    
+    const { data, error } = await Promise.race([connectionPromise, timeoutPromise]);
     
     if (error) {
       throw new Error(`Database query failed: ${error.message}`);
@@ -140,7 +251,7 @@ const testServiceHealth = async () => {
       .from('commands')
       .select('id, created_at')
       .eq('status', 'pending')
-      .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString()); // 超过10分钟的pending命令
+      .lt('created_at', new Date(Date.now() - config.stuckCommandThreshold * 60 * 1000).toISOString()); // 使用配置的阈值
     
     if (stuckError) {
       console.warn('⚠️ 无法查询卡住的命令:', stuckError.message);
@@ -153,10 +264,26 @@ const testServiceHealth = async () => {
       };
     }
     
+    // 检查处理中的命令是否过多（可能表示服务卡住）
+    const { data: processingCommands, error: processingError } = await testClient
+      .from('commands')
+      .select('id, created_at')
+      .eq('status', 'processing')
+      .lt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString()); // 15分钟前的处理中命令
+    
+    if (!processingError && processingCommands && processingCommands.length > 3) {
+      console.warn(`⚠️ 发现 ${processingCommands.length} 个长时间处理中的命令`);
+      return {
+        success: false,
+        reason: `Found ${processingCommands.length} long-running processing commands`,
+        details: { processingCommands: processingCommands.length, shouldRestart: true }
+      };
+    }
+    
     // 如果最近有严重错误且频率过高，建议重启
-    if (state.criticalErrorCount > 5 && 
+    if (state.criticalErrorCount > config.criticalErrorThreshold && 
         state.lastCriticalErrorTime && 
-        (Date.now() - state.lastCriticalErrorTime.getTime()) < 300000) { // 5分钟内
+        (Date.now() - state.lastCriticalErrorTime.getTime()) < config.criticalErrorWindow) {
       return {
         success: false,
         reason: `Too many critical errors detected (${state.criticalErrorCount} in recent time)`,
@@ -164,21 +291,67 @@ const testServiceHealth = async () => {
       };
     }
     
+    // 检查内存使用情况（如果可能）
+    let memoryUsage = null;
+    try {
+      if (state.serviceProcess && state.serviceProcess.pid) {
+        // 这里可以添加内存检查逻辑
+        // 但需要额外的依赖，暂时跳过
+      }
+    } catch (memError) {
+      // 忽略内存检查错误
+    }
+    
     return {
       success: true,
       details: {
         recentCommands: recentCommands?.length || 0,
         stuckCommands: stuckCommands?.length || 0,
-        criticalErrors: state.criticalErrorCount
+        processingCommands: processingCommands?.length || 0,
+        criticalErrors: state.criticalErrorCount,
+        memoryUsage: memoryUsage
       }
     };
     
   } catch (error) {
+    // 区分不同类型的错误
+    let shouldRestart = true;
+    let errorType = 'unknown';
+    
+    if (error.message.includes('timeout')) {
+      errorType = 'timeout';
+      console.error('❌ 健康检查超时');
+    } else if (error.message.includes('ECONNREFUSED')) {
+      errorType = 'connection_refused';
+      console.error('❌ 数据库连接被拒绝');
+    } else if (error.message.includes('ENOTFOUND')) {
+      errorType = 'dns_error';
+      console.error('❌ DNS解析失败');
+    } else if (error.message.includes('fetch failed')) {
+      errorType = 'network_error';
+      console.error('❌ 网络请求失败');
+    } else {
+      console.error('❌ 健康检查失败:', error.message);
+    }
+    
     return {
       success: false,
       reason: error.message,
-      details: { error: error.message, shouldRestart: true }
+      details: { 
+        error: error.message, 
+        errorType: errorType,
+        shouldRestart: shouldRestart 
+      }
     };
+  } finally {
+    // 确保测试客户端被清理
+    try {
+      if (testClient && typeof testClient.removeAllChannels === 'function') {
+        testClient.removeAllChannels();
+      }
+    } catch (cleanupError) {
+      // 忽略清理错误
+    }
   }
 };
 
@@ -187,17 +360,34 @@ const startService = () => {
   return new Promise((resolve, reject) => {
     console.log('🚀 启动 CursorRemote 服务...');
     
-    const serviceProcess = spawn('node', ['src/services/supabaseService.js'], {
+    // 增强的启动参数，包括内存和性能优化
+    const nodeArgs = [
+      '--max-old-space-size=2048', // 增加内存限制到2GB
+      '--max-semi-space-size=128', // 优化垃圾回收
+      '--optimize-for-size', // 优化内存使用
+      'src/services/supabaseService.js'
+    ];
+    
+    const serviceProcess = spawn('node', nodeArgs, {
       cwd: __dirname,
       stdio: ['pipe', 'pipe', 'pipe'],
-      detached: false
+      detached: false,
+      env: {
+        ...process.env,
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        // 增加一些性能相关的环境变量
+        UV_THREADPOOL_SIZE: '16', // 增加线程池大小
+        NODE_OPTIONS: '--max-old-space-size=2048'
+      }
     });
     
     const startupTimeout = setTimeout(() => {
       console.error('❌ 服务启动超时');
-      serviceProcess.kill();
+      serviceProcess.kill('SIGKILL'); // 使用SIGKILL确保进程被终止
       reject(new Error('Service startup timeout'));
-    }, 30000); // 30秒启动超时
+    }, 45000); // 增加到45秒启动超时
+    
+    let startupSuccessDetected = false;
     
     serviceProcess.stdout.on('data', (data) => {
       const output = data.toString();
@@ -206,13 +396,19 @@ const startService = () => {
       // 检测严重错误
       detectCriticalErrors(output);
       
-      // 检测服务启动成功的标志
-      if (output.includes('Service initialization completed') || 
-          output.includes('Supabase client initialized')) {
+      // 检测服务启动成功的标志（更全面的检测）
+      if (!startupSuccessDetected && (
+          output.includes('Service initialization completed') || 
+          output.includes('Supabase client initialized') ||
+          output.includes('Successfully subscribed to commands') ||
+          output.includes('Health check timer started')
+        )) {
+        startupSuccessDetected = true;
         clearTimeout(startupTimeout);
         state.isServiceRunning = true;
         state.serviceProcess = serviceProcess;
         state.criticalErrorCount = 0; // 重置错误计数
+        state.consecutiveFailures = 0; // 重置失败计数
         console.log('✅ 服务启动成功');
         resolve(serviceProcess);
       }
@@ -230,6 +426,16 @@ const startService = () => {
         console.warn('🚨 检测到严重错误，将在下次检查时考虑重启服务');
         state.consecutiveFailures++; // 增加失败计数
       }
+      
+      // 检测特定的启动失败模式
+      if (output.includes('EADDRINUSE') || 
+          output.includes('port already in use') ||
+          output.includes('listen EADDRINUSE')) {
+        console.error('❌ 端口已被占用，服务启动失败');
+        clearTimeout(startupTimeout);
+        serviceProcess.kill();
+        reject(new Error('Port already in use'));
+      }
     });
     
     serviceProcess.on('exit', (code, signal) => {
@@ -242,6 +448,15 @@ const startService = () => {
       } else {
         console.error(`❌ 服务异常退出 (code: ${code}, signal: ${signal})`);
         state.consecutiveFailures++;
+        
+        // 记录异常退出的详细信息
+        if (code === 1) {
+          console.error('   退出代码1: 通常表示未捕获的异常');
+        } else if (code === 137) {
+          console.error('   退出代码137: 进程被SIGKILL终止（可能是内存不足）');
+        } else if (code === 143) {
+          console.error('   退出代码143: 进程被SIGTERM终止');
+        }
       }
     });
     
@@ -249,8 +464,30 @@ const startService = () => {
       clearTimeout(startupTimeout);
       console.error('❌ 服务启动失败:', error.message);
       state.consecutiveFailures++;
+      
+      // 检查是否是权限问题
+      if (error.code === 'EACCES') {
+        console.error('   权限错误: 请检查文件权限');
+      } else if (error.code === 'ENOENT') {
+        console.error('   文件不存在: 请检查Node.js是否正确安装');
+      }
+      
       reject(error);
     });
+    
+    // 添加进程内存监控
+    const memoryMonitor = setInterval(() => {
+      if (serviceProcess && !serviceProcess.killed) {
+        try {
+          // 这里可以添加内存使用监控逻辑
+          // 但需要注意不要过于频繁地检查
+        } catch (err) {
+          // 忽略监控错误
+        }
+      } else {
+        clearInterval(memoryMonitor);
+      }
+    }, 60000); // 每分钟检查一次
   });
 };
 
@@ -258,33 +495,80 @@ const startService = () => {
 const stopService = () => {
   return new Promise((resolve) => {
     if (!state.serviceProcess) {
+      console.log('ℹ️ 没有运行中的服务进程');
       resolve();
       return;
     }
     
     console.log('🛑 停止服务...');
     
-    // 发送 SIGTERM 信号
-    state.serviceProcess.kill('SIGTERM');
+    let processExited = false;
+    
+    // 设置退出监听器
+    const onExit = () => {
+      if (!processExited) {
+        processExited = true;
+        clearTimeout(gracefulTimeout);
+        clearTimeout(forceTimeout);
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        console.log('✅ 服务已停止');
+        resolve();
+      }
+    };
+    
+    state.serviceProcess.once('exit', onExit);
+    state.serviceProcess.once('close', onExit);
+    
+    // 首先尝试优雅关闭 - 发送 SIGTERM 信号
+    try {
+      state.serviceProcess.kill('SIGTERM');
+      console.log('📤 已发送SIGTERM信号，等待优雅关闭...');
+    } catch (error) {
+      console.warn('⚠️ 发送SIGTERM失败:', error.message);
+      // 如果SIGTERM失败，直接尝试SIGKILL
+      try {
+        state.serviceProcess.kill('SIGKILL');
+        console.log('📤 已发送SIGKILL信号');
+      } catch (killError) {
+        console.error('❌ 强制终止失败:', killError.message);
+        // 即使失败也要清理状态
+        processExited = true;
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        resolve();
+      }
+      return;
+    }
     
     // 等待服务优雅关闭
     const gracefulTimeout = setTimeout(() => {
-      console.warn('⚠️ 服务未在规定时间内关闭，强制终止');
-      state.serviceProcess.kill('SIGKILL');
+      if (!processExited) {
+        console.warn('⚠️ 服务未在10秒内优雅关闭，发送SIGKILL信号...');
+        try {
+          state.serviceProcess.kill('SIGKILL');
+        } catch (error) {
+          console.error('❌ 发送SIGKILL失败:', error.message);
+        }
+      }
     }, 10000); // 10秒优雅关闭时间
     
-    state.serviceProcess.on('exit', () => {
-      clearTimeout(gracefulTimeout);
-      state.isServiceRunning = false;
-      state.serviceProcess = null;
-      console.log('✅ 服务已停止');
-      resolve();
-    });
+    // 最终超时保护
+    const forceTimeout = setTimeout(() => {
+      if (!processExited) {
+        console.error('❌ 服务强制终止超时，清理状态');
+        processExited = true;
+        clearTimeout(gracefulTimeout);
+        state.isServiceRunning = false;
+        state.serviceProcess = null;
+        resolve();
+      }
+    }, 15000); // 15秒最终超时
   });
 };
 
 // 重启服务
-const restartService = async () => {
+const restartService = async (isEmergencyRestart = false) => {
   const now = new Date();
   
   // 检查冷却期
@@ -294,13 +578,24 @@ const restartService = async () => {
   }
   
   // 检查重启次数限制
-  if (state.restartCount >= config.maxRestarts) {
-    console.error(`❌ 已达到最大重启次数 (${config.maxRestarts})，停止自动重启`);
+  if (!isEmergencyRestart && state.restartCount >= config.maxRestarts) {
+    console.warn(`⚠️ 已达到最大重启次数 (${config.maxRestarts})，进入延长检查模式`);
+    state.isInExtendedMode = true;
+    return false;
+  }
+  
+  // 检查紧急重启次数限制
+  if (isEmergencyRestart && state.emergencyRestartCount >= config.maxEmergencyRestarts) {
+    console.error(`❌ 已达到最大紧急重启次数 (${config.maxEmergencyRestarts})，等待自动重置`);
     return false;
   }
   
   try {
-    console.log(`🔄 执行第 ${state.restartCount + 1} 次重启...`);
+    const restartType = isEmergencyRestart ? '紧急' : '常规';
+    const currentCount = isEmergencyRestart ? state.emergencyRestartCount + 1 : state.restartCount + 1;
+    const maxCount = isEmergencyRestart ? config.maxEmergencyRestarts : config.maxRestarts;
+    
+    console.log(`🔄 执行第 ${currentCount} 次${restartType}重启 (${currentCount}/${maxCount})...`);
     
     // 停止当前服务
     await stopService();
@@ -311,17 +606,70 @@ const restartService = async () => {
     // 启动新服务
     await startService();
     
-    state.restartCount++;
+    if (isEmergencyRestart) {
+      state.emergencyRestartCount++;
+      state.lastEmergencyRestartTime = now;
+    } else {
+      state.restartCount++;
+    }
+    
     state.lastRestartTime = now;
     state.consecutiveFailures = 0;
+    state.totalFailuresSinceLastSuccess = 0;
     
-    console.log('✅ 服务重启成功');
+    console.log(`✅ ${restartType}重启成功`);
     return true;
     
   } catch (error) {
-    console.error('❌ 服务重启失败:', error.message);
+    console.error(`❌ ${isEmergencyRestart ? '紧急' : '常规'}重启失败:`, error.message);
     return false;
   }
+};
+
+// 重置重启计数器
+const resetRestartCounters = (reason = '定时重置') => {
+  const now = new Date();
+  const oldRestartCount = state.restartCount;
+  const oldEmergencyCount = state.emergencyRestartCount;
+  const oldSubscriptionErrors = state.subscriptionErrors.length;
+  
+  state.restartCount = 0;
+  state.emergencyRestartCount = 0;
+  state.isInExtendedMode = false;
+  state.totalFailuresSinceLastSuccess = 0;
+  state.lastForceResetTime = now;
+  
+  // 清理订阅错误记录
+  state.subscriptionErrors = [];
+  state.subscriptionErrorCount = 0;
+  
+  console.log(`🔄 重启计数器已重置 (${reason})`);
+  console.log(`   常规重启: ${oldRestartCount} → 0`);
+  console.log(`   紧急重启: ${oldEmergencyCount} → 0`);
+  console.log(`   订阅错误: ${oldSubscriptionErrors} → 0`);
+  console.log('   退出延长检查模式');
+};
+
+// 检查是否需要强制重置
+const checkForceReset = () => {
+  const now = Date.now();
+  
+  // 强制重置条件：6小时后无论如何都重置
+  if (state.lastForceResetTime && (now - state.lastForceResetTime) > config.forceResetInterval) {
+    resetRestartCounters('6小时强制重置');
+    return true;
+  }
+  
+  // 紧急重启计数重置：12小时后重置紧急重启计数
+  if (state.lastEmergencyRestartTime && 
+      (now - state.lastEmergencyRestartTime) > config.emergencyResetInterval) {
+    const oldCount = state.emergencyRestartCount;
+    state.emergencyRestartCount = 0;
+    console.log(`🔄 紧急重启计数器已重置: ${oldCount} → 0 (12小时重置)`);
+    return true;
+  }
+  
+  return false;
 };
 
 // 显示状态
@@ -337,9 +685,18 @@ const displayStatus = () => {
   console.log('═══════════════════════════════════════════════');
   console.log(`⏰ 运行时间: ${uptimeDisplay}`);
   console.log(`🔧 服务状态: ${state.isServiceRunning ? '✅ 运行中' : '❌ 已停止'}`);
-  console.log(`🔄 重启次数: ${state.restartCount}/${config.maxRestarts}`);
+  console.log(`🔄 常规重启: ${state.restartCount}/${config.maxRestarts}`);
+  console.log(`🚨 紧急重启: ${state.emergencyRestartCount}/${config.maxEmergencyRestarts}`);
   console.log(`❌ 连续失败: ${state.consecutiveFailures}/${config.failureThreshold}`);
+  console.log(`📊 总失败数: ${state.totalFailuresSinceLastSuccess}`);
   console.log(`🚨 严重错误: ${state.criticalErrorCount}`);
+  console.log(`📡 订阅错误: ${state.subscriptionErrors.length}/${config.subscriptionErrorThreshold}`);
+  
+  if (state.isInExtendedMode) {
+    console.log('⏰ 模式: 延长检查模式 (10分钟间隔)');
+  } else {
+    console.log('⏰ 模式: 正常检查模式 (2分钟间隔)');
+  }
   
   if (state.lastRestartTime) {
     const timeSinceRestart = Math.floor((now - state.lastRestartTime) / 1000);
@@ -356,6 +713,18 @@ const displayStatus = () => {
     console.log(`🚨 最后错误: ${timeSinceError}秒前`);
   }
   
+  // 显示下次重置时间
+  if (state.lastForceResetTime) {
+    const timeUntilReset = config.forceResetInterval - (now - state.lastForceResetTime);
+    if (timeUntilReset > 0) {
+      const hoursUntilReset = Math.floor(timeUntilReset / (1000 * 60 * 60));
+      console.log(`⏳ 下次强制重置: ${hoursUntilReset}小时后`);
+    }
+  } else {
+    const hoursUntilReset = Math.floor(config.forceResetInterval / (1000 * 60 * 60));
+    console.log(`⏳ 首次强制重置: ${hoursUntilReset}小时后`);
+  }
+  
   // 显示最近的错误
   if (state.errorHistory.length > 0) {
     console.log('───────────────────────────────────────────────');
@@ -369,6 +738,7 @@ const displayStatus = () => {
   
   console.log('───────────────────────────────────────────────');
   console.log('按 Ctrl+C 退出监控');
+  console.log('按 USR1 信号重置重启计数器');
   console.log('═══════════════════════════════════════════════');
 };
 
@@ -376,12 +746,16 @@ const displayStatus = () => {
 const monitorLoop = async () => {
   displayStatus();
   
-  // 重置重启计数器（每小时）
+  // 检查是否需要强制重置
+  checkForceReset();
+  
+  // 重置重启计数器（每小时，仅在有成功记录时）
   if (state.restartCount > 0 && 
       state.lastRestartTime && 
-      (Date.now() - state.lastRestartTime) > config.resetInterval) {
-    console.log('🔄 重置重启计数器');
-    state.restartCount = 0;
+      state.lastSuccessTime &&
+      (Date.now() - state.lastRestartTime) > config.resetInterval &&
+      (Date.now() - state.lastSuccessTime) < config.resetInterval) {
+    resetRestartCounters('1小时成功重置');
   }
   
   // 测试服务健康状态
@@ -389,36 +763,74 @@ const monitorLoop = async () => {
   
   if (healthResult.success) {
     state.consecutiveFailures = 0;
+    state.totalFailuresSinceLastSuccess = 0;
     state.lastSuccessTime = new Date();
+    
+    // 如果在延长模式下成功，考虑退出延长模式
+    if (state.isInExtendedMode && state.restartCount < config.maxRestarts) {
+      console.log('✅ 服务恢复正常，退出延长检查模式');
+      state.isInExtendedMode = false;
+    }
     
     if (Math.random() < 0.1) { // 10% 概率显示成功信息
       console.log(`✅ 服务健康检查通过 (最近命令: ${healthResult.details.recentCommands}, 严重错误: ${healthResult.details.criticalErrors})`);
     }
   } else {
     state.consecutiveFailures++;
+    state.totalFailuresSinceLastSuccess++;
     console.error(`❌ 服务健康检查失败 (${state.consecutiveFailures}/${config.failureThreshold}): ${healthResult.reason}`);
     
     // 检查是否应该立即重启（基于错误类型）
     const shouldImmediateRestart = healthResult.details?.shouldRestart && (
-      state.criticalErrorCount > 10 || // 严重错误过多
+      state.criticalErrorCount > config.criticalErrorThreshold * 2 || // 严重错误过多（提高阈值）
       healthResult.reason.includes('stuck pending commands') || // 有卡住的命令
       healthResult.reason.includes('critical errors detected') // 检测到严重错误
     );
     
+    // 检查是否需要紧急重启（在延长模式下）
+    const needEmergencyRestart = state.isInExtendedMode && 
+      state.totalFailuresSinceLastSuccess >= config.emergencyRestartThreshold &&
+      state.emergencyRestartCount < config.maxEmergencyRestarts;
+    
     // 达到失败阈值或需要立即重启时重启服务
-    if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart) {
-      if (shouldImmediateRestart) {
-        console.warn('🚨 检测到严重问题，立即重启服务...');
-      } else {
-        console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+    if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart || needEmergencyRestart) {
+      if (!config.enableAutoRestart) {
+        console.warn('⚠️ 检测到需要重启的条件，但自动重启已禁用');
+        console.warn('💡 请手动重启服务或设置 ENABLE_AUTO_RESTART=true 启用自动重启');
+        return;
       }
       
-      const restartSuccess = await restartService();
+      let restartSuccess = false;
+      
+      if (needEmergencyRestart) {
+        console.warn(`🚨 延长模式下连续失败 ${state.totalFailuresSinceLastSuccess} 次，执行紧急重启...`);
+        restartSuccess = await restartService(true); // 紧急重启
+      } else if (shouldImmediateRestart) {
+        console.warn('🚨 检测到严重问题，立即重启服务...');
+        restartSuccess = await restartService(false); // 常规重启
+      } else {
+        console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+        restartSuccess = await restartService(false); // 常规重启
+      }
+      
       if (!restartSuccess) {
-        console.error('❌ 自动重启失败，请手动检查服务状态');
+        if (state.isInExtendedMode) {
+          console.error('❌ 重启失败，继续延长检查模式');
+        } else {
+          console.error('❌ 自动重启失败，请手动检查服务状态');
+        }
       }
     }
   }
+  
+  // 动态调整下次检查间隔
+  const nextCheckInterval = state.isInExtendedMode ? config.extendedCheckInterval : config.checkInterval;
+  
+  if (state.isInExtendedMode && Math.random() < 0.3) { // 30% 概率在延长模式下显示提示
+    console.log(`⏰ 延长检查模式：下次检查将在 ${nextCheckInterval / 60000} 分钟后进行`);
+  }
+  
+  return nextCheckInterval;
 };
 
 // 优雅退出
@@ -446,25 +858,66 @@ const main = async () => {
   console.log(`📊 检查间隔: ${config.checkInterval / 1000}秒`);
   console.log(`⚠️ 失败阈值: ${config.failureThreshold}次`);
   console.log(`🔄 最大重启: ${config.maxRestarts}次`);
+  console.log(`🚨 紧急重启: ${config.maxEmergencyRestarts}次`);
+  console.log(`⏰ 延长间隔: ${config.extendedCheckInterval / 60000}分钟`);
+  console.log(`🔧 自动重启: ${config.enableAutoRestart ? '✅ 启用' : '❌ 禁用'}`);
+  console.log(`📡 订阅错误检测: ${config.enableSubscriptionErrorDetection ? '✅ 启用' : '❌ 禁用'}`);
+  console.log(`💓 忽略心跳错误: ${config.ignoreHeartbeatErrors ? '✅ 是' : '❌ 否'}`);
+  
+  if (!config.enableAutoRestart) {
+    console.log('💡 要启用自动重启，请设置环境变量: ENABLE_AUTO_RESTART=true');
+  }
+  if (!config.enableSubscriptionErrorDetection) {
+    console.log('💡 订阅错误检测已禁用，只监控真正的严重错误');
+  }
   console.log('');
   
   // 注册信号处理器
   process.on('SIGINT', gracefulExit);
   process.on('SIGTERM', gracefulExit);
   
+  // 注册USR1信号处理器用于手动重置重启计数器
+  process.on('SIGUSR1', () => {
+    console.log('\n📡 收到USR1信号，手动重置重启计数器...');
+    resetRestartCounters('手动重置');
+    displayStatus();
+  });
+  
   // 启动初始服务
   try {
     await startService();
+    state.lastForceResetTime = new Date(); // 初始化强制重置时间
   } catch (error) {
     console.error('❌ 初始服务启动失败:', error.message);
     process.exit(1);
   }
   
-  // 开始监控循环
-  setInterval(monitorLoop, config.checkInterval);
+  // 动态监控循环
+  let currentInterval = config.checkInterval;
   
-  // 立即执行一次检查
-  setTimeout(monitorLoop, 5000); // 5秒后开始第一次检查
+  const scheduleNextCheck = () => {
+    setTimeout(async () => {
+      try {
+        const nextInterval = await monitorLoop();
+        currentInterval = nextInterval || currentInterval;
+      } catch (error) {
+        console.error('❌ 监控循环出错:', error.message);
+        currentInterval = config.checkInterval; // 出错时回到默认间隔
+      }
+      scheduleNextCheck(); // 递归调度下次检查
+    }, currentInterval);
+  };
+  
+  // 开始监控循环
+  setTimeout(async () => {
+    try {
+      const nextInterval = await monitorLoop();
+      currentInterval = nextInterval || currentInterval;
+    } catch (error) {
+      console.error('❌ 首次监控检查出错:', error.message);
+    }
+    scheduleNextCheck();
+  }, 5000); // 5秒后开始第一次检查
 };
 
 // 启动监控器

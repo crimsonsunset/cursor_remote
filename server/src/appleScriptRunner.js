@@ -7,80 +7,127 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const execFileAsync = promisify(execFile);
-
-// Construct the absolute path to the AppleScript
-// It's in CursorRemote/scripts/send_chat.scpt
-// appleScriptRunner.js is in CursorRemote/server/src/
-// So, from __dirname (server/src), we go up two levels to CursorRemote, then into scripts.
-const scriptPath = path.resolve(__dirname, '../../scripts/send_command_to_editor.scpt');
+// 获取默认脚本路径
+const getDefaultScriptPath = () => {
+  return path.resolve(__dirname, '../../scripts/send_command_to_editor.scpt');
+};
 
 /**
- * Runs the send_chat.scpt AppleScript to send a message to Cursor.
- * @param {string} commandText The message to send to Cursor.
- * @param {string} [initialChatMode="agent"] The mode for Cursor ("agent", "chat", "ask").
- * @param {string} targetEditor The target editor for the command.
- * @returns {Promise<{success: boolean, message?: string, error?: string}>}
- *          A promise resolving to an object indicating script execution success or failure.
+ * AppleScript执行器类，支持依赖注入
  */
-const runAppleScript = async (commandText, initialChatMode = "agent", targetEditor = "Cursor") => {
-  if (!commandText) {
-    return { success: false, error: 'Command text cannot be empty.' };
+export class AppleScriptRunner {
+  constructor(options = {}) {
+    this.execFileAsync = options.execFileAsync || promisify(execFile);
+    this.logger = options.logger || console;
+    this.scriptPath = options.scriptPath || getDefaultScriptPath();
+    this.defaultChatMode = options.defaultChatMode || "agent";
+    this.defaultTargetEditor = options.defaultTargetEditor || "Cursor";
   }
 
-  let currentChatMode = initialChatMode;
-  const validModes = ["agent", "chat", "ask"];
-  if (!validModes.includes(currentChatMode)) {
-    console.warn(`Invalid chatMode "${currentChatMode}" provided. Defaulting to "agent".`);
-    currentChatMode = "agent";
+  /**
+   * 验证和规范化聊天模式
+   */
+  normalizeChatMode(chatMode) {
+    const validModes = ["agent", "chat", "ask"];
+    if (!validModes.includes(chatMode)) {
+      this.logger.warn(`Invalid chatMode "${chatMode}" provided. Defaulting to "${this.defaultChatMode}".`);
+      return this.defaultChatMode;
+    }
+    return chatMode;
   }
 
-  let scriptTargetAppName;
-  const lowercasedEditor = targetEditor.toLowerCase();
+  /**
+   * 规范化目标编辑器
+   */
+  normalizeTargetEditor(targetEditor) {
+    const lowercasedEditor = targetEditor.toLowerCase();
 
-  if (lowercasedEditor === "vscode") {
-    scriptTargetAppName = "Visual Studio Code";
-  } else if (lowercasedEditor === "vscode-insiders") {
-    scriptTargetAppName = "Visual Studio Code - Insiders";
-  } else if (lowercasedEditor === "cursor") {
-    scriptTargetAppName = "Cursor";
-  } else {
-    // 如果 targetEditor 是一个无法识别的值，则发出警告并默认为 "Cursor"。
-    // 考虑到 commandController 总是会提供一个已知值或 "Cursor"，这种情况可能不常发生。
-    console.warn(`[AppleScriptRunner] Received unknown target editor: '${targetEditor}'. Defaulting to 'Cursor'.`);
-    scriptTargetAppName = "Cursor"; 
+    const editorMap = {
+      'vscode': 'Visual Studio Code',
+      'vscode-insiders': 'Visual Studio Code - Insiders',
+      'cursor': 'Cursor'
+    };
+
+    const normalizedName = editorMap[lowercasedEditor];
+    
+    if (!normalizedName) {
+      this.logger.warn(`[AppleScriptRunner] Received unknown target editor: '${targetEditor}'. Defaulting to '${this.defaultTargetEditor}'.`);
+      return this.defaultTargetEditor;
+    }
+    
+    return normalizedName;
   }
 
-  const scriptArgs = [commandText, currentChatMode, scriptTargetAppName];
+  /**
+   * 构建AppleScript参数
+   */
+  buildScriptArgs(commandText, chatMode, targetEditor) {
+    const normalizedChatMode = this.normalizeChatMode(chatMode);
+    const normalizedTargetEditor = this.normalizeTargetEditor(targetEditor);
+    
+    return [commandText, normalizedChatMode, normalizedTargetEditor];
+  }
 
-  console.log(`[AppleScriptRunner] Executing: osascript "${scriptPath}" "${commandText}" "${currentChatMode}" "${scriptTargetAppName}"`);
-
-  try {
-    const { stdout, stderr } = await execFileAsync('osascript', [scriptPath, ...scriptArgs]);
-
-    if (stderr) {
-      console.error(`[AppleScriptRunner] Error during execution (stderr): ${stderr}`);
-      // Even if there's stderr, osascript might still exit with 0.
-      // We'll consider non-empty stderr a sign of a potential issue.
-      return { success: false, error: `AppleScript execution stderr: ${stderr}` };
+  /**
+   * 执行AppleScript
+   */
+  async runScript(commandText, initialChatMode = this.defaultChatMode, targetEditor = this.defaultTargetEditor) {
+    if (!commandText) {
+      return { success: false, error: 'Command text cannot be empty.' };
     }
 
-    // The current send_chat.scpt doesn't output Cursor's response to stdout.
-    // It only sends the command. So, stdout is likely empty or has minimal OS messages.
-    console.log(`[AppleScriptRunner] Execution successful (stdout): ${stdout || '(empty)'}`);
-    return { success: true, message: `Command "${commandText}" sent to Cursor in mode "${currentChatMode}". Output: ${stdout || '(empty)'}` };
+    const scriptArgs = this.buildScriptArgs(commandText, initialChatMode, targetEditor);
+    const [, chatMode, scriptTargetAppName] = scriptArgs;
 
-  } catch (error) {
-    // This catches errors if osascript exits with a non-zero code or fails to launch
-    console.error(`[AppleScriptRunner] Failed to execute AppleScript: ${error.message}`);
-    console.error(`[AppleScriptRunner] scriptPath: ${scriptPath}`);
-    console.error(`[AppleScriptRunner] arguments: ${scriptArgs.join(' ')}`);
-    console.error(`[AppleScriptRunner] error object: ${error}`);
-    return { 
-      success: false, 
-      error: `Failed to execute AppleScript: ${error.message}. stdout: ${error.stdout || ""} stderr: ${error.stderr || ""}`
-    };
+    this.logger.log(`[AppleScriptRunner] Executing: osascript "${this.scriptPath}" "${commandText}" "${chatMode}" "${scriptTargetAppName}"`);
+
+    try {
+      const { stdout, stderr } = await this.execFileAsync('osascript', [this.scriptPath, ...scriptArgs]);
+
+      if (stderr) {
+        this.logger.error(`[AppleScriptRunner] Error during execution (stderr): ${stderr}`);
+        return { success: false, error: `AppleScript execution stderr: ${stderr}` };
+      }
+
+      this.logger.log(`[AppleScriptRunner] Execution successful (stdout): ${stdout || '(empty)'}`);
+      return { 
+        success: true, 
+        message: `Command "${commandText}" sent to ${scriptTargetAppName} in mode "${chatMode}". Output: ${stdout || '(empty)'}`,
+        stdout: stdout || ''
+      };
+
+    } catch (error) {
+      this.logger.error(`[AppleScriptRunner] Failed to execute AppleScript: ${error.message}`);
+      this.logger.error(`[AppleScriptRunner] scriptPath: ${this.scriptPath}`);
+      this.logger.error(`[AppleScriptRunner] arguments: ${scriptArgs.join(' ')}`);
+      this.logger.error(`[AppleScriptRunner] error object: ${error}`);
+      
+      return { 
+        success: false, 
+        error: `Failed to execute AppleScript: ${error.message}. stdout: ${error.stdout || ""} stderr: ${error.stderr || ""}`,
+        stdout: error.stdout || "",
+        stderr: error.stderr || ""
+      };
+    }
   }
+}
+
+// 创建默认实例
+let defaultRunner = null;
+
+export const getAppleScriptRunner = (options = {}) => {
+  if (!defaultRunner && process.env.NODE_ENV !== 'test') {
+    defaultRunner = new AppleScriptRunner(options);
+  }
+  return defaultRunner;
+};
+
+/**
+ * 向后兼容的默认导出函数
+ */
+const runAppleScript = async (commandText, initialChatMode = "agent", targetEditor = "Cursor") => {
+  const runner = getAppleScriptRunner();
+  return runner.runScript(commandText, initialChatMode, targetEditor);
 };
 
 export default runAppleScript; 

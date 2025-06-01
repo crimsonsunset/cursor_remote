@@ -1,142 +1,169 @@
-import { ensureSupabaseConnection } from './supabaseService.js';
-
-// 动态获取supabase客户端
-const getSupabaseClient = async () => {
-  const supabaseModule = await import('./supabaseService.js');
-  return supabaseModule.default;
-};
-
-// 命令统计和分析服务
+/**
+ * 命令统计和分析服务
+ * 重构为测试友好的版本，支持依赖注入
+ */
 export class AnalyticsService {
-  constructor() {
-    // 初始化任何必要的状态
+  constructor(supabaseService = null, logger = console) {
+    this.supabaseService = supabaseService;
+    this.logger = logger;
+    this.isInitialized = false;
   }
 
-  async recordCommandStart(commandId, commandText) {
-    try {
-      if (!await ensureSupabaseConnection()) {
-        console.warn('[AnalyticsService] Supabase connection not available for start recording');
-        return;
+  /**
+   * 初始化服务，设置 Supabase 连接
+   */
+  async initialize(supabaseService = null) {
+    if (supabaseService) {
+      this.supabaseService = supabaseService;
+    }
+    
+    // 如果没有提供 supabaseService，在非测试环境中动态加载
+    if (!this.supabaseService && process.env.NODE_ENV !== 'test') {
+      try {
+        const supabaseModule = await import('./supabaseService.js');
+        this.supabaseService = {
+          ensureConnection: supabaseModule.ensureSupabaseConnection,
+          getClient: () => supabaseModule.default
+        };
+      } catch (error) {
+        this.logger.error('[AnalyticsService] Failed to load Supabase service:', error);
+        return false;
       }
+    }
+    
+    this.isInitialized = true;
+    return true;
+  }
 
-      const supabase = await getSupabaseClient();
+  /**
+   * 检查服务是否可用
+   */
+  async isServiceAvailable() {
+    if (!this.isInitialized || !this.supabaseService) {
+      return false;
+    }
+
+    try {
+      return await this.supabaseService.ensureConnection();
+    } catch (error) {
+      this.logger.warn('[AnalyticsService] Supabase connection check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 记录命令开始
+   */
+  async recordCommandStart(commandId, commandText) {
+    if (!await this.isServiceAvailable()) {
+      this.logger.warn('[AnalyticsService] Service not available for start recording');
+      return { success: false, reason: 'service_unavailable' };
+    }
+
+    try {
+      const supabase = this.supabaseService.getClient();
       
-      // 临时解决方案：只记录基本信息，避免使用可能不存在的列
+      // 基础指标对象
       const basicMetrics = {
         command_id: commandId,
         command_length: commandText ? commandText.length : 0,
-        success: false, // 暂时设为false，稍后会更新
+        success: false, // 初始状态
         created_at: new Date().toISOString()
       };
 
-      // 尝试插入扩展信息，如果失败则使用基本信息
-      try {
-        const { error: extendedError } = await supabase
-          .from('command_metrics')
-          .insert({
-            ...basicMetrics,
-            command_text: commandText,
-            start_time: new Date().toISOString()
-          });
-
-        if (extendedError) {
-          // 如果扩展字段插入失败，尝试只插入基本字段
-          const { error: basicError } = await supabase
-            .from('command_metrics')
-            .insert(basicMetrics);
-          
-          if (basicError) {
-            console.error('[AnalyticsService] Failed to record command start (both extended and basic):', basicError);
-          } else {
-            console.log('[AnalyticsService] Recorded command start with basic metrics only');
-          }
-        }
-      } catch (insertError) {
-        console.error('[AnalyticsService] Error during command start recording:', insertError);
-      }
-    } catch (err) {
-      console.error('[AnalyticsService] Error recording command start:', err);
-    }
-  }
-
-  async recordCommandEnd(commandId, success, duration, errorMessage = null) {
-    try {
-      if (!await ensureSupabaseConnection()) {
-        console.warn('[AnalyticsService] Supabase connection not available for end recording');
-        return;
-      }
-
-      const supabase = await getSupabaseClient();
+      // 尝试插入完整信息
+      const result = await this.attemptInsert(supabase, basicMetrics, commandText);
       
-      // 尝试更新扩展字段，如果失败则更新基本字段
-      try {
-        const { error: extendedError } = await supabase
-          .from('command_metrics')
-          .update({
-            end_time: new Date().toISOString(),
-            success: success,
-            processing_duration: duration,
-            error_message: errorMessage
-          })
-          .eq('command_id', commandId);
-
-        if (extendedError) {
-          // 如果扩展字段更新失败，尝试只更新基本字段
-          const { error: basicError } = await supabase
-            .from('command_metrics')
-            .update({
-              success: success,
-              processing_duration: duration
-            })
-            .eq('command_id', commandId);
-          
-          if (basicError) {
-            console.error('[AnalyticsService] Failed to record command end (both extended and basic):', basicError);
-          } else {
-            console.log('[AnalyticsService] Recorded command end with basic metrics only');
-          }
-        }
-      } catch (updateError) {
-        console.error('[AnalyticsService] Error during command end recording:', updateError);
+      if (result.success) {
+        this.logger.log(`[AnalyticsService] Command start recorded for ${commandId}`);
       }
-    } catch (err) {
-      console.error('[AnalyticsService] Error recording command end:', err);
+      
+      return result;
+    } catch (error) {
+      this.logger.error('[AnalyticsService] Error recording command start:', error);
+      return { success: false, reason: 'unexpected_error', error };
     }
   }
 
-  async recordCommandMetrics(commandId, commandText, duration, success) {
-    try {
-      if (!await ensureSupabaseConnection()) {
-        console.warn('[AnalyticsService] Supabase connection not available for metrics recording');
-        return;
-      }
+  /**
+   * 记录命令结束
+   */
+  async recordCommandEnd(commandId, success, duration, errorMessage = null) {
+    if (!await this.isServiceAvailable()) {
+      this.logger.warn('[AnalyticsService] Service not available for end recording');
+      return { success: false, reason: 'service_unavailable' };
+    }
 
-      const supabase = await getSupabaseClient();
+    try {
+      const supabase = this.supabaseService.getClient();
+      
+      // 尝试更新完整信息
+      const result = await this.attemptUpdate(supabase, commandId, {
+        success,
+        duration,
+        errorMessage
+      });
+      
+      if (result.success) {
+        this.logger.log(`[AnalyticsService] Command end recorded for ${commandId}`);
+      }
+      
+      return result;
+    } catch (error) {
+      this.logger.error('[AnalyticsService] Error recording command end:', error);
+      return { success: false, reason: 'unexpected_error', error };
+    }
+  }
+
+  /**
+   * 记录命令完整指标（一次性记录）
+   */
+  async recordCommandMetrics(commandId, commandText, duration, success) {
+    if (!await this.isServiceAvailable()) {
+      this.logger.warn('[AnalyticsService] Service not available for metrics recording');
+      return { success: false, reason: 'service_unavailable' };
+    }
+
+    try {
+      const supabase = this.supabaseService.getClient();
+      const metrics = {
+        command_id: commandId,
+        command_length: commandText ? commandText.length : 0,
+        processing_duration: duration,
+        success: success,
+        created_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('command_metrics')
-        .insert({
-          command_id: commandId,
-          command_length: commandText.length,
-          processing_duration: duration,
-          success: success,
-          created_at: new Date().toISOString()
-        });
+        .insert(metrics);
 
       if (error) {
-        console.error('[AnalyticsService] Failed to record command metrics:', error);
+        this.logger.error('[AnalyticsService] Failed to record command metrics:', error);
+        return { success: false, reason: 'database_error', error };
       }
-    } catch (err) {
-      console.error('[AnalyticsService] Error recording metrics:', err);
+
+      this.logger.log(`[AnalyticsService] Command metrics recorded for ${commandId}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error('[AnalyticsService] Error recording metrics:', error);
+      return { success: false, reason: 'unexpected_error', error };
     }
   }
 
-  async getCommandStats() {
-    try {
-      if (!await ensureSupabaseConnection()) {
-        return null;
-      }
+  /**
+   * 获取命令统计信息
+   */
+  async getCommandStats(hoursBack = 24) {
+    if (!await this.isServiceAvailable()) {
+      this.logger.warn('[AnalyticsService] Service not available for stats retrieval');
+      return null;
+    }
 
-      const supabase = await getSupabaseClient();
+    try {
+      const supabase = this.supabaseService.getClient();
+      const timeThreshold = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+      
       const { data, error } = await supabase
         .from('command_metrics')
         .select(`
@@ -144,21 +171,134 @@ export class AnalyticsService {
           processing_duration,
           created_at
         `)
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // 最近24小时
+        .gte('created_at', timeThreshold);
 
       if (error) {
-        console.error('[AnalyticsService] Failed to fetch command stats:', error);
+        this.logger.error('[AnalyticsService] Failed to fetch command stats:', error);
         return null;
       }
 
-      return {
-        total: data.length,
-        successful: data.filter(d => d.success).length,
-        avgDuration: data.reduce((sum, d) => sum + d.processing_duration, 0) / data.length || 0
-      };
-    } catch (err) {
-      console.error('[AnalyticsService] Error fetching stats:', err);
+      return this.calculateStats(data);
+    } catch (error) {
+      this.logger.error('[AnalyticsService] Error fetching stats:', error);
       return null;
     }
   }
+
+  /**
+   * 尝试插入记录（使用现有表结构字段）
+   */
+  async attemptInsert(supabase, basicMetrics, commandText) {
+    try {
+      // 只使用表中实际存在的字段
+      const metricsToInsert = {
+        command_id: basicMetrics.command_id,
+        command_length: commandText ? commandText.length : 0,
+        processing_duration: null, // 开始时还不知道处理时间
+        success: null, // 开始时还不知道结果
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('command_metrics')
+        .insert(metricsToInsert);
+
+      if (!error) {
+        return { success: true, method: 'standard' };
+      }
+
+      return { success: false, reason: 'database_error', error };
+    } catch (error) {
+      return { success: false, reason: 'unexpected_error', error };
+    }
+  }
+
+  /**
+   * 尝试更新记录（使用现有表结构字段）
+   */
+  async attemptUpdate(supabase, commandId, { success, duration, errorMessage }) {
+    try {
+      // 只使用表中实际存在的字段
+      const updateData = {
+        success: success,
+        processing_duration: duration
+      };
+
+      const { error } = await supabase
+        .from('command_metrics')
+        .update(updateData)
+        .eq('command_id', commandId);
+
+      if (!error) {
+        return { success: true, method: 'standard' };
+      }
+
+      return { success: false, reason: 'database_error', error };
+    } catch (error) {
+      return { success: false, reason: 'unexpected_error', error };
+    }
+  }
+
+  /**
+   * 计算统计信息
+   */
+  calculateStats(data) {
+    if (!data || data.length === 0) {
+      return {
+        total: 0,
+        successful: 0,
+        successRate: 0,
+        avgDuration: 0,
+        totalDuration: 0
+      };
+    }
+
+    const successful = data.filter(d => d.success).length;
+    const totalDuration = data.reduce((sum, d) => sum + (d.processing_duration || 0), 0);
+    
+    return {
+      total: data.length,
+      successful,
+      successRate: (successful / data.length) * 100,
+      avgDuration: totalDuration / data.length,
+      totalDuration
+    };
+  }
 }
+
+// 创建默认实例（在非测试环境中自动初始化）
+let defaultService = null;
+
+export const getAnalyticsService = async () => {
+  // 在测试环境中不创建默认服务
+  if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined) {
+    throw new Error('getAnalyticsService should not be called in test environment');
+  }
+  
+  if (!defaultService) {
+    defaultService = new AnalyticsService();
+    await defaultService.initialize();
+  }
+  return defaultService;
+};
+
+// 便利的导出函数（向后兼容）
+export const recordCommandStart = async (...args) => {
+  const service = await getAnalyticsService();
+  return service.recordCommandStart(...args);
+};
+
+export const recordCommandEnd = async (...args) => {
+  const service = await getAnalyticsService();
+  return service.recordCommandEnd(...args);
+};
+
+export const recordCommandMetrics = async (...args) => {
+  const service = await getAnalyticsService();
+  return service.recordCommandMetrics(...args);
+};
+
+export const getCommandStats = async (...args) => {
+  const service = await getAnalyticsService();
+  return service.getCommandStats(...args);
+};

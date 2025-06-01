@@ -33,15 +33,22 @@ If you are setting up this project for the first time:
 ## Live Demo
 [https://cursor-remote.vercel.app/](https://cursor-remote.vercel.app/)
 
-### 🔍 **New Feature: Integrated Tavily MCP Search Service**
-The demo server now includes Tavily MCP search functionality, allowing you to test real-time search capabilities directly!
+### 🔍 **New Feature: Integrated Multiple MCP Services**
+The demo server now includes multiple MCP functionalities, allowing you to test various capabilities directly!
 
+#### 🔍 Tavily Search Service
 **Test Suggestions**:
 - Try asking: "Latest trends and breakthroughs in global AI development for 2025"
 - Or: "Application cases and effectiveness analysis of quantum computing in the financial industry"
 - Or: "Key technological breakthroughs of ChatGPT-5 and differences from previous generations"
 
-The system will automatically use Tavily search to fetch the latest information and return results.
+#### 🐍 Python Code Execution Service
+**Test Suggestions**:
+- Try asking: "Help me generate a Python function to calculate the area of a circle, and execute it using the execute_code tool for a circle with radius 10 cm"
+- Or: "Generate the first 20 terms of a Fibonacci sequence using Python and execute it"
+- Or: "Create a simple data analysis script to analyze statistical characteristics of random data"
+
+The system will automatically use the appropriate MCP services to fetch the latest information or execute code and return results.
 
 ## Demo Video 🎬
 > Remote control Cursor for UI automation testing
@@ -191,10 +198,11 @@ CREATE TABLE command_templates (
 );
 ```
 
-## Cursor MCP Configuration (for Result Return)
+## Cursor MCP Configuration (Enhanced Features Support)
 
-To allow Cursor to write the execution results of commands back to your Supabase project, you need to configure the Supabase Message Conduit Protocol (MCP) server in Cursor's settings:
+For the complete feature experience, we recommend configuring the following services in Cursor's MCP settings:
 
+### Basic Configuration - Supabase Result Return
 ```json
 {
   "mcpServers": {
@@ -211,10 +219,46 @@ To allow Cursor to write the execution results of commands back to your Supabase
 }
 ```
 
-**Important Note**:
-- Replace `"your-supabase-access-token"` with a valid access token for your Supabase project
-- This token is used for the MCP server to write execution results to your Supabase database
-- You can generate access tokens at [Supabase Dashboard](https://supabase.com/dashboard/account/tokens)
+### Enhanced Configuration - Multiple MCP Services
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "your-supabase-access-token"
+      ]
+    },
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@tavily/mcp-server@latest"
+      ],
+      "env": {
+        "TAVILY_API_KEY": "your-tavily-api-key"
+      }
+    },
+    "python": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-python@latest"
+      ]
+    }
+  }
+}
+```
+
+**Configuration Notes**: 
+- **Supabase MCP**: Used to write command execution results back to the database
+- **Tavily MCP**: Provides real-time search functionality, requires [Tavily API Key](https://tavily.com/)
+- **Python MCP**: Supports Python code execution and analysis
+- Replace `"your-supabase-access-token"` with your [Supabase Access Token](https://supabase.com/dashboard/account/tokens)
+- Replace `"your-tavily-api-key"` with your Tavily API key
 
 ## 🚀 Feature Roadmap
 
