@@ -43,10 +43,19 @@ const config = {
     /Max connection attempts.*reached/i,
     /ECONNREFUSED/i,
     /ENOTFOUND/i
-    // 移除了订阅相关的错误模式，因为这些是可以恢复的
-    // /CHANNEL_ERROR/i,
-    // /subscription.*failed/i
+    // 订阅相关的错误现在通过更智能的方式处理
+    // 只有在频繁出现时才认为是严重错误
   ],
+  
+  // 新增：订阅问题检测配置
+  subscriptionErrorPatterns: [
+    /CHANNEL_ERROR/i,
+    /subscription.*failed/i,
+    /Subscription CLOSED/i,
+    /Max retry attempts.*reached/i
+  ],
+  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 20, // 可通过环境变量调整
+  subscriptionErrorWindow: 300000, // 5分钟窗口
   // 新增：更严格的重启条件
   stuckCommandThreshold: 30, // 30分钟未处理才算卡住（从10分钟改为30分钟）
   criticalErrorThreshold: 10, // 严重错误阈值提高到10个（从5个改为10个）
@@ -71,7 +80,12 @@ const state = {
   lastEmergencyRestartTime: null,
   lastForceResetTime: null,
   isInExtendedMode: false, // 是否处于延长检查模式
-  totalFailuresSinceLastSuccess: 0 // 自上次成功以来的总失败次数
+  totalFailuresSinceLastSuccess: 0, // 自上次成功以来的总失败次数
+  
+  // 新增：订阅错误追踪
+  subscriptionErrors: [],
+  subscriptionErrorCount: 0,
+  lastSubscriptionErrorTime: null
 };
 
 // 创建测试客户端
@@ -94,9 +108,11 @@ const createTestClient = () => {
 // 检测服务输出中的关键错误
 const detectCriticalErrors = (output) => {
   const errors = [];
+  const subscriptionErrors = [];
   const lines = output.split('\n');
   
   for (const line of lines) {
+    // 检测严重错误
     for (const pattern of config.criticalErrorPatterns) {
       if (pattern.test(line)) {
         errors.push({
@@ -106,8 +122,20 @@ const detectCriticalErrors = (output) => {
         });
       }
     }
+    
+    // 检测订阅错误
+    for (const pattern of config.subscriptionErrorPatterns) {
+      if (pattern.test(line)) {
+        subscriptionErrors.push({
+          pattern: pattern.source,
+          line: line.trim(),
+          timestamp: new Date()
+        });
+      }
+    }
   }
   
+  // 处理严重错误
   if (errors.length > 0) {
     state.criticalErrorCount += errors.length;
     state.lastCriticalErrorTime = new Date();
@@ -122,11 +150,39 @@ const detectCriticalErrors = (output) => {
     for (const error of errors) {
       console.error(`   - ${error.line}`);
     }
-    
-    return true;
   }
   
-  return false;
+  // 处理订阅错误
+  if (subscriptionErrors.length > 0) {
+    state.subscriptionErrors.push(...subscriptionErrors);
+    state.subscriptionErrorCount += subscriptionErrors.length;
+    state.lastSubscriptionErrorTime = new Date();
+    
+    // 清理旧的订阅错误记录（保留最近5分钟的）
+    const cutoffTime = Date.now() - config.subscriptionErrorWindow;
+    state.subscriptionErrors = state.subscriptionErrors.filter(err => err.timestamp.getTime() > cutoffTime);
+    
+    // 如果订阅错误频率过高，将其升级为严重错误
+    const recentSubscriptionErrors = state.subscriptionErrors.filter(
+      err => (Date.now() - err.timestamp.getTime()) < config.subscriptionErrorWindow
+    );
+    
+    if (recentSubscriptionErrors.length >= config.subscriptionErrorThreshold) {
+      console.warn(`⚠️ 检测到频繁的订阅错误 (${recentSubscriptionErrors.length}次)，升级为严重错误`);
+      state.criticalErrorCount += Math.floor(recentSubscriptionErrors.length / 10); // 每10次订阅错误算1次严重错误
+      state.lastCriticalErrorTime = new Date();
+      // 清空订阅错误计数，避免重复计算
+      state.subscriptionErrors = [];
+      return true;
+    } else {
+      // 只记录但不触发重启
+      if (subscriptionErrors.length > 5) { // 只有连续多次才显示
+        console.warn(`⚠️ 检测到 ${subscriptionErrors.length} 个订阅错误（${recentSubscriptionErrors.length}/${config.subscriptionErrorThreshold}）`);
+      }
+    }
+  }
+  
+  return errors.length > 0;
 };
 
 // 测试服务连接
@@ -368,6 +424,7 @@ const resetRestartCounters = (reason = '定时重置') => {
   const now = new Date();
   const oldRestartCount = state.restartCount;
   const oldEmergencyCount = state.emergencyRestartCount;
+  const oldSubscriptionErrors = state.subscriptionErrors.length;
   
   state.restartCount = 0;
   state.emergencyRestartCount = 0;
@@ -375,9 +432,14 @@ const resetRestartCounters = (reason = '定时重置') => {
   state.totalFailuresSinceLastSuccess = 0;
   state.lastForceResetTime = now;
   
+  // 清理订阅错误记录
+  state.subscriptionErrors = [];
+  state.subscriptionErrorCount = 0;
+  
   console.log(`🔄 重启计数器已重置 (${reason})`);
   console.log(`   常规重启: ${oldRestartCount} → 0`);
   console.log(`   紧急重启: ${oldEmergencyCount} → 0`);
+  console.log(`   订阅错误: ${oldSubscriptionErrors} → 0`);
   console.log('   退出延长检查模式');
 };
 
@@ -421,6 +483,7 @@ const displayStatus = () => {
   console.log(`❌ 连续失败: ${state.consecutiveFailures}/${config.failureThreshold}`);
   console.log(`📊 总失败数: ${state.totalFailuresSinceLastSuccess}`);
   console.log(`🚨 严重错误: ${state.criticalErrorCount}`);
+  console.log(`📡 订阅错误: ${state.subscriptionErrors.length}/${config.subscriptionErrorThreshold}`);
   
   if (state.isInExtendedMode) {
     console.log('⏰ 模式: 延长检查模式 (10分钟间隔)');
