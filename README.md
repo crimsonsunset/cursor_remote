@@ -45,8 +45,9 @@ Demo服务器已集成多种MCP功能，您可以直接测试各种能力！
 #### 🐍 Python 代码执行服务
 **测试建议**：
 - 尝试询问："帮我生成一个计算圆的面积的python函数，并通过execute_code工具执行半径为10厘米的圆的面积"
+  <img width="803" alt="image" src="https://github.com/user-attachments/assets/084f7682-eac8-448f-922d-8a25fc041829" />
 - 或者："用Python生成一个斐波那契数列的前20项并执行"
-- 或者："创建一个简单的数据分析脚本，分析一组随机数据的统计特征"
+  <img width="801" alt="image" src="https://github.com/user-attachments/assets/1893d9ba-eb45-4e95-8faa-b8e86a18f5d9" />
 
 系统会自动使用相应的MCP服务获取最新信息或执行代码并返回结果。
 
