@@ -57,14 +57,14 @@ const config = {
     /Subscription CLOSED/i,
     /Max retry attempts.*reached/i
   ],
-  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 50, // 大幅提高阈值（从20改为50）
-  subscriptionErrorWindow: 600000, // 10分钟窗口（从5分钟改为10分钟）
+  subscriptionErrorThreshold: parseInt(process.env.SUBSCRIPTION_ERROR_THRESHOLD) || 100, // 大幅提高阈值（从50改为100）
+  subscriptionErrorWindow: 900000, // 15分钟窗口（从10分钟改为15分钟）
   ignoreHeartbeatErrors: true, // 忽略心跳相关的错误
   enableSubscriptionErrorDetection: process.env.ENABLE_SUBSCRIPTION_ERROR_DETECTION === 'true', // 默认禁用订阅错误检测
   // 新增：更严格的重启条件
-  stuckCommandThreshold: 30, // 30分钟未处理才算卡住（从10分钟改为30分钟）
-  criticalErrorThreshold: 10, // 严重错误阈值提高到10个（从5个改为10个）
-  criticalErrorWindow: 600000 // 严重错误检查窗口改为10分钟（从5分钟改为10分钟）
+  stuckCommandThreshold: 45, // 45分钟未处理才算卡住（从30分钟改为45分钟）
+  criticalErrorThreshold: 15, // 严重错误阈值提高到15个（从10个改为15个）
+  criticalErrorWindow: 900000 // 严重错误检查窗口改为15分钟（从10分钟改为15分钟）
 };
 
 // 监控状态

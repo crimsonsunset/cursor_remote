@@ -311,6 +311,56 @@ export class CommandQueueManager {
     this.logger.log('[QueueManager] Queue manager restarted');
     return true;
   }
+
+  /**
+   * 从队列中删除特定命令
+   */
+  removeCommand(commandId) {
+    if (!commandId) {
+      this.logger.warn('[QueueManager] Cannot remove command - no command ID provided');
+      return false;
+    }
+
+    let removedCount = 0;
+    const originalStats = this.getQueueStats();
+
+    // 从高优先级队列中删除
+    const highBefore = this.highPriorityQueue.length;
+    this.highPriorityQueue = this.highPriorityQueue.filter(cmd => cmd.id !== commandId);
+    removedCount += highBefore - this.highPriorityQueue.length;
+
+    // 从普通优先级队列中删除
+    const normalBefore = this.normalPriorityQueue.length;
+    this.normalPriorityQueue = this.normalPriorityQueue.filter(cmd => cmd.id !== commandId);
+    removedCount += normalBefore - this.normalPriorityQueue.length;
+
+    // 从低优先级队列中删除
+    const lowBefore = this.lowPriorityQueue.length;
+    this.lowPriorityQueue = this.lowPriorityQueue.filter(cmd => cmd.id !== commandId);
+    removedCount += lowBefore - this.lowPriorityQueue.length;
+
+    if (removedCount > 0) {
+      this.logger.log(`[QueueManager] Removed command ${commandId} from queue (${removedCount} instances removed)`);
+      this.logger.log(`[QueueManager] Queue sizes after removal: H:${this.highPriorityQueue.length}, N:${this.normalPriorityQueue.length}, L:${this.lowPriorityQueue.length}`);
+    } else {
+      this.logger.log(`[QueueManager] Command ${commandId} not found in any queue`);
+    }
+
+    return removedCount > 0;
+  }
+
+  /**
+   * 检查命令是否在队列中
+   */
+  hasCommand(commandId) {
+    if (!commandId) {
+      return false;
+    }
+
+    return this.highPriorityQueue.some(cmd => cmd.id === commandId) ||
+           this.normalPriorityQueue.some(cmd => cmd.id === commandId) ||
+           this.lowPriorityQueue.some(cmd => cmd.id === commandId);
+  }
 }
 
 // 创建默认实例（在非测试环境中）

@@ -353,6 +353,12 @@ export class SubscriptionManager {
       return null;
     }
 
+    // 检查是否已经有活跃的订阅
+    if (this.subscription && this.subscription.state === 'subscribed') {
+      this.logger.warn('[SubscriptionManager] Active subscription already exists, skipping duplicate subscription');
+      return this.subscription;
+    }
+
     this.lastSuccessfulSubscription = onNewCommand;
     this.retryCount = retryCount;
 
@@ -557,9 +563,19 @@ export class SupabaseService {
     
     // Allow dependency injection for testing
     this.commandProcessor = options.commandProcessor || this.defaultCommandProcessor;
+    this.queueManager = options.queueManager || null; // 队列管理器引用，用于删除命令
+    
+    // 新增：重复命令检测
+    this.processedCommands = new Set();
+    this.commandProcessingTimeout = 5 * 60 * 1000; // 5分钟后清理已处理命令记录
     
     // Validate configuration
     this.config.validate();
+    
+    // 定期清理已处理命令记录
+    setInterval(() => {
+      this.cleanupProcessedCommands();
+    }, this.commandProcessingTimeout);
   }
 
   async defaultCommandProcessor(command) {
@@ -676,6 +692,15 @@ export class SupabaseService {
       return;
     }
 
+    // 检查是否已经处理过这个命令
+    if (this.processedCommands.has(newCommand.id)) {
+      this.logger.warn(`[SupabaseService] Command ${newCommand.id} already processed, skipping duplicate`);
+      return;
+    }
+
+    // 标记命令为正在处理
+    this.processedCommands.add(newCommand.id);
+
     try {
       await this.commandProcessor(newCommand);
     } catch (error) {
@@ -743,6 +768,84 @@ export class SupabaseService {
     );
   }
 
+  // Subscribe to command deletions
+  async subscribeToCommandDeletions() {
+    if (!await this.ensureConnection()) {
+      this.logger.error('[SupabaseService] Failed to ensure connection for command deletion subscription');
+      return null;
+    }
+
+    try {
+      const client = this.connectionManager.getClient();
+      
+      const subscription = client
+        .channel('command-deletions-channel')
+        .on('postgres_changes', {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'commands'
+        }, (payload) => {
+          this.handleCommandDeletion(payload);
+        })
+        .subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            this.logger.log('[SupabaseService] Successfully subscribed to command deletions');
+          } else if (err) {
+            this.logger.error('[SupabaseService] Error subscribing to command deletions:', err);
+          }
+        });
+      
+      return subscription;
+    } catch (error) {
+      this.logger.error('[SupabaseService] Exception subscribing to command deletions:', error);
+      return null;
+    }
+  }
+
+  // Handle command deletion
+  async handleCommandDeletion(payload) {
+    const deletedCommand = payload.old;
+    if (!deletedCommand || !deletedCommand.id) {
+      this.logger.warn('[SupabaseService] Invalid command deletion payload received');
+      return;
+    }
+
+    this.logger.log(`[SupabaseService] Command deleted: ${deletedCommand.id}`);
+
+    // 从已处理命令集合中移除
+    if (this.processedCommands.has(deletedCommand.id)) {
+      this.processedCommands.delete(deletedCommand.id);
+      this.logger.log(`[SupabaseService] Removed deleted command ${deletedCommand.id} from processed commands set`);
+    }
+
+    // 从队列中移除（如果存在）
+    try {
+      // 优先使用注入的队列管理器
+      let queueManager = this.queueManager;
+      
+      // 如果没有注入的队列管理器，尝试获取全局实例
+      if (!queueManager) {
+        const { getQueueManager } = await import('./queueManager.js');
+        queueManager = getQueueManager();
+      }
+      
+      if (queueManager && queueManager.hasCommand && queueManager.removeCommand) {
+        if (queueManager.hasCommand(deletedCommand.id)) {
+          const removed = queueManager.removeCommand(deletedCommand.id);
+          if (removed) {
+            this.logger.log(`[SupabaseService] Removed deleted command ${deletedCommand.id} from processing queue`);
+          }
+        } else {
+          this.logger.log(`[SupabaseService] Command ${deletedCommand.id} was not in the processing queue`);
+        }
+      } else {
+        this.logger.warn('[SupabaseService] Queue manager not available for command removal');
+      }
+    } catch (error) {
+      this.logger.error(`[SupabaseService] Error removing deleted command from queue:`, error);
+    }
+  }
+
   // Initialize the service
   async initialize() {
     this.logger.log('[SupabaseService] Starting service initialization...');
@@ -754,6 +857,9 @@ export class SupabaseService {
       }
 
       await this.subscribeToCommands();
+      
+      // 订阅命令删除事件
+      await this.subscribeToCommandDeletions();
       
       // 启动健康检查定时器
       this.startHealthCheck();
@@ -779,14 +885,20 @@ export class SupabaseService {
         const isHealthy = await this.connectionManager.testConnection();
         if (!isHealthy) {
           this.logger.warn('[SupabaseService] Health check failed, attempting recovery...');
+          this.status.markFailure();
           
           // 如果连续失败多次，强制刷新连接
           if (this.status.consecutiveFailures >= 3) {
             this.logger.warn('[SupabaseService] Multiple health check failures, refreshing connection...');
+            
+            // 先清理现有订阅，避免重复订阅
+            await this.subscriptionManager.cleanupSubscription();
+            
+            // 刷新连接
             await this.connectionManager.refresh();
             
-            // 重新订阅
-            if (this.subscriptionManager.subscriptionCallback) {
+            // 重新订阅（只有在之前有订阅回调时才重新订阅）
+            if (this.subscriptionManager.lastSuccessfulSubscription) {
               this.logger.log('[SupabaseService] Reestablishing subscription after connection refresh...');
               await this.subscribeToCommands();
             }
@@ -797,6 +909,7 @@ export class SupabaseService {
         }
       } catch (error) {
         this.logger.error('[SupabaseService] Health check error:', error.message);
+        this.status.markFailure();
       }
     }, this.config.healthCheckInterval);
   }
@@ -824,6 +937,17 @@ export class SupabaseService {
   // Get client for direct access (use sparingly)
   getClient() {
     return this.connectionManager.getClient();
+  }
+
+  // 新增：清理已处理命令记录
+  cleanupProcessedCommands() {
+    const oldSize = this.processedCommands.size;
+    // 简单的清理策略：定期清空所有记录
+    // 在生产环境中，可以考虑更复杂的基于时间戳的清理策略
+    this.processedCommands.clear();
+    if (oldSize > 0) {
+      this.logger.log(`[SupabaseService] Cleaned up ${oldSize} processed command records`);
+    }
   }
 }
 

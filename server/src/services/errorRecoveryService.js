@@ -288,6 +288,10 @@ export async function handleSpecificError(errorType, context = {}) {
         // 尝试重新建立订阅
         const { supabaseService } = await import('./supabaseService.js');
         if (supabaseService && typeof supabaseService.subscribeToCommands === 'function') {
+          // 先清理现有订阅，避免重复订阅
+          if (supabaseService.subscriptionManager && typeof supabaseService.subscriptionManager.cleanupSubscription === 'function') {
+            await supabaseService.subscriptionManager.cleanupSubscription();
+          }
           await supabaseService.subscribeToCommands();
           return { success: true, message: '订阅已重新建立' };
         }

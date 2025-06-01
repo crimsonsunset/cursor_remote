@@ -323,6 +323,32 @@ export class CommandController {
     this.logger.log(`[CommandController] Executing command ${commandId}: ${originalCommandText.substring(0, 50)}...`);
 
     try {
+      // 首先检查命令是否仍然存在于数据库中
+      try {
+        const client = this.connectionManager?.getClient() || await this.getSupabaseClient();
+        if (client) {
+          const { data: commandExists, error: checkError } = await client
+            .from('commands')
+            .select('id, status')
+            .eq('id', commandId)
+            .single();
+
+          if (checkError || !commandExists) {
+            this.logger.warn(`[CommandController] Command ${commandId} no longer exists in database, skipping execution`);
+            return; // 静默跳过，不记录错误
+          }
+
+          // 检查命令状态，如果已经完成或出错，则跳过
+          if (commandExists.status === 'completed' || commandExists.status === 'error') {
+            this.logger.warn(`[CommandController] Command ${commandId} already in final state (${commandExists.status}), skipping execution`);
+            return;
+          }
+        }
+      } catch (existenceCheckError) {
+        this.logger.warn(`[CommandController] Failed to check command existence for ${commandId}:`, existenceCheckError.message);
+        // 继续执行，因为这可能只是网络问题
+      }
+
       // 更新命令状态为处理中
       try {
         await this.updateCommandStatus(commandId, 'processing');
