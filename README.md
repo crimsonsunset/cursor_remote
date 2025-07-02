@@ -387,6 +387,10 @@ sequenceDiagram
 - **故障恢复**: 自动检测和修复卡住的命令
 - **性能分析**: 内置的系统指标收集和展示
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=terryso/cursor_remote&type=Date)](https://www.star-history.com/#terryso/cursor_remote&Date)
+
 ## License
 
 本项目根据 [MIT License](LICENSE) 授权。
