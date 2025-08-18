@@ -26,17 +26,18 @@ This project consists of multiple components and extensive documentation. Here's
 
 | **Rank** | **Component** | **Path** | **Purpose** | **When to Read** |
 |----------|---------------|----------|-------------|------------------|
-| **7️⃣** | **Database Setup** | [`docs-en/deployment/SETUP_DATABASE.md`](docs-en/deployment/SETUP_DATABASE.md) | Step-by-step Supabase database configuration | **Before setup** - Required for running the app |
-| **6️⃣** | **Epic Breakdown** | [`docs-en/requirements/EPICS_BREAKDOWN.md`](docs-en/requirements/EPICS_BREAKDOWN.md) | Detailed technical implementation guide (732 lines) | **For developers** - How to build features |
-| **5️⃣** | **Client Code** | [`client/`](client/) | Web application (HTML, CSS, JS) for mobile control | **For frontend work** - The user interface |
-| **4️⃣** | **Server Code** | [`server/`](server/) | Node.js service that controls Cursor via AppleScript | **For backend work** - Command processing |
+| **7️⃣** | **🎯 MCP Setup Guide** | [`docs-en/setup/MCP_SETUP_GUIDE.md`](docs-en/setup/MCP_SETUP_GUIDE.md) | **CRITICAL: Enable AI response logging (5 min)** | **AFTER basic setup** - Makes system fully functional |
+| **6️⃣** | **Database Setup** | [`docs-en/deployment/SETUP_DATABASE.md`](docs-en/deployment/SETUP_DATABASE.md) | Step-by-step Supabase database configuration | **Before setup** - Required for running the app |
+| **5️⃣** | **Epic Breakdown** | [`docs-en/requirements/EPICS_BREAKDOWN.md`](docs-en/requirements/EPICS_BREAKDOWN.md) | Detailed technical implementation guide (732 lines) | **For developers** - How to build features |
+| **4️⃣** | **Client Code** | [`client/`](client/) | Web application (HTML, CSS, JS) for mobile control | **For frontend work** - The user interface |
+| **3️⃣** | **Server Code** | [`server/`](server/) | Node.js service that controls Cursor via AppleScript | **For backend work** - Command processing |
 
 ### 🔧 **Maintenance & Debugging**
 
 | **Rank** | **Component** | **Path** | **Purpose** | **When to Read** |
 |----------|---------------|----------|-------------|------------------|
-| **3️⃣** | **Testing Guide** | [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) | How to test the complete system | **When debugging** - Verify everything works |
-| **2️⃣** | **Deployment Status** | [`docs-en/deployment/DEPLOYMENT_STATUS.md`](docs-en/deployment/DEPLOYMENT_STATUS.md) | Current deployment state and troubleshooting | **When issues occur** - Current system status |
+| **2️⃣** | **Testing Guide** | [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) | How to test the complete system | **When debugging** - Verify everything works |
+| **1️⃣** | **Deployment Status** | [`docs-en/deployment/DEPLOYMENT_STATUS.md`](docs-en/deployment/DEPLOYMENT_STATUS.md) | Current deployment state and troubleshooting | **When issues occur** - Current system status |
 | **1️⃣** | **Fix Documentation** | [`docs-en/fixes/`](docs-en/fixes/) | Historical bug fixes and improvements | **Reference only** - When encountering similar issues |
 
 ### 🗂️ **Directory Structure Explained**
@@ -82,10 +83,11 @@ cursor_remote/
 
 ### 🎯 **Quick Start Reading Path**
 
-**For New Users (30 minutes):**
+**For New Users (35 minutes):**
 1. [`docs-en/requirements/PRODUCT_REQUIREMENTS.md`](docs-en/requirements/PRODUCT_REQUIREMENTS.md) (10 min)
 2. [`docs-en/deployment/SETUP_DATABASE.md`](docs-en/deployment/SETUP_DATABASE.md) (15 min) 
-3. [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) (5 min)
+3. **🎯 [`docs-en/setup/MCP_SETUP_GUIDE.md`](docs-en/setup/MCP_SETUP_GUIDE.md) (5 min) - CRITICAL**
+4. [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) (5 min)
 
 **For Developers (2 hours):**
 1. Read "New Users" path above
@@ -289,9 +291,50 @@ CREATE TABLE command_templates (
 );
 ```
 
+## 🎯 **MISSING: Enable AI Response Logging**
+
+Your system works great **Phone → Cursor**, but responses don't come back to your phone yet! 
+
+**⚡ Quick Fix**: [Follow the 5-minute MCP Setup Guide](docs-en/setup/MCP_SETUP_GUIDE.md)
+
 ## Cursor MCP Configuration (Enhanced Features Support)
 
-For the complete feature experience, we recommend configuring the following services in Cursor's MCP settings:
+For the complete feature experience, you need to configure MCP in Cursor so AI responses get logged back to your database.
+
+### 🔑 **Step 1: Get Your Supabase Access Token**
+
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard/account/tokens)
+2. Click **"Generate new token"**
+3. Give it a name like "Cursor MCP"
+4. **Copy the token** (you'll need it below)
+
+### ⚙️ **Step 2: Configure Cursor MCP Settings**
+
+1. **Open Cursor Settings**: `⌘+,` (Mac) or `Ctrl+,` (Windows/Linux)
+2. **Search for**: "mcp" 
+3. **Find**: "MCP Servers" or look for `mcp_servers.json`
+4. **Add this configuration**:
+
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "paste-your-token-here"
+      ]
+    }
+  }
+}
+```
+
+### 🧪 **Step 3: Test It Works**
+1. **Restart Cursor** completely
+2. **Send a test command** from your phone
+3. **Check your Supabase `results` table** - you should see AI responses logged!
 
 ### Basic Configuration - Supabase Result Return
 ```json

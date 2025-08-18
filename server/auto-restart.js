@@ -248,7 +248,7 @@ const testServiceHealth = async () => {
       .limit(5);
     
     if (recentError) {
-      console.warn('⚠️ 无法查询最近命令:', recentError.message);
+      console.warn(i18n.__('health.query_recent_commands_error', { message: recentError.message }));
     }
     
     // 检查是否有pending状态的命令长时间未处理
@@ -259,9 +259,9 @@ const testServiceHealth = async () => {
       .lt('created_at', new Date(Date.now() - config.stuckCommandThreshold * 60 * 1000).toISOString()); // 使用配置的阈值
     
     if (stuckError) {
-      console.warn('⚠️ 无法查询卡住的命令:', stuckError.message);
+      console.warn(i18n.__('health.query_stuck_commands_error', { message: stuckError.message }));
     } else if (stuckCommands && stuckCommands.length > 0) {
-      console.warn(`⚠️ 发现 ${stuckCommands.length} 个长时间未处理的命令`);
+      console.warn(i18n.__('health.found_stuck_commands', { count: stuckCommands.length }));
       return {
         success: false,
         reason: `Found ${stuckCommands.length} stuck pending commands`,
@@ -277,7 +277,7 @@ const testServiceHealth = async () => {
       .lt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString()); // 15分钟前的处理中命令
     
     if (!processingError && processingCommands && processingCommands.length > 3) {
-      console.warn(`⚠️ 发现 ${processingCommands.length} 个长时间处理中的命令`);
+      console.warn(i18n.__('health.found_processing_commands', { count: processingCommands.length }));
       return {
         success: false,
         reason: `Found ${processingCommands.length} long-running processing commands`,
@@ -325,18 +325,18 @@ const testServiceHealth = async () => {
     
     if (error.message.includes('timeout')) {
       errorType = 'timeout';
-      console.error('❌ 健康检查超时');
+      console.error(i18n.__('health.check_timeout'));
     } else if (error.message.includes('ECONNREFUSED')) {
       errorType = 'connection_refused';
-      console.error('❌ 数据库连接被拒绝');
+      console.error(i18n.__('health.connection_refused'));
     } else if (error.message.includes('ENOTFOUND')) {
       errorType = 'dns_error';
-      console.error('❌ DNS解析失败');
+      console.error(i18n.__('health.dns_resolution_failed'));
     } else if (error.message.includes('fetch failed')) {
       errorType = 'network_error';
-      console.error('❌ 网络请求失败');
+      console.error(i18n.__('health.network_request_failed'));
     } else {
-      console.error('❌ 健康检查失败:', error.message);
+      console.error(i18n.__('health.check_failed', { message: error.message }));
     }
     
     return {
@@ -387,7 +387,7 @@ const startService = () => {
     });
     
     const startupTimeout = setTimeout(() => {
-      console.error('❌ 服务启动超时');
+      console.error('❌ Service startup timeout');
       serviceProcess.kill('SIGKILL'); // 使用SIGKILL确保进程被终止
       reject(new Error('Service startup timeout'));
     }, 45000); // 增加到45秒启动超时
@@ -428,7 +428,7 @@ const startService = () => {
       
       // 如果检测到严重错误，立即触发重启检查
       if (hasCriticalError) {
-        console.warn('🚨 检测到严重错误，将在下次检查时考虑重启服务');
+        console.warn('🚨 Detected critical error, will consider restarting service on next check');
         state.consecutiveFailures++; // 增加失败计数
       }
       
@@ -436,7 +436,7 @@ const startService = () => {
       if (output.includes('EADDRINUSE') || 
           output.includes('port already in use') ||
           output.includes('listen EADDRINUSE')) {
-        console.error('❌ 端口已被占用，服务启动失败');
+        console.error('❌ Port already in use, service startup failed');
         clearTimeout(startupTimeout);
         serviceProcess.kill();
         reject(new Error('Port already in use'));
@@ -451,7 +451,7 @@ const startService = () => {
       if (code === 0) {
         console.log(i18n.__('service.normal_exit'));
       } else {
-        console.error(`❌ 服务异常退出 (code: ${code}, signal: ${signal})`);
+        console.error(`❌ Service exited abnormally (code: ${code}, signal: ${signal})`);
         state.consecutiveFailures++;
         
         // 记录异常退出的详细信息

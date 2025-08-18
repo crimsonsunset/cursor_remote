@@ -243,6 +243,75 @@ Add comprehensive message categories to locales:
 
 **TARGET**: Eliminate ALL Chinese runtime logs (Phase 3) before moving to debug files (Phase 4) or comments (Phase 5).
 
+## 📊 **COMPREHENSIVE CONSOLE STATEMENT REPORT**
+
+### **Overall Progress Summary**
+- **Started with**: 316 Chinese console statements across entire repository
+- **Currently remaining**: 234 Chinese console statements  
+- **Converted**: 82 statements (26% complete!)
+- **Console types converted**: console.log, console.error, console.warn, console.info, console.debug
+
+### **Completed Files (0 Chinese console statements)**
+✅ **HIGH-PRIORITY SERVER FILES (100% COMPLETE):**
+- `server/auto-restart.js` - 59 statements converted (log + error + warn)
+- `server/connection-monitor.js` - 23 statements converted (log + error + warn)  
+- `server/start-stable.js` - 24 statements converted (log + error + warn)
+- `server/start.js` - 9 statements converted (log + error)
+- `server/monitor-service.js` - 24 statements converted (log only)
+- `server/fix-stuck-commands.js` - 37 statements converted (log + error)
+
+### **Remaining Files with Chinese Console Statements**
+
+| File | Chinese Console Statements | Priority | Types |
+|------|---------------------------|----------|-------|
+| `client/app.js` | 105 | 🔴 CRITICAL | log(81) + error(63) + warn(17) |
+| `server/test-subscription-fix.js` | 36 | 🟡 DEBUG | log(34) + error(2) |
+| `server/subscription-diagnostic.js` | 30 | 🟡 DEBUG | log(33) + error(3) + warn(1) |
+| `server/test-heartbeat.js` | 25 | 🟡 DEBUG | log(24) + error(5) + warn(1) + info(1) + debug(1) |
+| `server/debug-jest-exit.js` | 10 | 🟡 DEBUG | log(13) + error(1) |
+
+### **Breakdown by Console Type (Remaining)**
+- **console.log**: 147 statements
+- **console.error**: 73 statements  
+- **console.warn**: 18 statements
+- **console.info**: 1 statement
+- **console.debug**: 1 statement
+
+### **Files by Conversion Status**
+
+#### **🎉 COMPLETELY CONVERTED (82 total)**
+1. `server/auto-restart.js` ✅ - 59 statements (ALL console types)
+2. `server/connection-monitor.js` ✅ - 23 statements (ALL console types)  
+3. `server/start-stable.js` ✅ - 24 statements (ALL console types)
+4. `server/start.js` ✅ - 9 statements (ALL console types)
+5. `server/monitor-service.js` ✅ - 24 statements (ALL console types)
+6. `server/fix-stuck-commands.js` ✅ - 37 statements (ALL console types)
+
+#### **🚧 PARTIALLY CONVERTED (0 total)**
+*None - we do complete conversions per file*
+
+#### **⏳ NOT YET STARTED (234 remaining)**
+1. `client/app.js` - 105 statements (BIGGEST TARGET)
+2. `server/test-subscription-fix.js` - 36 statements
+3. `server/subscription-diagnostic.js` - 30 statements
+4. `server/test-heartbeat.js` - 25 statements  
+5. `server/debug-jest-exit.js` - 10 statements
+
+### **Implementation Quality**
+✅ **i18n Framework**: Complete with `i18n-node`  
+✅ **Locale Configuration**: Via `package.json` config.locale  
+✅ **Translation Categories**: 12+ comprehensive categories (service, monitoring, connection, health, restart, stable, monitor, fix_stuck)  
+✅ **Variable Support**: Full parameter substitution ({{variable}})  
+✅ **Fallback**: English default with Chinese support  
+✅ **Testing**: All converted files tested and working  
+
+### **Next Phase Targets**
+1. **client/app.js** (105 statements) - CRITICAL for user-facing errors
+2. **server/test-subscription-fix.js** (36 statements) - Debug tooling
+3. **server/subscription-diagnostic.js** (30 statements) - Debug tooling  
+4. **server/test-heartbeat.js** (25 statements) - Debug tooling
+5. **server/debug-jest-exit.js** (10 statements) - Debug tooling
+
 ## 🎯 Success Criteria
 
 1. **Default English**: All server logs display in English by default

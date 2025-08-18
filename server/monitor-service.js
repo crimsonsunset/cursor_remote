@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-// Supabase 服务状态监控器
+// Supabase Service Status Monitor
 import { ensureSupabaseConnection } from './src/services/supabaseService.js';
+import i18n from './src/config/i18n-config.js';
 
 console.clear();
-console.log('🔍 Supabase 服务状态监控器启动中...\n');
+console.log(i18n.__('monitor.service_starting') + '\n');
 
 // 监控统计
 const stats = {
@@ -26,10 +27,10 @@ const displayStatus = async () => {
   const uptimeDisplay = `${Math.floor(uptime / 60)}分${uptime % 60}秒`;
   
   console.log('═══════════════════════════════════════════════');
-  console.log('🚀 CursorRemote Supabase 服务状态监控');
+  console.log(i18n.__('monitor.service_header'));
   console.log('═══════════════════════════════════════════════');
-  console.log(`⏰ 运行时间: ${uptimeDisplay}`);
-  console.log(`📊 检查次数: ${stats.totalChecks}`);
+  console.log(i18n.__('monitor.runtime', { uptime: uptimeDisplay }));
+  console.log(i18n.__('monitor.check_count', { count: stats.totalChecks }));
   console.log('───────────────────────────────────────────────');
   
   try {
@@ -41,43 +42,43 @@ const displayStatus = async () => {
       stats.consecutiveFailures = 0;
       stats.lastSuccessTime = now;
       
-      console.log('🟢 连接状态: 正常');
-      console.log('✅ Supabase 连接健康');
+      console.log(i18n.__('monitor.connection_normal'));
+      console.log(i18n.__('monitor.connection_healthy'));
     } else {
       stats.failedConnections++;
       stats.consecutiveFailures++;
       stats.longestFailureStreak = Math.max(stats.longestFailureStreak, stats.consecutiveFailures);
       
-      console.log('🔴 连接状态: 异常');
-      console.log('❌ Supabase 连接失败');
+      console.log(i18n.__('monitor.connection_abnormal'));
+      console.log(i18n.__('monitor.connection_failed'));
     }
   } catch (error) {
     stats.failedConnections++;
     stats.consecutiveFailures++;
     stats.longestFailureStreak = Math.max(stats.longestFailureStreak, stats.consecutiveFailures);
     
-    console.log('🔴 连接状态: 错误');
-    console.log(`❌ 错误: ${error.message}`);
+    console.log(i18n.__('monitor.connection_error'));
+    console.log(i18n.__('monitor.connection_error_msg', { message: error.message }));
   }
   
   // 显示详细统计
   console.log('───────────────────────────────────────────────');
-  console.log('📈 连接统计:');
-  console.log(`   成功: ${stats.successfulConnections} (${((stats.successfulConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1)}%)`);
-  console.log(`   失败: ${stats.failedConnections} (${((stats.failedConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1)}%)`);
-  console.log(`   当前连续失败: ${stats.consecutiveFailures}`);
-  console.log(`   最长失败连续: ${stats.longestFailureStreak}`);
+  console.log(i18n.__('monitor.connection_stats_header'));
+  console.log(i18n.__('monitor.stats_success', { count: stats.successfulConnections, rate: ((stats.successfulConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1) }));
+  console.log(i18n.__('monitor.stats_failed', { count: stats.failedConnections, rate: ((stats.failedConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1) }));
+  console.log(i18n.__('monitor.stats_consecutive_failures', { count: stats.consecutiveFailures }));
+  console.log(i18n.__('monitor.stats_longest_failure_streak', { count: stats.longestFailureStreak }));
   
   if (stats.lastSuccessTime) {
     const timeSinceSuccess = Math.floor((now - stats.lastSuccessTime) / 1000);
-    console.log(`   上次成功: ${timeSinceSuccess}秒前`);
+    console.log(i18n.__('monitor.last_success_time', { seconds: timeSinceSuccess }));
   } else {
-    console.log('   上次成功: 从未');
+    console.log(i18n.__('monitor.last_success_never'));
   }
   
   console.log('───────────────────────────────────────────────');
-  console.log('💡 提示: 按 Ctrl+C 停止监控');
-  console.log(`⏳ 下次检查: 5秒后 (${now.toLocaleTimeString()})`);
+  console.log(i18n.__('monitor.exit_hint'));
+  console.log(i18n.__('monitor.next_check', { time: now.toLocaleTimeString() }));
 };
 
 // 立即显示状态
@@ -90,17 +91,17 @@ const monitorTimer = setInterval(displayStatus, 5000);
 const gracefulExit = () => {
   console.clear();
   console.log('═══════════════════════════════════════════════');
-  console.log('🛑 Supabase 服务监控已停止');
+  console.log(i18n.__('monitor.monitor_stopped_final'));
   console.log('═══════════════════════════════════════════════');
   
   const runtime = Math.floor((new Date() - stats.startTime) / 1000);
   const runtimeDisplay = `${Math.floor(runtime / 60)}分${runtime % 60}秒`;
   
-  console.log(`⏰ 总运行时间: ${runtimeDisplay}`);
-  console.log(`📊 总检查次数: ${stats.totalChecks}`);
-  console.log(`✅ 成功率: ${((stats.successfulConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1)}%`);
+  console.log(i18n.__('monitor.total_runtime', { runtime: runtimeDisplay }));
+  console.log(i18n.__('monitor.total_checks', { count: stats.totalChecks }));
+  console.log(i18n.__('monitor.success_rate', { rate: ((stats.successfulConnections / Math.max(stats.totalChecks, 1)) * 100).toFixed(1) }));
   console.log('───────────────────────────────────────────────');
-  console.log('👋 监控已结束，感谢使用！');
+  console.log(i18n.__('monitor.monitoring_ended'));
   
   clearInterval(monitorTimer);
   process.exit(0);

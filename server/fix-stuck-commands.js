@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-// 修复卡住命令的脚本
+// Fix stuck commands script
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import i18n from './src/config/i18n-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 console.clear();
-console.log('🔧 修复卡住命令工具启动中...\n');
+console.log(i18n.__('fix_stuck.tool_starting') + '\n');
 
 // 创建 Supabase 客户端
 const createSupabaseClient = () => {
@@ -52,7 +53,7 @@ const findStuckCommands = async (client, maxAgeMinutes = 10) => {
     
     return stuckCommands || [];
   } catch (error) {
-    console.error('❌ 查找卡住命令时出错:', error.message);
+    console.error(i18n.__('fix_stuck.error_finding_stuck', { message: error.message }));
     return [];
   }
 };
@@ -75,7 +76,7 @@ const findProcessingCommands = async (client, maxAgeMinutes = 30) => {
     
     return processingCommands || [];
   } catch (error) {
-    console.error('❌ 查找处理中命令时出错:', error.message);
+    console.error(i18n.__('fix_stuck.error_finding_processing', { message: error.message }));
     return [];
   }
 };
@@ -103,7 +104,7 @@ const resetCommandStatus = async (client, commandId, newStatus = 'pending', erro
     
     return data && data.length > 0;
   } catch (error) {
-    console.error(`❌ 重置命令 ${commandId} 状态时出错:`, error.message);
+    console.error(i18n.__('fix_stuck.error_resetting_command', { id: commandId, message: error.message }));
     return false;
   }
 };
@@ -117,24 +118,24 @@ const displayCommand = (command, index) => {
     command.command_text;
   
   console.log(`${index + 1}. ID: ${command.id}`);
-  console.log(`   命令: ${commandPreview}`);
-  console.log(`   状态: ${command.status}`);
-  console.log(`   年龄: ${ageMinutes} 分钟`);
-  console.log(`   创建: ${createdAt.toLocaleString()}`);
+  console.log(i18n.__('fix_stuck.command_preview', { preview: commandPreview }));
+  console.log(i18n.__('fix_stuck.command_status', { status: command.status }));
+  console.log(i18n.__('fix_stuck.command_age', { minutes: ageMinutes }));
+  console.log(i18n.__('fix_stuck.command_created', { time: createdAt.toLocaleString() }));
   console.log('');
 };
 
 // 主要修复逻辑
 const fixStuckCommands = async () => {
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ 环境变量未配置');
-    console.error('请确保 .env 文件中包含 SUPABASE_URL 和 SUPABASE_SERVICE_KEY');
+    console.error(i18n.__('fix_stuck.env_not_configured'));
+    console.error(i18n.__('fix_stuck.env_instructions'));
     process.exit(1);
   }
   
   const client = createSupabaseClient();
   
-  console.log('🔍 正在查找卡住的命令...\n');
+  console.log(i18n.__('fix_stuck.searching_stuck') + '\n');
   
   // 查找卡住的 pending 命令
   const stuckPendingCommands = await findStuckCommands(client, 10); // 10分钟
@@ -145,33 +146,33 @@ const fixStuckCommands = async () => {
   const totalStuckCommands = stuckPendingCommands.length + stuckProcessingCommands.length;
   
   if (totalStuckCommands === 0) {
-    console.log('✅ 没有发现卡住的命令！');
+    console.log(i18n.__('fix_stuck.no_stuck_found'));
     return;
   }
   
-  console.log(`⚠️ 发现 ${totalStuckCommands} 个卡住的命令:\n`);
+  console.log(i18n.__('fix_stuck.found_stuck_total', { count: totalStuckCommands }) + '\n');
   
   // 显示卡住的 pending 命令
   if (stuckPendingCommands.length > 0) {
-    console.log(`📋 卡住的 Pending 命令 (${stuckPendingCommands.length} 个):`);
+    console.log(i18n.__('fix_stuck.stuck_pending_header', { count: stuckPendingCommands.length }));
     console.log('═'.repeat(50));
     stuckPendingCommands.forEach((cmd, index) => displayCommand(cmd, index));
   }
   
   // 显示卡住的 processing 命令
   if (stuckProcessingCommands.length > 0) {
-    console.log(`⚙️ 卡住的 Processing 命令 (${stuckProcessingCommands.length} 个):`);
+    console.log(i18n.__('fix_stuck.stuck_processing_header', { count: stuckProcessingCommands.length }));
     console.log('═'.repeat(50));
     stuckProcessingCommands.forEach((cmd, index) => displayCommand(cmd, index));
   }
   
   // 询问用户操作
-  console.log('请选择操作:');
-  console.log('1. 重置所有 pending 命令为 pending (重新处理)');
-  console.log('2. 将所有卡住的命令标记为错误');
-  console.log('3. 只重置 pending 命令');
-  console.log('4. 只处理 processing 命令');
-  console.log('5. 退出');
+  console.log(i18n.__('fix_stuck.choose_operation'));
+  console.log(i18n.__('fix_stuck.option_1'));
+  console.log(i18n.__('fix_stuck.option_2'));
+  console.log(i18n.__('fix_stuck.option_3'));
+  console.log(i18n.__('fix_stuck.option_4'));
+  console.log(i18n.__('fix_stuck.option_5'));
   
   // 简单的用户输入处理
   process.stdout.write('\n请输入选择 (1-5): ');
@@ -189,13 +190,13 @@ const fixStuckCommands = async () => {
   switch (choice) {
     case '1':
       // 重置所有命令为 pending
-      console.log('\n🔄 重置所有卡住的命令为 pending...');
+      console.log('\n' + i18n.__('fix_stuck.resetting_all_pending'));
       
       for (const cmd of stuckPendingCommands) {
         const success = await resetCommandStatus(client, cmd.id, 'pending');
         if (success) {
           resetCount++;
-          console.log(`✅ 重置命令 ${cmd.id}`);
+          console.log(i18n.__('fix_stuck.reset_command_success', { id: cmd.id }));
         }
       }
       
@@ -203,20 +204,20 @@ const fixStuckCommands = async () => {
         const success = await resetCommandStatus(client, cmd.id, 'pending');
         if (success) {
           resetCount++;
-          console.log(`✅ 重置命令 ${cmd.id}`);
+          console.log(i18n.__('fix_stuck.reset_command_success', { id: cmd.id }));
         }
       }
       break;
       
     case '2':
       // 标记所有命令为错误
-      console.log('\n❌ 将所有卡住的命令标记为错误...');
+      console.log('\n' + i18n.__('fix_stuck.marking_all_error'));
       
       for (const cmd of stuckPendingCommands) {
         const success = await resetCommandStatus(client, cmd.id, 'error', '命令处理超时 - 自动标记为错误');
         if (success) {
           errorCount++;
-          console.log(`❌ 标记命令 ${cmd.id} 为错误`);
+          console.log(i18n.__('fix_stuck.mark_command_error', { id: cmd.id }));
         }
       }
       
@@ -224,61 +225,61 @@ const fixStuckCommands = async () => {
         const success = await resetCommandStatus(client, cmd.id, 'error', '命令处理超时 - 自动标记为错误');
         if (success) {
           errorCount++;
-          console.log(`❌ 标记命令 ${cmd.id} 为错误`);
+          console.log(i18n.__('fix_stuck.mark_command_error', { id: cmd.id }));
         }
       }
       break;
       
     case '3':
       // 只重置 pending 命令
-      console.log('\n🔄 重置 pending 命令...');
+      console.log('\n' + i18n.__('fix_stuck.resetting_pending_only'));
       
       for (const cmd of stuckPendingCommands) {
         const success = await resetCommandStatus(client, cmd.id, 'pending');
         if (success) {
           resetCount++;
-          console.log(`✅ 重置命令 ${cmd.id}`);
+          console.log(i18n.__('fix_stuck.reset_command_success', { id: cmd.id }));
         }
       }
       break;
       
     case '4':
       // 只处理 processing 命令
-      console.log('\n❌ 将 processing 命令标记为错误...');
+      console.log('\n' + i18n.__('fix_stuck.marking_processing_error'));
       
       for (const cmd of stuckProcessingCommands) {
         const success = await resetCommandStatus(client, cmd.id, 'error', '处理超时 - 自动标记为错误');
         if (success) {
           errorCount++;
-          console.log(`❌ 标记命令 ${cmd.id} 为错误`);
+          console.log(i18n.__('fix_stuck.mark_command_error', { id: cmd.id }));
         }
       }
       break;
       
     case '5':
-      console.log('👋 退出工具');
+      console.log(i18n.__('fix_stuck.exit_tool'));
       process.exit(0);
       break;
       
     default:
-      console.log('❌ 无效选择，退出工具');
+      console.log(i18n.__('fix_stuck.invalid_choice'));
       process.exit(1);
   }
   
   // 显示结果
   console.log('\n' + '═'.repeat(50));
-  console.log('🎯 修复完成!');
+  console.log(i18n.__('fix_stuck.fix_complete'));
   if (resetCount > 0) {
-    console.log(`✅ 重置了 ${resetCount} 个命令`);
+    console.log(i18n.__('fix_stuck.reset_count', { count: resetCount }));
   }
   if (errorCount > 0) {
-    console.log(`❌ 标记了 ${errorCount} 个命令为错误`);
+    console.log(i18n.__('fix_stuck.error_count', { count: errorCount }));
   }
   console.log('═'.repeat(50));
 };
 
 // 启动修复工具
 fixStuckCommands().catch(error => {
-  console.error('❌ 修复工具运行失败:', error);
+  console.error(i18n.__('fix_stuck.tool_run_failed', { error }));
   process.exit(1);
 }); 

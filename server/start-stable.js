@@ -58,7 +58,7 @@ async function startStableService() {
     const initialized = await service.initialize();
     
     if (!initialized) {
-      console.error('❌ 服务初始化失败');
+      console.error(i18n.__('stable.initialization_failed'));
       process.exit(1);
     }
     
@@ -98,13 +98,13 @@ async function startStableService() {
     process.on('SIGTERM', gracefulShutdown);
     
   } catch (error) {
-    console.error('❌ 启动失败:', error.message);
+    console.error(i18n.__('stable.startup_failed'), error.message);
     process.exit(1);
   }
 }
 
 // 启动服务
 startStableService().catch(error => {
-  console.error('❌ 启动过程中发生错误:', error);
+  console.error('❌ Error during startup:', error);
   process.exit(1);
 }); 
