@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-// 稳定模式启动脚本 - 禁用心跳检查，依赖 Supabase 自身的重连机制
+// Stable mode startup script - disables heartbeat check, relies on Supabase's own reconnection mechanism
 import { SupabaseService, SupabaseConfig } from './src/services/supabaseService.js';
 import dotenv from 'dotenv';
+import i18n from './src/config/i18n-config.js';
 
 dotenv.config();
 
-console.log('🚀 CursorRemote 稳定模式启动中...\n');
+console.log(i18n.__('stable.starting') + '\n');
 
 // 创建稳定配置（禁用心跳检查）
 const config = new SupabaseConfig({
@@ -38,22 +39,22 @@ async function startStableService() {
   try {
     // 验证配置
     config.validate();
-    console.log('✅ 配置验证通过');
+    console.log(i18n.__('stable.config_validated'));
     
     // 显示配置信息
-    console.log('📊 稳定模式配置:');
-    console.log(`   - 心跳检查: ❌ 禁用`);
-    console.log(`   - 最大连接尝试: ${config.maxConnectionAttempts}次`);
-    console.log(`   - 连接重试延迟: ${config.connectionRetryDelay / 1000}秒`);
-    console.log(`   - 最大订阅重试: ${config.maxSubscriptionRetries}次`);
-    console.log('   - 依赖: Supabase 自身重连机制');
+    console.log(i18n.__('stable.config_header'));
+    console.log(i18n.__('stable.heartbeat_disabled'));
+    console.log(i18n.__('stable.max_connection_attempts', { count: config.maxConnectionAttempts }));
+    console.log(i18n.__('stable.connection_retry_delay', { seconds: config.connectionRetryDelay / 1000 }));
+    console.log(i18n.__('stable.max_subscription_retries', { count: config.maxSubscriptionRetries }));
+    console.log(i18n.__('stable.relies_on_supabase'));
     console.log('');
     
     // 创建服务实例
     const service = new SupabaseService(config, logger);
     
     // 初始化服务
-    console.log('🚀 初始化服务...');
+    console.log(i18n.__('stable.initializing_service'));
     const initialized = await service.initialize();
     
     if (!initialized) {
@@ -61,24 +62,24 @@ async function startStableService() {
       process.exit(1);
     }
     
-    console.log('✅ 服务初始化成功');
-    console.log('🔄 服务运行中...');
-    console.log('💡 稳定模式：依赖 Supabase 自身的重连机制，不进行额外的心跳检查');
-    console.log('按 Ctrl+C 停止服务\n');
+    console.log(i18n.__('stable.initialization_complete'));
+    console.log(i18n.__('stable.service_ready'));
+    console.log('💡 Stable mode: Relies on Supabase\'s own reconnection mechanism, no additional heartbeat checks');
+    console.log('Press Ctrl+C to stop service\n');
     
     // 定期显示状态（降低频率）
     const statusInterval = setInterval(() => {
       const status = service.getStatus();
       
-      console.log(`📊 服务状态:`);
-      console.log(`   - 连接状态: ${status.isConnected ? '✅ 已连接' : '❌ 未连接'}`);
-      console.log(`   - 客户端可用: ${status.hasClient ? '✅ 是' : '❌ 否'}`);
-      console.log(`   - 连接尝试: ${status.connectionAttempts}`);
-      console.log(`   - 连续失败: ${status.consecutiveFailures}次`);
+      console.log('📊 Service Status:');
+      console.log(`   - Connection status: ${status.isConnected ? '✅ Connected' : '❌ Disconnected'}`);
+      console.log(`   - Client available: ${status.hasClient ? '✅ Yes' : '❌ No'}`);
+      console.log(`   - Connection attempts: ${status.connectionAttempts}`);
+      console.log(`   - Consecutive failures: ${status.consecutiveFailures} times`);
       
       if (status.lastSuccessfulConnection) {
         const timeSinceSuccess = Math.round((Date.now() - status.lastSuccessfulConnection.getTime()) / 1000);
-        console.log(`   - 最后成功: ${timeSinceSuccess}秒前`);
+        console.log(`   - Last success: ${timeSinceSuccess} seconds ago`);
       }
       
       console.log('');
@@ -86,10 +87,10 @@ async function startStableService() {
     
     // 优雅关闭处理
     const gracefulShutdown = async () => {
-      console.log('\n🛑 正在关闭服务...');
+      console.log('\n' + i18n.__('stable.graceful_shutdown'));
       clearInterval(statusInterval);
       await service.shutdown();
-      console.log('✅ 服务已关闭');
+      console.log(i18n.__('stable.service_stopped'));
       process.exit(0);
     };
     

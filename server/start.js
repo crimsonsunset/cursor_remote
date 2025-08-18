@@ -64,7 +64,7 @@ rl.question(i18n.__('startup.input_prompt'), (answer) => {
   });
   
   child.on('exit', (code) => {
-    console.log(`\n📋 服务已退出，退出代码: ${code}`);
+    console.log('\n' + i18n.__('service.exited_code', { code }));
     process.exit(code);
   });
   

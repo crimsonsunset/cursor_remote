@@ -363,7 +363,7 @@ const testServiceHealth = async () => {
 // 启动服务
 const startService = () => {
   return new Promise((resolve, reject) => {
-    console.log('🚀 启动 CursorRemote 服务...');
+    console.log(i18n.__('service.starting'));
     
     // 增强的启动参数，包括内存和性能优化
     const nodeArgs = [
@@ -414,7 +414,7 @@ const startService = () => {
         state.serviceProcess = serviceProcess;
         state.criticalErrorCount = 0; // 重置错误计数
         state.consecutiveFailures = 0; // 重置失败计数
-        console.log('✅ 服务启动成功');
+        console.log(i18n.__('service.startup_success'));
         resolve(serviceProcess);
       }
     });
@@ -449,7 +449,7 @@ const startService = () => {
       state.serviceProcess = null;
       
       if (code === 0) {
-        console.log('ℹ️ 服务正常退出');
+        console.log(i18n.__('service.normal_exit'));
       } else {
         console.error(`❌ 服务异常退出 (code: ${code}, signal: ${signal})`);
         state.consecutiveFailures++;
@@ -500,12 +500,12 @@ const startService = () => {
 const stopService = () => {
   return new Promise((resolve) => {
     if (!state.serviceProcess) {
-      console.log('ℹ️ 没有运行中的服务进程');
+      console.log(i18n.__('service.no_running_process'));
       resolve();
       return;
     }
     
-    console.log('🛑 停止服务...');
+    console.log(i18n.__('service.stopping'));
     
     let processExited = false;
     
@@ -517,7 +517,7 @@ const stopService = () => {
         clearTimeout(forceTimeout);
         state.isServiceRunning = false;
         state.serviceProcess = null;
-        console.log('✅ 服务已停止');
+        console.log(i18n.__('service.stopped'));
         resolve();
       }
     };
@@ -528,13 +528,13 @@ const stopService = () => {
     // 首先尝试优雅关闭 - 发送 SIGTERM 信号
     try {
       state.serviceProcess.kill('SIGTERM');
-      console.log('📤 已发送SIGTERM信号，等待优雅关闭...');
+      console.log(i18n.__('service.sigterm_sent'));
     } catch (error) {
       console.warn('⚠️ 发送SIGTERM失败:', error.message);
       // 如果SIGTERM失败，直接尝试SIGKILL
       try {
         state.serviceProcess.kill('SIGKILL');
-        console.log('📤 已发送SIGKILL信号');
+        console.log(i18n.__('service.sigkill_sent'));
       } catch (killError) {
         console.error('❌ 强制终止失败:', killError.message);
         // 即使失败也要清理状态
@@ -578,7 +578,7 @@ const restartService = async (isEmergencyRestart = false) => {
   
   // 检查冷却期
   if (state.lastRestartTime && (now - state.lastRestartTime) < config.restartCooldown) {
-    console.log('⏳ 重启冷却期中，跳过重启');
+    console.log(i18n.__('service.restart_cooldown'));
     return false;
   }
   
@@ -600,7 +600,7 @@ const restartService = async (isEmergencyRestart = false) => {
     const currentCount = isEmergencyRestart ? state.emergencyRestartCount + 1 : state.restartCount + 1;
     const maxCount = isEmergencyRestart ? config.maxEmergencyRestarts : config.maxRestarts;
     
-    console.log(`🔄 执行第 ${currentCount} 次${restartType}重启 (${currentCount}/${maxCount})...`);
+    console.log(i18n.__('service.executing_restart', { count: currentCount, max: maxCount, type: restartType }));
     
     // 停止当前服务
     await stopService();
@@ -622,7 +622,7 @@ const restartService = async (isEmergencyRestart = false) => {
     state.consecutiveFailures = 0;
     state.totalFailuresSinceLastSuccess = 0;
     
-    console.log(`✅ ${restartType}重启成功`);
+    console.log(i18n.__('service.restart_success', { type: restartType }));
     return true;
     
   } catch (error) {
@@ -648,11 +648,11 @@ const resetRestartCounters = (reason = '定时重置') => {
   state.subscriptionErrors = [];
   state.subscriptionErrorCount = 0;
   
-  console.log(`🔄 重启计数器已重置 (${reason})`);
-  console.log(`   常规重启: ${oldRestartCount} → 0`);
-  console.log(`   紧急重启: ${oldEmergencyCount} → 0`);
-  console.log(`   订阅错误: ${oldSubscriptionErrors} → 0`);
-  console.log('   退出延长检查模式');
+  console.log(i18n.__('control.restart_counter_reset', { reason }));
+  console.log(i18n.__('control.restart_counts', { old: oldRestartCount }));
+  console.log(i18n.__('control.emergency_counts', { old: oldEmergencyCount }));
+  console.log(i18n.__('control.subscription_errors_reset', { old: oldSubscriptionErrors }));
+  console.log(i18n.__('control.exit_extended_mode'));
 };
 
 // 检查是否需要强制重置
@@ -670,7 +670,7 @@ const checkForceReset = () => {
       (now - state.lastEmergencyRestartTime) > config.emergencyResetInterval) {
     const oldCount = state.emergencyRestartCount;
     state.emergencyRestartCount = 0;
-    console.log(`🔄 紧急重启计数器已重置: ${oldCount} → 0 (12小时重置)`);
+    console.log(i18n.__('control.emergency_reset', { old: oldCount }));
     return true;
   }
   
@@ -686,36 +686,36 @@ const displayStatus = () => {
   const uptimeDisplay = `${Math.floor(uptime / 3600)}时${Math.floor((uptime % 3600) / 60)}分${uptime % 60}秒`;
   
   console.log('═══════════════════════════════════════════════');
-  console.log('🔄 CursorRemote 自动重启监控器');
+  console.log(i18n.__('monitoring.header'));
   console.log('═══════════════════════════════════════════════');
-  console.log(`⏰ 运行时间: ${uptimeDisplay}`);
-  console.log(`🔧 服务状态: ${state.isServiceRunning ? '✅ 运行中' : '❌ 已停止'}`);
-  console.log(`🔄 常规重启: ${state.restartCount}/${config.maxRestarts}`);
-  console.log(`🚨 紧急重启: ${state.emergencyRestartCount}/${config.maxEmergencyRestarts}`);
-  console.log(`❌ 连续失败: ${state.consecutiveFailures}/${config.failureThreshold}`);
-  console.log(`📊 总失败数: ${state.totalFailuresSinceLastSuccess}`);
-  console.log(`🚨 严重错误: ${state.criticalErrorCount}`);
-  console.log(`📡 订阅错误: ${state.subscriptionErrors.length}/${config.subscriptionErrorThreshold}`);
+  console.log(i18n.__('monitoring.runtime', { uptime: uptimeDisplay }));
+  console.log(i18n.__('monitoring.service_status', { status: state.isServiceRunning ? '✅ Running' : '❌ Stopped' }));
+  console.log(i18n.__('monitoring.normal_restarts', { current: state.restartCount, max: config.maxRestarts }));
+  console.log(i18n.__('monitoring.emergency_restarts', { current: state.emergencyRestartCount, max: config.maxEmergencyRestarts }));
+  console.log(i18n.__('monitoring.consecutive_failures', { current: state.consecutiveFailures, max: config.failureThreshold }));
+  console.log(i18n.__('monitoring.total_failures', { count: state.totalFailuresSinceLastSuccess }));
+  console.log(i18n.__('monitoring.critical_errors', { count: state.criticalErrorCount }));
+  console.log(i18n.__('monitoring.subscription_errors', { current: state.subscriptionErrors.length, max: config.subscriptionErrorThreshold }));
   
   if (state.isInExtendedMode) {
-    console.log('⏰ 模式: 延长检查模式 (10分钟间隔)');
+    console.log(i18n.__('monitoring.mode_extended'));
   } else {
-    console.log('⏰ 模式: 正常检查模式 (2分钟间隔)');
+    console.log(i18n.__('monitoring.mode_normal'));
   }
   
   if (state.lastRestartTime) {
     const timeSinceRestart = Math.floor((now - state.lastRestartTime) / 1000);
-    console.log(`🕐 最后重启: ${timeSinceRestart}秒前`);
+    console.log(i18n.__('monitoring.last_restart', { seconds: timeSinceRestart }));
   }
   
   if (state.lastSuccessTime) {
     const timeSinceSuccess = Math.floor((now - state.lastSuccessTime) / 1000);
-    console.log(`✅ 最后成功: ${timeSinceSuccess}秒前`);
+    console.log(i18n.__('monitoring.last_success', { seconds: timeSinceSuccess }));
   }
   
   if (state.lastCriticalErrorTime) {
     const timeSinceError = Math.floor((now - state.lastCriticalErrorTime) / 1000);
-    console.log(`🚨 最后错误: ${timeSinceError}秒前`);
+    console.log(i18n.__('monitoring.last_error', { seconds: timeSinceError }));
   }
   
   // 显示下次重置时间
@@ -723,27 +723,27 @@ const displayStatus = () => {
     const timeUntilReset = config.forceResetInterval - (now - state.lastForceResetTime);
     if (timeUntilReset > 0) {
       const hoursUntilReset = Math.floor(timeUntilReset / (1000 * 60 * 60));
-      console.log(`⏳ 下次强制重置: ${hoursUntilReset}小时后`);
+      console.log(i18n.__('monitoring.next_forced_reset', { hours: hoursUntilReset }));
     }
   } else {
     const hoursUntilReset = Math.floor(config.forceResetInterval / (1000 * 60 * 60));
-    console.log(`⏳ 首次强制重置: ${hoursUntilReset}小时后`);
+    console.log(i18n.__('monitoring.first_forced_reset', { hours: hoursUntilReset }));
   }
   
   // 显示最近的错误
   if (state.errorHistory.length > 0) {
     console.log('───────────────────────────────────────────────');
-    console.log('🚨 最近的严重错误:');
+    console.log(i18n.__('monitoring.recent_critical_errors'));
     const recentErrors = state.errorHistory.slice(-3); // 显示最近3个错误
     for (const error of recentErrors) {
       const timeAgo = Math.floor((now - error.timestamp) / 1000);
-      console.log(`   ${timeAgo}秒前: ${error.line.substring(0, 60)}...`);
+      console.log(i18n.__('monitoring.error_line', { seconds: timeAgo, error: error.line.substring(0, 60) }));
     }
   }
   
   console.log('───────────────────────────────────────────────');
-  console.log('按 Ctrl+C 退出监控');
-  console.log('按 USR1 信号重置重启计数器');
+  console.log(i18n.__('monitoring.exit_instructions'));
+  console.log(i18n.__('monitoring.usr1_instructions'));
   console.log('═══════════════════════════════════════════════');
 };
 
@@ -773,12 +773,12 @@ const monitorLoop = async () => {
     
     // 如果在延长模式下成功，考虑退出延长模式
     if (state.isInExtendedMode && state.restartCount < config.maxRestarts) {
-      console.log('✅ 服务恢复正常，退出延长检查模式');
+      console.log(i18n.__('monitoring.service_recovered'));
       state.isInExtendedMode = false;
     }
     
     if (Math.random() < 0.1) { // 10% 概率显示成功信息
-      console.log(`✅ 服务健康检查通过 (最近命令: ${healthResult.details.recentCommands}, 严重错误: ${healthResult.details.criticalErrors})`);
+      console.log(i18n.__('monitoring.health_check_passed', { commands: healthResult.details.recentCommands, errors: healthResult.details.criticalErrors }));
     }
   } else {
     state.consecutiveFailures++;
@@ -832,7 +832,7 @@ const monitorLoop = async () => {
   const nextCheckInterval = state.isInExtendedMode ? config.extendedCheckInterval : config.checkInterval;
   
   if (state.isInExtendedMode && Math.random() < 0.3) { // 30% 概率在延长模式下显示提示
-    console.log(`⏰ 延长检查模式：下次检查将在 ${nextCheckInterval / 60000} 分钟后进行`);
+    console.log(i18n.__('monitoring.extended_mode_hint', { minutes: nextCheckInterval / 60000 }));
   }
   
   return nextCheckInterval;
@@ -840,14 +840,14 @@ const monitorLoop = async () => {
 
 // 优雅退出
 const gracefulExit = async () => {
-  console.log('\n\n🛑 正在停止监控器...');
+  console.log('\n\n' + i18n.__('control.stopping_monitor'));
   
   if (state.isServiceRunning) {
-    console.log('🛑 停止被监控的服务...');
+    console.log(i18n.__('control.stopping_service'));
     await stopService();
   }
   
-  console.log('✅ 监控器已停止');
+  console.log(i18n.__('control.monitor_stopped'));
   process.exit(0);
 };
 
@@ -859,21 +859,21 @@ const main = async () => {
     process.exit(1);
   }
   
-  console.log('🚀 启动自动重启监控器...');
-  console.log(`📊 检查间隔: ${config.checkInterval / 1000}秒`);
-  console.log(`⚠️ 失败阈值: ${config.failureThreshold}次`);
-  console.log(`🔄 最大重启: ${config.maxRestarts}次`);
-  console.log(`🚨 紧急重启: ${config.maxEmergencyRestarts}次`);
-  console.log(`⏰ 延长间隔: ${config.extendedCheckInterval / 60000}分钟`);
-  console.log(`🔧 自动重启: ${config.enableAutoRestart ? '✅ 启用' : '❌ 禁用'}`);
-  console.log(`📡 订阅错误检测: ${config.enableSubscriptionErrorDetection ? '✅ 启用' : '❌ 禁用'}`);
-  console.log(`💓 忽略心跳错误: ${config.ignoreHeartbeatErrors ? '✅ 是' : '❌ 否'}`);
+  console.log(i18n.__('config.starting_monitor'));
+  console.log(i18n.__('config.check_interval', { seconds: config.checkInterval / 1000 }));
+  console.log(i18n.__('config.failure_threshold', { count: config.failureThreshold }));
+  console.log(i18n.__('config.max_restarts', { count: config.maxRestarts }));
+  console.log(i18n.__('config.emergency_restarts', { count: config.maxEmergencyRestarts }));
+  console.log(i18n.__('config.extended_interval', { minutes: config.extendedCheckInterval / 60000 }));
+  console.log(config.enableAutoRestart ? i18n.__('config.auto_restart_enabled') : i18n.__('config.auto_restart_disabled'));
+  console.log(config.enableSubscriptionErrorDetection ? i18n.__('config.subscription_detection_enabled') : i18n.__('config.subscription_detection_disabled'));
+  console.log(config.ignoreHeartbeatErrors ? i18n.__('config.ignore_heartbeat_yes') : i18n.__('config.ignore_heartbeat_no'));
   
   if (!config.enableAutoRestart) {
-    console.log('💡 要启用自动重启，请设置环境变量: ENABLE_AUTO_RESTART=true');
+    console.log(i18n.__('config.enable_auto_restart_tip'));
   }
   if (!config.enableSubscriptionErrorDetection) {
-    console.log('💡 订阅错误检测已禁用，只监控真正的严重错误');
+    console.log(i18n.__('config.subscription_detection_tip'));
   }
   console.log('');
   
@@ -883,7 +883,7 @@ const main = async () => {
   
   // 注册USR1信号处理器用于手动重置重启计数器
   process.on('SIGUSR1', () => {
-    console.log('\n📡 收到USR1信号，手动重置重启计数器...');
+    console.log('\n' + i18n.__('control.usr1_received'));
     resetRestartCounters('手动重置');
     displayStatus();
   });

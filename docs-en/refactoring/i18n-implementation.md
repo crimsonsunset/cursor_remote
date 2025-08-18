@@ -157,25 +157,91 @@ function updateLocaleConfig(newLocale) {
 
 ## 🔄 Implementation Phases
 
-### **Phase 1: Foundation (30 minutes)**
-- [ ] Install i18n-node
-- [ ] Update root package.json with locale config  
-- [ ] Create locales directory and initial JSON files
-- [ ] Setup i18n-config.js
+### **Phase 1: Foundation ✅ COMPLETE**
+- [x] Install i18n-node
+- [x] Update root package.json with locale config  
+- [x] Create locales directory and initial JSON files
+- [x] Setup i18n-config.js
 
-### **Phase 2: Core Implementation (2 hours)**
-- [ ] Convert auto-restart.js (highest priority - most visible)
-- [ ] Convert supabaseService.js (critical error messages)
-- [ ] Convert connection-monitor.js (health monitoring)
-- [ ] Convert commandController.js (user-facing feedback)
-- [ ] Convert start.js (startup messages)
-- [ ] Convert errorRecoveryService.js (error handling)
+### **Phase 2: Core Files ✅ PARTIAL (6/10 files)**
+**COMPLETED:**
+- [x] Convert auto-restart.js (PARTIAL - only 6 messages of 55+ converted)
+- [x] Convert connection-monitor.js (PARTIAL - only 4 messages of 19+ converted)
+- [x] Convert start.js (PARTIAL - only 8 messages of 9 total)
+- [x] Convert errorRecoveryService.js (suggestions only)
+- [x] Convert commandController.js (comments only)
+- [x] Convert supabaseService.js (comments only)
 
-### **Phase 3: Validation & Testing (30 minutes)**
-- [ ] Test both English and Chinese modes
-- [ ] Verify locale switching works
+**REMAINING HIGH PRIORITY:**
+- [ ] Complete auto-restart.js (49 remaining Chinese console.log statements)
+- [ ] Complete connection-monitor.js (15 remaining Chinese console.log statements)
+- [ ] Convert start-stable.js (21 Chinese console.log statements - NEVER TOUCHED)
+- [ ] Convert monitor-service.js (24 Chinese console.log statements - NEVER TOUCHED)
+
+### **Phase 3: Runtime Message Conversion (CURRENT PHASE)**
+**Status**: Currently server still shows Chinese because we only converted ~20% of runtime messages
+
+**Remaining Console.log Statements by File:**
+- auto-restart.js: 49 remaining (out of 55 total)
+- connection-monitor.js: 15 remaining (out of 19 total)  
+- start-stable.js: 21 remaining (UNTOUCHED)
+- monitor-service.js: 24 remaining (UNTOUCHED)
+- start.js: 1 remaining (exit message)
+
+**Total Chinese console.log statements remaining: ~110 HIGH PRIORITY**
+
+### **Phase 4: Debug/Testing Files**
+- [ ] test-subscription-fix.js (34 Chinese statements)
+- [ ] test-heartbeat.js (21 Chinese statements)
+- [ ] subscription-diagnostic.js (26 Chinese statements)  
+- [ ] fix-stuck-commands.js (31 Chinese statements)
+- [ ] debug-jest-exit.js (10 Chinese statements)
+
+**Total: ~122 DEBUG PRIORITY statements**
+
+### **Phase 5: Comments Translation (FINAL PHASE)**
+- [ ] Convert Chinese comments to English across all server files
+- [ ] Convert Chinese variable names and function names if any
+- [ ] Update documentation comments
+
+## 📊 Current Status Summary
+
+**CRITICAL ISSUE**: Server still displays Chinese because our Phase 2 was incomplete!
+
+- **Total Chinese console.log statements**: 242
+- **Converted so far**: ~12 (5%)
+- **Remaining HIGH PRIORITY**: ~110 runtime messages
+- **Remaining DEBUG PRIORITY**: ~122 testing/diagnostic messages
+- **Phase 1**: ✅ Complete (i18n framework working)
+- **Phase 2**: ❌ Incomplete (only 5% of console messages converted)
+- **Phase 3**: 🚧 URGENT - Complete runtime message conversion
+- **Phase 4**: ⏳ Pending - Debug/testing files  
+- **Phase 5**: ⏳ Pending - Comments
+
+## 🎯 Next Steps (Phase 3 Implementation Plan)
+
+### **3.1: Expand Translation Files**
+Add comprehensive message categories to locales:
+- Runtime status messages
+- Performance monitoring 
+- Error diagnostics
+- Service lifecycle messages
+- Health check reports
+
+### **3.2: Complete High Priority Files**
+1. Complete auto-restart.js (49 remaining messages)
+2. Complete connection-monitor.js (15 remaining messages)
+3. Convert start-stable.js (21 messages - CRITICAL, likely what user is running)
+4. Convert monitor-service.js (24 messages)
+5. Fix remaining start.js message (1 message)
+
+### **3.3: Validation & Testing**
+- [ ] Test both English and Chinese modes with COMPLETE message coverage
+- [ ] Verify locale switching works for ALL 242 messages
 - [ ] Update existing tests to handle i18n
 - [ ] Document usage patterns for future developers
+
+**TARGET**: Eliminate ALL Chinese runtime logs (Phase 3) before moving to debug files (Phase 4) or comments (Phase 5).
 
 ## 🎯 Success Criteria
 

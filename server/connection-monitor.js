@@ -115,10 +115,10 @@ const displayStatus = async () => {
   const successRate = stats.totalChecks > 0 ? 
     ((stats.successfulConnections / stats.totalChecks) * 100).toFixed(1) : '0.0';
   
-  console.log(`✅ 成功连接: ${stats.successfulConnections} (${successRate}%)`);
-  console.log(`❌ 失败连接: ${stats.failedConnections}`);
-  console.log(`🔄 连续失败: ${stats.consecutiveFailures}`);
-  console.log(`📈 最长失败: ${stats.longestFailureStreak}`);
+  console.log(i18n.__('connection.successful', { count: stats.successfulConnections, rate: successRate }));
+  console.log(i18n.__('connection.failed', { count: stats.failedConnections }));
+  console.log(i18n.__('connection.consecutive_failures', { count: stats.consecutiveFailures }));
+  console.log(i18n.__('connection.longest_failure_streak', { count: stats.longestFailureStreak }));
   
   // 性能统计
   if (stats.connectionTimes.length > 0) {
@@ -127,18 +127,18 @@ const displayStatus = async () => {
     const maxTime = Math.max(...stats.connectionTimes);
     
     console.log('───────────────────────────────────────────────');
-    console.log('⚡ 连接性能:');
-    console.log(`   平均响应: ${avgTime.toFixed(0)}ms`);
-    console.log(`   最快响应: ${minTime}ms`);
-    console.log(`   最慢响应: ${maxTime}ms`);
+    console.log(i18n.__('connection.performance_header'));
+    console.log(i18n.__('connection.avg_response', { time: avgTime.toFixed(0) }));
+    console.log(i18n.__('connection.min_response', { time: minTime }));
+    console.log(i18n.__('connection.max_response', { time: maxTime }));
   }
   
   // 错误类型统计
   if (stats.errorTypes.size > 0) {
     console.log('───────────────────────────────────────────────');
-    console.log('🚨 错误类型统计:');
+    console.log(i18n.__('connection.error_types_header'));
     for (const [errorType, count] of stats.errorTypes.entries()) {
-      console.log(`   ${errorType}: ${count}次`);
+      console.log(i18n.__('connection.error_type_count', { type: errorType, count }));
     }
   }
   
@@ -146,11 +146,11 @@ const displayStatus = async () => {
   if (stats.lastSuccessTime) {
     const timeSinceSuccess = Math.floor((now - stats.lastSuccessTime) / 1000);
     console.log('───────────────────────────────────────────────');
-    console.log(`🕐 最后成功: ${timeSinceSuccess}秒前`);
+    console.log(i18n.__('connection.last_success_time', { seconds: timeSinceSuccess }));
   }
   
   console.log('───────────────────────────────────────────────');
-  console.log('按 Ctrl+C 退出监控');
+  console.log(i18n.__('monitoring.exit_instructions'));
   console.log('═══════════════════════════════════════════════');
 };
 
@@ -162,7 +162,7 @@ const performCheck = async () => {
   
   // 每10次检查创建新客户端，模拟长期运行
   if (stats.totalChecks % 10 === 1) {
-    console.log('🔄 创建新客户端连接...');
+    console.log(i18n.__('connection.creating_new_client'));
     createNewClient();
   }
   
@@ -184,11 +184,11 @@ const performCheck = async () => {
     const errorType = result.error.split(':')[0] || 'Unknown';
     stats.errorTypes.set(errorType, (stats.errorTypes.get(errorType) || 0) + 1);
     
-    console.log(`❌ 连接失败 (${result.duration}ms): ${result.error}`);
+    console.log(i18n.__('connection.connection_failed', { duration: result.duration, error: result.error }));
     
     // 连续失败3次时重新创建客户端
     if (stats.consecutiveFailures >= 3) {
-      console.log('🔄 连续失败过多，重新创建客户端...');
+      console.log(i18n.__('connection.too_many_failures'));
       createNewClient();
     }
   }
@@ -198,7 +198,7 @@ const performCheck = async () => {
 
 // 优雅退出
 const gracefulExit = () => {
-  console.log('\n\n🛑 正在停止监控...');
+  console.log('\n\n' + i18n.__('connection.stopping_monitor'));
   isMonitoring = false;
   
   if (currentClient) {
@@ -209,7 +209,7 @@ const gracefulExit = () => {
     }
   }
   
-  console.log('✅ 监控已停止');
+  console.log(i18n.__('connection.monitor_stopped'));
   process.exit(0);
 };
 
@@ -221,9 +221,9 @@ const startMonitoring = async () => {
     process.exit(1);
   }
   
-  console.log('🚀 开始监控 Supabase 连接...');
+  console.log(i18n.__('connection.starting_monitor'));
   console.log(`📡 URL: ${supabaseUrl}`);
-  console.log(`🔑 使用服务密钥: ${supabaseServiceKey.substring(0, 20)}...`);
+  console.log(i18n.__('connection.service_key_display', { key: supabaseServiceKey.substring(0, 20) }));
   console.log('');
   
   // 创建初始客户端
