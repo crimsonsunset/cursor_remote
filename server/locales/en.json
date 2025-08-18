@@ -1,0 +1,59 @@
+{
+  "info": {
+    "auto_restart_starting": "🔄 CursorRemote Auto-Restart Monitor Starting...",
+    "connection_monitor_starting": "🔍 Supabase Connection Monitor Starting...",
+    "service_monitor_header": "🚀 CursorRemote Supabase Connection Monitor",
+    "runtime": "⏰ Runtime: {{uptime}}",
+    "check_count": "📊 Check count: {{count}}",
+    "separator_line": "═══════════════════════════════════════════════"
+  },
+  "errors": {
+    "serious_errors_detected": "🚨 Detected {{count}} serious errors:",
+    "error_line": "   - {{error}}"
+  },
+  "warnings": {
+    "frequent_subscription_errors": "⚠️ Detected frequent subscription errors ({{count}} times), but will not trigger restart",
+    "subscription_error_hint": "💡 Tip: Most subscription errors are normal network fluctuations, Supabase will auto-reconnect",
+    "subscription_errors_count": "⚠️ Detected {{total}} subscription errors ({{recent}}/{{threshold}}) - normal network fluctuations",
+    "cleanup_error": "Error cleaning up old connections: {{message}}"
+  },
+  "debug": {
+    "monitoring_config": "Monitoring configuration",
+    "check_interval": "Check interval",
+    "failure_threshold": "Failure threshold",
+    "restart_cooldown": "Restart cooldown",
+    "command_received": "📨 Command received: {{command}}",
+    "processing_time": "⏱️ Processing time: {{duration}}ms"
+  },
+  "startup": {
+    "selector_title": "🚀 CursorRemote Startup Selector",
+    "select_mode": "Please select startup mode:",
+    "stable_mode": "1. Stable Mode (start-stable.js) - Recommended for daily use",
+    "stable_features": "   ✅ Heartbeat disabled, most stable\n   ✅ Relies on Supabase auto-reconnect\n   ✅ Minimal log noise",
+    "monitoring_mode": "2. Monitoring Mode (auto-restart.js) - Recommended for production",
+    "monitoring_features": "   ✅ Auto-restart monitoring\n   ✅ Optimized, ignores heartbeat false positives\n   ✅ Suitable for long-term operation",
+    "basic_mode": "3. Basic Mode (supabaseService.js) - Development testing",
+    "basic_features": "   ✅ Most basic service\n   ✅ Heartbeat check disabled by default\n   ✅ Suitable for debugging",
+    "input_prompt": "Enter your choice (1/2/3) [default: 1]: ",
+    "invalid_choice": "❌ Invalid choice. Please enter 1, 2, or 3.",
+    "starting_stable": "🚀 Starting Stable Mode...",
+    "starting_monitoring": "🔍 Starting Connection Monitor...",
+    "starting_auto_restart": "🔄 Starting Auto-Restart Mode...",
+    "mode_stable": "Stable Mode",
+    "mode_monitoring": "Monitoring Mode", 
+    "mode_basic": "Basic Mode",
+    "invalid_choice_default": "❌ Invalid choice, using default Stable Mode",
+    "launching": "🚀 Launching {{description}} ({{script}})..."
+  },
+  "errors_recovery": {
+    "applescript_timeout": "Recommend checking if Cursor is responding, or try restarting Cursor",
+    "applescript_permission": "Please check accessibility permissions in System Preferences",
+    "cursor_not_running": "Please ensure the Cursor application is running",
+    "network_error": "Network connection issue, please check network status",
+    "supabase_error": "Supabase connection issue, attempting to reconnect",
+    "subscription_error": "Subscription connection issue, attempting to reestablish connection",
+    "memory_error": "Memory insufficient, recommend restarting service",
+    "function_error": "Function call error, possibly a code issue",
+    "unknown_error": "Unknown error occurred, recommend restarting service"
+  }
+}

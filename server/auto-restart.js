@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-// 自动重启监控脚本 - 检测服务状态并在需要时重启
+// Auto-restart monitoring script - detects service status and restarts when needed
 import { createClient } from '@supabase/supabase-js';
 import { spawn } from 'node:child_process';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import i18n from './src/config/i18n-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +17,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 console.clear();
-console.log('🔄 CursorRemote 自动重启监控器启动中...\n');
+console.log(i18n.__('info.auto_restart_starting') + '\n');
 
 // 监控配置
 const config = {
@@ -161,9 +162,9 @@ const detectCriticalErrors = (output) => {
       state.errorHistory = state.errorHistory.slice(-30);
     }
     
-    console.error(`🚨 检测到 ${errors.length} 个严重错误:`);
+    console.error(i18n.__('errors.serious_errors_detected', { count: errors.length }));
     for (const error of errors) {
-      console.error(`   - ${error.line}`);
+      console.error(i18n.__('errors.error_line', { error: error.line }));
     }
   }
   
@@ -183,8 +184,8 @@ const detectCriticalErrors = (output) => {
     );
     
     if (recentSubscriptionErrors.length >= config.subscriptionErrorThreshold) {
-      console.warn(`⚠️ 检测到频繁的订阅错误 (${recentSubscriptionErrors.length}次)，但不会触发重启`);
-      console.warn(`💡 提示：大多数订阅错误是正常的网络波动，Supabase 会自动重连`);
+      console.warn(i18n.__('warnings.frequent_subscription_errors', { count: recentSubscriptionErrors.length }));
+      console.warn(i18n.__('warnings.subscription_error_hint'));
       
       // 不再将订阅错误升级为严重错误，只记录
       // state.criticalErrorCount += Math.floor(recentSubscriptionErrors.length / 10);
@@ -196,7 +197,11 @@ const detectCriticalErrors = (output) => {
     } else {
       // 只记录但不触发重启，并且提高显示阈值
       if (subscriptionErrors.length > 10) { // 提高阈值（从5改为10）
-        console.warn(`⚠️ 检测到 ${subscriptionErrors.length} 个订阅错误（${recentSubscriptionErrors.length}/${config.subscriptionErrorThreshold}）- 正常网络波动`);
+        console.warn(i18n.__('warnings.subscription_errors_count', { 
+          total: subscriptionErrors.length, 
+          recent: recentSubscriptionErrors.length, 
+          threshold: config.subscriptionErrorThreshold 
+        }));
       }
     }
   }

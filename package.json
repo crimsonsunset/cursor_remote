@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
+  "config": {
+    "locale": "en",
+    "supportedLocales": ["en", "zh"]
+  },
   "scripts": {
     "build": "mkdir -p public && cp -R client/* public/ && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > public/env-config.js && echo \"Build complete. Output in ./public directory.\""
   }

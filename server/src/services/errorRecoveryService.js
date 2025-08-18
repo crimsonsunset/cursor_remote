@@ -1,4 +1,6 @@
-// 错误处理和恢复服务
+// Error handling and recovery service
+import i18n from '../config/i18n-config.js';
+
 const errorPatterns = {
   APPLESCRIPT_TIMEOUT: /timeout|timed out/i,
   APPLESCRIPT_PERMISSION: /permission|access denied/i,
@@ -12,48 +14,48 @@ const errorPatterns = {
 
 const recoverySuggestions = {
   APPLESCRIPT_TIMEOUT: {
-    suggestion: '建议检查 Cursor 是否响应，或尝试重启 Cursor',
+    suggestion: i18n.__('errors_recovery.applescript_timeout'),
     autoRetry: true,
     retryDelay: 10000,
     maxRetries: 2
   },
   APPLESCRIPT_PERMISSION: {
-    suggestion: '请检查系统偏好设置中的辅助功能权限',
+    suggestion: i18n.__('errors_recovery.applescript_permission'),
     autoRetry: false,
     maxRetries: 0
   },
   CURSOR_NOT_RUNNING: {
-    suggestion: '请确保 Cursor 应用程序正在运行',
+    suggestion: i18n.__('errors_recovery.cursor_not_running'),
     autoRetry: true,
     retryDelay: 5000,
     maxRetries: 3
   },
   NETWORK_ERROR: {
-    suggestion: '网络连接问题，请检查网络状态',
+    suggestion: i18n.__('errors_recovery.network_error'),
     autoRetry: true,
     retryDelay: 3000,
     maxRetries: 5
   },
   SUPABASE_ERROR: {
-    suggestion: 'Supabase 连接问题，正在尝试重新连接',
+    suggestion: i18n.__('errors_recovery.supabase_error'),
     autoRetry: true,
     retryDelay: 2000,
     maxRetries: 3
   },
   SUBSCRIPTION_ERROR: {
-    suggestion: '订阅连接问题，正在尝试重新建立连接',
+    suggestion: i18n.__('errors_recovery.subscription_error'),
     autoRetry: true,
     retryDelay: 5000,
     maxRetries: 5
   },
   MEMORY_ERROR: {
-    suggestion: '内存不足，建议重启服务',
+    suggestion: i18n.__('errors_recovery.memory_error'),
     autoRetry: false,
     maxRetries: 0,
     requiresRestart: true
   },
   FUNCTION_ERROR: {
-    suggestion: '函数调用错误，可能是代码问题',
+    suggestion: i18n.__('errors_recovery.function_error'),
     autoRetry: true,
     retryDelay: 1000,
     maxRetries: 1

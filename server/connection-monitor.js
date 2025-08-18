@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-// Supabase 连接监控和诊断工具
+// Supabase connection monitoring and diagnostic tool
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import i18n from './src/config/i18n-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 console.clear();
-console.log('🔍 Supabase 连接监控器启动中...\n');
+console.log(i18n.__('info.connection_monitor_starting') + '\n');
 
 // 监控统计
 const stats = {
@@ -39,7 +40,7 @@ const createNewClient = () => {
     try {
       currentClient.removeAllChannels();
     } catch (error) {
-      console.warn('清理旧连接时出错:', error.message);
+      console.warn(i18n.__('warnings.cleanup_error', { message: error.message }));
     }
   }
   
@@ -103,11 +104,11 @@ const displayStatus = async () => {
   const uptime = Math.floor((now - stats.startTime) / 1000);
   const uptimeDisplay = `${Math.floor(uptime / 60)}分${uptime % 60}秒`;
   
-  console.log('═══════════════════════════════════════════════');
-  console.log('🚀 CursorRemote Supabase 连接监控器');
-  console.log('═══════════════════════════════════════════════');
-  console.log(`⏰ 运行时间: ${uptimeDisplay}`);
-  console.log(`📊 检查次数: ${stats.totalChecks}`);
+  console.log(i18n.__('info.separator_line'));
+  console.log(i18n.__('info.service_monitor_header'));
+  console.log(i18n.__('info.separator_line'));
+  console.log(i18n.__('info.runtime', { uptime: uptimeDisplay }));
+  console.log(i18n.__('info.check_count', { count: stats.totalChecks }));
   console.log('───────────────────────────────────────────────');
   
   // 连接状态

@@ -1,0 +1,59 @@
+{
+  "info": {
+    "auto_restart_starting": "🔄 CursorRemote 自动重启监控器启动中...",
+    "connection_monitor_starting": "🔍 Supabase 连接监控器启动中...",
+    "service_monitor_header": "🚀 CursorRemote Supabase 连接监控器",
+    "runtime": "⏰ 运行时间: {{uptime}}",
+    "check_count": "📊 检查次数: {{count}}",
+    "separator_line": "═══════════════════════════════════════════════"
+  },
+  "errors": {
+    "serious_errors_detected": "🚨 检测到 {{count}} 个严重错误:",
+    "error_line": "   - {{error}}"
+  },
+  "warnings": {
+    "frequent_subscription_errors": "⚠️ 检测到频繁的订阅错误 ({{count}}次)，但不会触发重启",
+    "subscription_error_hint": "💡 提示：大多数订阅错误是正常的网络波动，Supabase 会自动重连",
+    "subscription_errors_count": "⚠️ 检测到 {{total}} 个订阅错误（{{recent}}/{{threshold}}）- 正常网络波动",
+    "cleanup_error": "清理旧连接时出错: {{message}}"
+  },
+  "debug": {
+    "monitoring_config": "监控配置",
+    "check_interval": "检查间隔",
+    "failure_threshold": "失败阈值",
+    "restart_cooldown": "重启冷却期",
+    "command_received": "📨 收到命令: {{command}}",
+    "processing_time": "⏱️ 处理时间: {{duration}}ms"
+  },
+  "startup": {
+    "selector_title": "🚀 CursorRemote 启动选择器",
+    "select_mode": "请选择启动模式：",
+    "stable_mode": "1. 稳定模式 (start-stable.js) - 推荐日常使用",
+    "stable_features": "   ✅ 禁用心跳检查，最稳定\n   ✅ 依赖 Supabase 自身重连\n   ✅ 最少的日志噪音",
+    "monitoring_mode": "2. 监控模式 (auto-restart.js) - 推荐生产环境",
+    "monitoring_features": "   ✅ 自动重启监控\n   ✅ 已优化，忽略心跳误报\n   ✅ 适合长期运行",
+    "basic_mode": "3. 基础模式 (supabaseService.js) - 开发测试",
+    "basic_features": "   ✅ 最基础的服务\n   ✅ 心跳检查默认禁用\n   ✅ 适合调试",
+    "input_prompt": "请输入选择 (1/2/3) [默认: 1]: ",
+    "invalid_choice": "❌ 无效选择。请输入 1、2 或 3。",
+    "starting_stable": "🚀 启动稳定模式...",
+    "starting_monitoring": "🔍 启动连接监控器...",
+    "starting_auto_restart": "🔄 启动自动重启模式...",
+    "mode_stable": "稳定模式",
+    "mode_monitoring": "监控模式",
+    "mode_basic": "基础模式",
+    "invalid_choice_default": "❌ 无效选择，使用默认稳定模式",
+    "launching": "🚀 启动 {{description}} ({{script}})..."
+  },
+  "errors_recovery": {
+    "applescript_timeout": "建议检查 Cursor 是否响应，或尝试重启 Cursor",
+    "applescript_permission": "请检查系统偏好设置中的辅助功能权限",
+    "cursor_not_running": "请确保 Cursor 应用程序正在运行",
+    "network_error": "网络连接问题，请检查网络状态",
+    "supabase_error": "Supabase 连接问题，正在尝试重新连接",
+    "subscription_error": "订阅连接问题，正在尝试重新建立连接",
+    "memory_error": "内存不足，建议重启服务",
+    "function_error": "函数调用错误，可能是代码问题",
+    "unknown_error": "发生未知错误，建议重启服务"
+  }
+}

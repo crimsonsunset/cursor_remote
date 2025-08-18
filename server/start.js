@@ -1,36 +1,31 @@
 #!/usr/bin/env node
 
-// CursorRemote 启动选择脚本
+// CursorRemote startup selection script
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import i18n from './src/config/i18n-config.js';
 
 console.clear();
-console.log('🚀 CursorRemote 启动选择器\n');
+console.log(i18n.__('startup.selector_title') + '\n');
 
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
 
-console.log('请选择启动模式：');
+console.log(i18n.__('startup.select_mode'));
 console.log('');
-console.log('1. 稳定模式 (start-stable.js) - 推荐日常使用');
-console.log('   ✅ 禁用心跳检查，最稳定');
-console.log('   ✅ 依赖 Supabase 自身重连');
-console.log('   ✅ 最少的日志噪音');
+console.log(i18n.__('startup.stable_mode'));
+console.log(i18n.__('startup.stable_features'));
 console.log('');
-console.log('2. 监控模式 (auto-restart.js) - 推荐生产环境');
-console.log('   ✅ 自动重启监控');
-console.log('   ✅ 已优化，忽略心跳误报');
-console.log('   ✅ 适合长期运行');
+console.log(i18n.__('startup.monitoring_mode'));
+console.log(i18n.__('startup.monitoring_features'));
 console.log('');
-console.log('3. 基础模式 (supabaseService.js) - 开发测试');
-console.log('   ✅ 最基础的服务');
-console.log('   ✅ 心跳检查默认禁用');
-console.log('   ✅ 适合调试');
+console.log(i18n.__('startup.basic_mode'));
+console.log(i18n.__('startup.basic_features'));
 console.log('');
 
-rl.question('请输入选择 (1/2/3) [默认: 1]: ', (answer) => {
+rl.question(i18n.__('startup.input_prompt'), (answer) => {
   const choice = answer.trim() || '1';
   
   let script;
@@ -39,23 +34,23 @@ rl.question('请输入选择 (1/2/3) [默认: 1]: ', (answer) => {
   switch (choice) {
     case '1':
       script = 'start-stable.js';
-      description = '稳定模式';
+      description = i18n.__('startup.mode_stable');
       break;
     case '2':
       script = 'auto-restart.js';
-      description = '监控模式';
+      description = i18n.__('startup.mode_monitoring');
       break;
     case '3':
       script = 'src/services/supabaseService.js';
-      description = '基础模式';
+      description = i18n.__('startup.mode_basic');
       break;
     default:
-      console.log('❌ 无效选择，使用默认稳定模式');
+      console.log(i18n.__('startup.invalid_choice_default'));
       script = 'start-stable.js';
-      description = '稳定模式';
+      description = i18n.__('startup.mode_stable');
   }
   
-  console.log(`\n🚀 启动 ${description} (${script})...\n`);
+  console.log('\n' + i18n.__('startup.launching', { description, script }) + '\n');
   
   // 启动选择的脚本
   const child = spawn('node', [script], {

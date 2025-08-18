@@ -5,7 +5,7 @@ import { ErrorRecoveryService } from '../services/errorRecoveryService.js';
 import { CommandQueueManager } from '../services/queueManager.js';
 
 /**
- * 命令控制器类，支持依赖注入
+ * Command controller class with dependency injection support
  */
 export class CommandController {
   constructor(options = {}) {
@@ -15,7 +15,7 @@ export class CommandController {
     this.errorRecoveryService = options.errorRecoveryService || ErrorRecoveryService;
     this.logger = options.logger || console;
     
-    // Supabase 相关函数（便于测试时注入）
+    // Supabase related functions (for easy injection during testing)
     this.updateCommandStatus = options.updateCommandStatus || updateCommandStatus;
     this.subscribeToResultForCommand = options.subscribeToResultForCommand || subscribeToResultForCommand;
     this.clearResultSubscription = options.clearResultSubscription || clearResultSubscription;

@@ -14,16 +14,16 @@ export class SupabaseConfig {
     this.url = options.url || process.env.SUPABASE_URL;
     this.serviceKey = options.serviceKey || process.env.SUPABASE_SERVICE_KEY;
     this.maxConnectionAttempts = options.maxConnectionAttempts || 10;
-    this.connectionRetryDelay = options.connectionRetryDelay || 5000; // 增加到5秒
-    this.connectionResetInterval = options.connectionResetInterval || 5 * 60 * 1000; // 5分钟
-    this.connectionRefreshInterval = options.connectionRefreshInterval || 60 * 60 * 1000; // 1小时
-    this.healthCheckInterval = options.healthCheckInterval || 2 * 60 * 1000; // 2分钟
-    this.maxSubscriptionRetries = options.maxSubscriptionRetries || 15; // 增加重试次数
+    this.connectionRetryDelay = options.connectionRetryDelay || 5000; // Increased to 5 seconds
+    this.connectionResetInterval = options.connectionResetInterval || 5 * 60 * 1000; // 5 minutes
+    this.connectionRefreshInterval = options.connectionRefreshInterval || 60 * 60 * 1000; // 1 hour
+    this.healthCheckInterval = options.healthCheckInterval || 2 * 60 * 1000; // 2 minutes
+    this.maxSubscriptionRetries = options.maxSubscriptionRetries || 15; // Increased retry count
     
-    // 新增：心跳检查配置
+    // New: heartbeat check configuration
     this.enableHeartbeatCheck = options.enableHeartbeatCheck !== undefined 
       ? options.enableHeartbeatCheck 
-      : (process.env.ENABLE_HEARTBEAT_CHECK === 'true'); // 默认禁用，通过环境变量启用
+      : (process.env.ENABLE_HEARTBEAT_CHECK === 'true'); // Disabled by default, enabled via environment variable
   }
 
   validate() {
