@@ -8,6 +8,98 @@
 
 [阅读中文版 (Read in Chinese)](README.md)
 
+## 📁 Project Structure & Reading Guide
+
+### 🎯 Understanding This Project - Where to Start
+
+This project consists of multiple components and extensive documentation. Here's your roadmap to understanding everything, **ranked by importance (1-10 scale)**:
+
+### 📋 **Essential Reading (Start Here)**
+
+| **Rank** | **Component** | **Path** | **Purpose** | **When to Read** |
+|----------|---------------|----------|-------------|------------------|
+| **🔟** | **Product Requirements** | [`docs-en/requirements/PRODUCT_REQUIREMENTS.md`](docs-en/requirements/PRODUCT_REQUIREMENTS.md) | Complete project overview, goals, and technical solution | **READ FIRST** - Understand what this project does |
+| **9️⃣** | **Architecture Overview** | [`docs-en/COMPLETE_ARCHITECTURE.md`](docs-en/COMPLETE_ARCHITECTURE.md) | Complete system architecture, data flow, and technical design | **READ SECOND** - Understand how it works |
+| **8️⃣** | **User Stories** | [`docs-en/requirements/USER_STORIES.md`](docs-en/requirements/USER_STORIES.md) | 29 detailed user stories across 4 epics with acceptance criteria | **READ THIRD** - Understand what features exist |
+
+### 🛠️ **Implementation & Setup**
+
+| **Rank** | **Component** | **Path** | **Purpose** | **When to Read** |
+|----------|---------------|----------|-------------|------------------|
+| **7️⃣** | **Database Setup** | [`docs-en/deployment/SETUP_DATABASE.md`](docs-en/deployment/SETUP_DATABASE.md) | Step-by-step Supabase database configuration | **Before setup** - Required for running the app |
+| **6️⃣** | **Epic Breakdown** | [`docs-en/requirements/EPICS_BREAKDOWN.md`](docs-en/requirements/EPICS_BREAKDOWN.md) | Detailed technical implementation guide (732 lines) | **For developers** - How to build features |
+| **5️⃣** | **Client Code** | [`client/`](client/) | Web application (HTML, CSS, JS) for mobile control | **For frontend work** - The user interface |
+| **4️⃣** | **Server Code** | [`server/`](server/) | Node.js service that controls Cursor via AppleScript | **For backend work** - Command processing |
+
+### 🔧 **Maintenance & Debugging**
+
+| **Rank** | **Component** | **Path** | **Purpose** | **When to Read** |
+|----------|---------------|----------|-------------|------------------|
+| **3️⃣** | **Testing Guide** | [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) | How to test the complete system | **When debugging** - Verify everything works |
+| **2️⃣** | **Deployment Status** | [`docs-en/deployment/DEPLOYMENT_STATUS.md`](docs-en/deployment/DEPLOYMENT_STATUS.md) | Current deployment state and troubleshooting | **When issues occur** - Current system status |
+| **1️⃣** | **Fix Documentation** | [`docs-en/fixes/`](docs-en/fixes/) | Historical bug fixes and improvements | **Reference only** - When encountering similar issues |
+
+### 🗂️ **Directory Structure Explained**
+
+```
+cursor_remote/
+├── 📱 client/                    # Web application (mobile interface)
+│   ├── index.html               # Main application page
+│   ├── app.js                   # Core application logic
+│   ├── env-config.js            # Supabase configuration
+│   └── tests/                   # Client-side testing tools
+│
+├── 🖥️ server/                    # Node.js backend service  
+│   ├── src/services/            # Core service logic
+│   ├── auto-restart.js          # Automatic restart functionality
+│   ├── connection-monitor.js    # Connection health monitoring
+│   └── package.json             # Node.js dependencies
+│
+├── 🗄️ database/                  # Database schema and functions
+│   ├── tables.sql               # Supabase table definitions
+│   ├── functions.sql            # Database RPC functions
+│   └── README.md                # Database documentation
+│
+├── 📚 docs-en/                   # English documentation (COMPLETE)
+│   ├── requirements/            # Product & technical requirements
+│   ├── deployment/              # Setup and deployment guides  
+│   ├── fixes/                   # Bug fixes and improvements
+│   ├── testing/                 # Testing procedures
+│   └── refactoring/             # Architecture improvements
+│
+├── 📚 docs-ch/                   # Chinese documentation (original)
+│   └── [同样的结构]              # Same structure as docs-en/
+│
+├── 🔧 scripts/                   # Utility and maintenance scripts
+│   ├── maintenance/             # System maintenance tools
+│   └── check-*.js               # Health check scripts
+│
+└── 📄 Configuration Files
+    ├── package.json             # Project dependencies and scripts
+    ├── .env.example             # Environment variable template
+    └── vercel.json              # Deployment configuration
+```
+
+### 🎯 **Quick Start Reading Path**
+
+**For New Users (30 minutes):**
+1. [`docs-en/requirements/PRODUCT_REQUIREMENTS.md`](docs-en/requirements/PRODUCT_REQUIREMENTS.md) (10 min)
+2. [`docs-en/deployment/SETUP_DATABASE.md`](docs-en/deployment/SETUP_DATABASE.md) (15 min) 
+3. [`docs-en/testing/BROWSER_TEST_GUIDE.md`](docs-en/testing/BROWSER_TEST_GUIDE.md) (5 min)
+
+**For Developers (2 hours):**
+1. Read "New Users" path above
+2. [`docs-en/COMPLETE_ARCHITECTURE.md`](docs-en/COMPLETE_ARCHITECTURE.md) (45 min)
+3. [`docs-en/requirements/USER_STORIES.md`](docs-en/requirements/USER_STORIES.md) (30 min)
+4. [`docs-en/requirements/EPICS_BREAKDOWN.md`](docs-en/requirements/EPICS_BREAKDOWN.md) (45 min)
+
+**For Contributors:**
+- Read "Developers" path above
+- Review relevant files in [`docs-en/fixes/`](docs-en/fixes/) for context
+- Check [`docs-en/refactoring/`](docs-en/refactoring/) for architecture decisions
+
+---
+
 ## 🏗️ Architecture Upgrade Notice
 **Important Update**: The project has **completed the full migration from Redis to Supabase**, implementing a completely Supabase-based serverless architecture that is more secure, simple, and stable.
 
