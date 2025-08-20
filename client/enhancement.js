@@ -1,19 +1,19 @@
-// 客户端功能增强模块 - 使用Supabase
+// Client Enhancement Module - Using Supabase
 class ClientEnhancementService {
   constructor(supabaseClient) {
     this.supabase = supabaseClient;
     this.commandHistory = [];
     
-    // 初始化数据
+    // Initialize data
     this.loadAllData();
   }
 
-  // 加载所有数据
+  // Load all data
   async loadAllData() {
     await this.loadCommandHistory();
   }
 
-  // 命令历史管理 - 从Supabase获取
+  // Command history management - Get from Supabase
   async loadCommandHistory(limit = 50, search = null) {
     try {
       const { data, error } = await this.supabase.rpc('get_command_history', {
@@ -25,13 +25,13 @@ class ClientEnhancementService {
         throw error;
       }
       
-      // 处理数据库返回的JSON格式
+      // Process database returned JSON format
       let historyData = data;
       if (typeof data === 'string') {
         historyData = JSON.parse(data);
       }
       
-      // 转换数据格式以匹配客户端期望的格式
+      // Convert data format to match client expectations
       this.commandHistory = (historyData || []).map(item => ({
         id: item.id,
         command: item.command_text,
@@ -49,7 +49,7 @@ class ClientEnhancementService {
     }
   }
 
-  // 本地存储fallback
+  // Local storage fallback
   loadCommandHistoryFromLocal() {
     try {
       this.commandHistory = JSON.parse(localStorage.getItem('cursorRemote_commandHistory')) || [];
@@ -60,22 +60,22 @@ class ClientEnhancementService {
     }
   }
 
-  // 智能命令建议
+  // Smart command suggestions
   getSuggestions(currentInput) {
     const suggestions = [];
 
-    // 基于历史记录的建议
+    // Suggestions based on history
     const historyMatches = this.commandHistory
       .filter(item => item.command.toLowerCase().includes(currentInput.toLowerCase()))
       .slice(0, 5)
       .map(item => ({
         type: 'history',
         text: item.command,
-        title: '历史命令',
+        title: __('enhancement.history_commands'),
         icon: '🕒'
       }));
 
-    // 智能补全建议
+    // Smart completion suggestions
     const smartSuggestions = this.getSmartSuggestions(currentInput);
 
     return [...historyMatches, ...smartSuggestions];
@@ -83,11 +83,11 @@ class ClientEnhancementService {
 
   getSmartSuggestions(input) {
     const smartPatterns = {
-      '创建': ['创建一个React组件', '创建数据库表', '创建API接口'],
-      '修复': ['修复这个bug', '修复代码错误', '修复性能问题'],
-      '优化': ['优化代码性能', '优化数据库查询', '优化用户体验'],
-      '解释': ['解释这段代码', '解释算法原理', '解释设计模式'],
-      '重构': ['重构这个函数', '重构代码结构', '重构数据模型']
+      '创建': [__('enhancement.suggestions.create.react_component'), __('enhancement.suggestions.create.database_table'), __('enhancement.suggestions.create.api_interface')],
+      '修复': [__('enhancement.suggestions.fix.this_bug'), __('enhancement.suggestions.fix.code_error'), __('enhancement.suggestions.fix.performance_issue')],
+      '优化': [__('enhancement.suggestions.optimize.code_performance'), __('enhancement.suggestions.optimize.database_query'), __('enhancement.suggestions.optimize.user_experience')],
+      '解释': [__('enhancement.suggestions.explain.this_code'), __('enhancement.suggestions.explain.algorithm_principle'), __('enhancement.suggestions.explain.design_pattern')],
+      '重构': [__('enhancement.suggestions.refactor.this_function'), __('enhancement.suggestions.refactor.code_structure'), __('enhancement.suggestions.refactor.data_model')]
     };
 
     const suggestions = [];
@@ -99,18 +99,18 @@ class ClientEnhancementService {
           suggestions.push({
             type: 'smart',
             text: pattern,
-            title: '智能建议',
+            title: __('enhancement.smart_suggestions'),
             icon: '💡'
           });
         });
-        break; // 只匹配第一个关键字
+        break; // Only match the first keyword
       }
     }
 
     return suggestions.slice(0, 3);
   }
 
-  // 导出/导入功能
+  // Export/Import functionality
   exportData() {
     return {
       commandHistory: this.commandHistory,
@@ -125,12 +125,12 @@ class ClientEnhancementService {
     }
   }
 
-  // Getter方法 - 为了向后兼容
+  // Getter methods - for backward compatibility
   getCommandHistory() {
     return this.commandHistory;
   }
 
-  // 添加到历史记录的方法
+  // Add to history method
   addToHistory(command) {
     const historyItem = {
       id: Date.now(),
@@ -141,24 +141,24 @@ class ClientEnhancementService {
     
     this.commandHistory.unshift(historyItem);
     
-    // 限制历史记录数量
+    // Limit history record count
     if (this.commandHistory.length > 100) {
       this.commandHistory = this.commandHistory.slice(0, 100);
     }
     
-    // 保存到本地存储
+    // Save to local storage
     localStorage.setItem('cursorRemote_commandHistory', JSON.stringify(this.commandHistory));
     
     return historyItem;
   }
 
-  // 清除历史记录
+  // Clear history
   clearHistory() {
     this.commandHistory = [];
     localStorage.removeItem('cursorRemote_commandHistory');
   }
 
-  // 从历史记录中移除特定命令
+  // Remove specific command from history
   removeCommand(command) {
     if (!command) return false;
     
@@ -169,7 +169,7 @@ class ClientEnhancementService {
     
     const wasRemoved = this.commandHistory.length < originalLength;
     if (wasRemoved) {
-      // 更新本地存储
+      // Update local storage
       localStorage.setItem('cursorRemote_commandHistory', JSON.stringify(this.commandHistory));
     }
     
@@ -177,7 +177,7 @@ class ClientEnhancementService {
   }
 }
 
-// 实例化全局服务 - 需要等待supabaseClient准备好
+// Instantiate global service - need to wait for supabaseClient to be ready
 let globalEnhancementService = null;
 
 function initGlobalEnhancementService(supabaseClient) {
@@ -185,17 +185,17 @@ function initGlobalEnhancementService(supabaseClient) {
     globalEnhancementService = new ClientEnhancementService(supabaseClient);
     window.clientEnhancementService = globalEnhancementService;
     
-    // 为了向后兼容和便于使用，也将各个功能单独暴露
+    // For backward compatibility and ease of use, also expose each function separately
     window.CommandHistory = {
       getHistory: () => globalEnhancementService.getCommandHistory(),
       addCommand: (command) => globalEnhancementService.addToHistory(command),
       clearHistory: () => globalEnhancementService.clearHistory(),
       removeCommand: (command) => globalEnhancementService.removeCommand(command),
-      clearCache: () => globalEnhancementService.clearHistory() // 兼容性别名
+      clearCache: () => globalEnhancementService.clearHistory() // Compatibility alias
     };
   }
   return globalEnhancementService;
 }
 
-// 暴露初始化函数
+// Expose initialization function
 window.initGlobalEnhancementService = initGlobalEnhancementService;

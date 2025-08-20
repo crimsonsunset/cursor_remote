@@ -183,5 +183,38 @@
         "data_model": "重构数据模型"
       }
     }
+  },
+  "html": {
+    "page_title": "Cursor远程控制",
+    "app_title": "Cursor远程控制",
+    "buttons": {
+      "command_history": "命令历史",
+      "system_status": "系统状态", 
+      "recover_lost_results": "恢复丢失的结果",
+      "refresh_page_state": "刷新页面状态",
+      "toggle_theme": "切换主题",
+      "view_source_code": "查看项目源码",
+      "upload_file": "上传文件",
+      "send": "发送",
+      "send_prompt": "发送提示"
+    },
+    "status": {
+      "disconnected": "未连接",
+      "connected": "已连接"
+    },
+    "welcome": {
+      "title": "欢迎消息",
+      "text": "欢迎使用Cursor远程控制！请输入您想问Cursor的问题。"
+    },
+    "input": {
+      "placeholder": "输入您想问Cursor的问题...",
+      "chat_content_note": "聊天内容将在这里动态添加"
+    },
+    "marked_config": {
+      "convert_linebreaks": "将换行符转换为<br>",
+      "enable_github_markdown": "启用GitHub风格的Markdown", 
+      "add_header_ids": "为标题添加ID",
+      "allow_html_tags": "允许HTML标签"
+    }
   }
 }

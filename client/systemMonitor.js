@@ -72,12 +72,12 @@ class SystemMonitorService {
       timestamp: new Date().toISOString(),
       supabase: false,
       network: false,
-      browser: true, // 客户端始终认为浏览器正常
+      browser: true, // Client always considers browser normal
       localStorage: false
     };
 
     try {
-      // 检查 Supabase 连接
+      // Check Supabase connection
       if (supabaseClient) {
         const { data, error } = await supabaseClient
           .from('commands')
@@ -86,7 +86,7 @@ class SystemMonitorService {
         healthStatus.supabase = !error;
       }
 
-      // 检查网络连接
+      // Check network connection
       try {
         await fetch('https://www.google.com/favicon.ico', { mode: 'no-cors' });
         healthStatus.network = true;
@@ -94,7 +94,7 @@ class SystemMonitorService {
         healthStatus.network = false;
       }
 
-      // 检查本地存储
+      // Check local storage
       try {
         localStorage.setItem('test', 'test');
         localStorage.removeItem('test');
@@ -110,7 +110,7 @@ class SystemMonitorService {
   }
 
   updateHealthStatus(status) {
-    // 更新UI状态指示器
+    // Update UI status indicators
     const statusElement = document.getElementById('systemHealthStatus');
     if (statusElement) {
       const isHealthy = status.supabase && status.network && status.localStorage;
@@ -120,7 +120,7 @@ class SystemMonitorService {
   }
 
   broadcastMetricsUpdate() {
-    // 发送自定义事件通知UI更新
+    // Send custom event to notify UI updates
     window.dispatchEvent(new CustomEvent('systemMetricsUpdate', {
       detail: this.metrics
     }));
@@ -130,17 +130,17 @@ class SystemMonitorService {
     return { ...this.metrics };
   }
 
-  // 生成状态报告
+  // Generate status report
   generateStatusReport() {
     const uptime = Date.now() - this.metrics.systemUptime;
     const uptimeHours = Math.floor(uptime / (1000 * 60 * 60));
     const uptimeMinutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
 
     return {
-      uptime: `${uptimeHours}小时${uptimeMinutes}分钟`,
+      uptime: `${uptimeHours}${__('systemMonitor.hours')}${uptimeMinutes}${__('systemMonitor.minutes')}`,
       commandsProcessed: this.metrics.commandsProcessed,
       successRate: `${(this.metrics.successRate * 100).toFixed(1)}%`,
-      averageResponseTime: `${this.metrics.averageResponseTime.toFixed(1)}秒`,
+      averageResponseTime: `${this.metrics.averageResponseTime.toFixed(1)}${__('systemMonitor.seconds')}`,
       errorCount: this.metrics.errorCount,
       lastError: this.metrics.lastError,
       timestamp: new Date().toISOString()
@@ -148,58 +148,58 @@ class SystemMonitorService {
   }
 }
 
-// 创建状态页面HTML
+// Create status page HTML
 function createStatusPage() {
   const statusPageHTML = `
     <div id="statusPage" class="status-page" style="display: none;">
       <div class="status-header">
-        <h2>系统状态监控</h2>
+        <h2>${__('systemMonitor.title')}</h2>
         <button id="closeStatusPage" class="close-btn">×</button>
       </div>
       
       <div class="status-grid">
         <div class="status-card">
-          <h3>系统运行时间</h3>
-          <div id="systemUptime" class="metric-value">加载中...</div>
+          <h3>${__('systemMonitor.system_uptime')}</h3>
+          <div id="systemUptime" class="metric-value">${__('systemMonitor.loading')}</div>
         </div>
         
         <div class="status-card">
-          <h3>命令处理数量</h3>
+          <h3>${__('systemMonitor.command_processing_count')}</h3>
           <div id="commandsProcessed" class="metric-value">0</div>
         </div>
         
         <div class="status-card">
-          <h3>成功率</h3>
+          <h3>${__('systemMonitor.success_rate')}</h3>
           <div id="successRate" class="metric-value">0%</div>
         </div>
         
         <div class="status-card">
-          <h3>平均响应时间</h3>
-          <div id="averageResponseTime" class="metric-value">0秒</div>
+          <h3>${__('systemMonitor.average_response_time')}</h3>
+          <div id="averageResponseTime" class="metric-value">0${__('systemMonitor.seconds')}</div>
         </div>
       </div>
       
       <div class="health-indicators">
-        <h3>服务健康状态</h3>
+        <h3>${__('systemMonitor.service_health_status')}</h3>
         <div class="health-grid">
           <div class="health-item">
-            <span class="health-label">Supabase</span>
-            <span id="supabaseHealth" class="health-indicator">检查中...</span>
+            <span class="health-label">${__('systemMonitor.supabase_connection')}</span>
+            <span id="supabaseHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
           </div>
           <div class="health-item">
-            <span class="health-label">网络连接</span>
-            <span id="networkHealth" class="health-indicator">检查中...</span>
+            <span class="health-label">${__('systemMonitor.network_connection')}</span>
+            <span id="networkHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
           </div>
           <div class="health-item">
-            <span class="health-label">本地存储</span>
-            <span id="storageHealth" class="health-indicator">检查中...</span>
+            <span class="health-label">${__('systemMonitor.local_storage')}</span>
+            <span id="storageHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
           </div>
         </div>
       </div>
       
       <div class="recent-activity">
-        <h3>最近活动</h3>
-        <div id="recentActivity" class="activity-list">暂无活动记录</div>
+        <h3>${__('systemMonitor.recent_activity')}</h3>
+        <div id="recentActivity" class="activity-list">${__('systemMonitor.no_activity_records')}</div>
       </div>
     </div>
   `;
@@ -207,10 +207,10 @@ function createStatusPage() {
   document.body.insertAdjacentHTML('beforeend', statusPageHTML);
 }
 
-// 实例化监控服务
+// Instantiate monitoring service
 window.systemMonitorService = new SystemMonitorService();
 
-// 为了便于使用，也暴露一个简化的接口
+// For ease of use, also expose a simplified interface
 window.SystemMonitor = {
   startMonitoring: () => window.systemMonitorService.startMonitoring(),
   stopMonitoring: () => window.systemMonitorService.stopMonitoring(),

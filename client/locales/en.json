@@ -183,5 +183,38 @@
         "data_model": "Refactor data model"
       }
     }
+  },
+  "html": {
+    "page_title": "Cursor Remote Control",
+    "app_title": "Cursor Remote Control",
+    "buttons": {
+      "command_history": "Command History",
+      "system_status": "System Status", 
+      "recover_lost_results": "Recover Lost Results",
+      "refresh_page_state": "Refresh Page State",
+      "toggle_theme": "Toggle Theme",
+      "view_source_code": "View Project Source Code",
+      "upload_file": "Upload File",
+      "send": "Send",
+      "send_prompt": "Send Prompt"
+    },
+    "status": {
+      "disconnected": "Disconnected",
+      "connected": "Connected"
+    },
+    "welcome": {
+      "title": "Welcome Message",
+      "text": "Welcome to Cursor Remote Control! Please enter the question you want to ask Cursor."
+    },
+    "input": {
+      "placeholder": "Enter the question you want to ask Cursor...",
+      "chat_content_note": "Chat content will be dynamically added here"
+    },
+    "marked_config": {
+      "convert_linebreaks": "Convert line breaks to <br>",
+      "enable_github_markdown": "Enable GitHub-style Markdown", 
+      "add_header_ids": "Add IDs to headers",
+      "allow_html_tags": "Allow HTML tags"
+    }
   }
 }

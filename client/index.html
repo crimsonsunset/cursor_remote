@@ -9,13 +9,13 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
-        // 配置marked.js
+        // Configure marked.js
         if (typeof marked !== 'undefined') {
             marked.setOptions({
-                breaks: true,       // 将换行符转换为<br>
-                gfm: true,          // 启用GitHub风格的Markdown
-                headerIds: true,    // 为标题添加ID
-                sanitize: false     // 允许HTML标签
+                breaks: true,       // Convert line breaks to <br>
+                gfm: true,          // Enable GitHub-style Markdown
+                headerIds: true,    // Add IDs to headers
+                sanitize: false     // Allow HTML tags
             });
         }
     </script>
@@ -63,13 +63,13 @@
 
         <main class="main-content">
             <div class="chat-container" id="chatContainer">
-                <!-- 欢迎消息 -->
+                <!-- Welcome message -->
                 <div class="message system-message">
                     <div class="message-content">
                         <p>欢迎使用Cursor远程控制！请输入您想问Cursor的问题。</p>
                     </div>
                 </div>
-                <!-- 聊天内容将在这里动态添加 -->
+                <!-- Chat content will be dynamically added here -->
             </div>
             
             <div class="input-wrapper">
@@ -255,6 +255,7 @@
     <!-- i18n System - Load before main application -->
     <script src="i18n.js"></script>
     <script src="i18n-init.js"></script>
+    <script src="html-i18n.js"></script>
     <script src="enhancement.js"></script>
     <script src="systemMonitor.js"></script>
     <script src="app.js"></script>
