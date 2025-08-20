@@ -1,0 +1,102 @@
+{
+  "app": {
+    "title": "Cursor远程控制 - 客户端应用", 
+    "description": "这个文件包含与Redis服务器通信的客户端逻辑。",
+    "note_websocket": "注意：实际应用中需要使用WebSocket或HTTP API代理与Redis通信，",
+    "note_browser_security": "因为浏览器不能直接连接Redis服务器。"
+  },
+  "utils": {
+    "generate_uuid_description": "生成一个简单的 UUID v4 字符串。",
+    "build_command_description": "构建用于发送到 Supabase 'commands' 表的指令对象。",
+    "command_text_param": "用户输入的指令文本。",
+    "command_object_return": "符合 'commands' 表结构的指令对象。"
+  },
+  "commands": {
+    "anonymous_user_id": "为匿名用户生成一个临时的 UUID 作为 user_id",
+    "process_completed_description": "处理已完成的指令，从 results 表获取并显示结果。",
+    "command_id_param": "数据库中 commands 表指令的UUID。",
+    "original_text_param": "用户原始输入的指令文本，用于上下文显示。",
+    "loading_element_param": "加载消息元素的引用，用于完成后移除。",
+    "check_existing_result": "首先检查是否已经有这个命令的结果",
+    "result_exists_skip": "⏭️ 命令 {{commandId}} 的结果已存在，跳过处理",
+    "remove_loading_animation": "移除加载动画（如果存在）",
+    "max_retries_increased": "增加重试次数",
+    "base_retry_delay": "基础延迟1秒",
+    "exponential_backoff": "使用指数退避策略",
+    "modified_query_method": "修改查询方式，不使用.single()方法",
+    "last_attempt_failed": "最后一次尝试失败，尝试从commands表获取错误信息",
+    "get_result_failed": "获取指令结果失败: {{error}}",
+    "command_execution_error": "指令 \"{{command}}\" 执行出错: {{error}}",
+    "get_command_result_failed": "获取指令 \"{{command}}\" 的结果失败: {{error}}",
+    "unknown_execution_error": "指令执行发生未知错误 (来自results表)",
+    "successfully_got_data": "成功获取数据",
+    "result_record_exists": "存在结果记录，取第一条",
+    "retry_wait_message": "结果可能还未就绪，{{delay}}ms后重试...",
+    "fallback_command_status_failed": "备用命令状态检查失败: {{error}}",
+    "unexpected_fetch_error": "获取命令 {{commandId}} 结果时发生意外错误 (尝试 {{attempt}}): {{error}}",
+    "retry_after_unexpected_error": "意外错误后将在 {{delay}}ms 内重试...",
+    "completed_processing": "完成命令 {{commandId}} 的处理",
+    "cleanup_old_channel_warning": "清理命令 {{commandId}} 的旧通道时警告: {{error}}"
+  },
+  "subscriptions": {
+    "successfully_subscribed": "成功订阅命令 {{commandId}} 更新 (尝试 {{attempt}})",
+    "subscription_error": "命令 {{commandId}} 订阅 {{status}}: {{error}}",
+    "immediate_fallback_completed": "命令 {{commandId}} 已完成，状态: {{status}}",
+    "immediate_fallback_error": "立即回退错误: {{error}}"
+  },
+  "connection": {
+    "supabase_test_failed": "Supabase连接测试失败: {{error}}",
+    "supabase_test_exception": "Supabase连接测试异常: {{error}}",
+    "rpc_function_test_failed": "RPC函数测试失败: {{error}}"
+  },
+  "ui": {
+    "page_load_deduplication": "🧹 页面加载时执行历史记录去重...",
+    "copy_failed": "复制失败: {{error}}",
+    "load_history_failed": "加载历史记录失败: {{error}}"
+  },
+  "errors": {
+    "supabase_init_error": "使用提供的凭据初始化Supabase客户端时出错: {{error}}",
+    "supabase_not_loaded": "在window对象上未找到Supabase URL/匿名密钥，或未加载Supabase SDK。Supabase客户端未初始化。",
+    "result_fetch_attempting": "尝试获取命令 {{commandId}} 的结果 (尝试 {{attempt}}/{{maxRetries}})",
+    "result_fetch_error": "获取命令 {{commandId}} 结果时出错 (尝试 {{attempt}}): {{error}}",
+    "result_fetch_retry": "{{delay}}ms后重试...",
+    "fallback_error_fetch_failed": "备用错误获取失败: {{error}}",
+    "result_fetch_success": "成功获取命令 {{commandId}} 的结果",
+    "no_result_found": "未找到命令 {{commandId}} 的结果 (尝试 {{attempt}})",
+    "result_not_ready_retry": "结果可能还未准备好，{{delay}}ms后重试..."
+  },
+  "notifications": {
+    "subscription_interrupted": "订阅连接中断，已启用备用查询机制确保结果不丢失 🔄",
+    "connection_error": "错误：无法连接到服务，请检查配置。",
+    "send_command_failed": "发送指令失败: {{error}}",
+    "command_sent_no_confirmation": "指令已发送，但未收到确认。",
+    "send_command_unexpected_error": "发送指令时发生意外错误: {{error}}",
+    "executing_action": "执行操作: {{action}}...",
+    "cleanup_duplicates": "🧹 已清理 {{count}} 条重复结果",
+    "query_channel_failed": "查询频道失败: {{error}}",
+    "channel_not_exist": "频道 \"{{channel}}\" 不存在或已被删除。",
+    "delete_channel_failed": "删除频道失败: {{error}}",
+    "channel_deleted_success": "频道 \"{{channel}}\" 已成功删除。",
+    "delete_channel_unexpected_error": "删除频道时发生意外错误: {{error}}",
+    "process_delete_command_failed": "处理删除频道命令失败: {{error}}",
+    "cleanup_timeout_commands": "已清理超时未响应的指令。",
+    "database_connection_error": "错误：无法连接到数据库",
+    "checking_missing_results": "🔍 正在检查可能丢失的命令结果...",
+    "check_missing_failed": "检查失败: {{error}}",
+    "no_missing_results": "✅ 没有发现需要恢复的命令结果",
+    "recovery_success": "✅ 成功恢复了 {{count}} 个命令结果，消息已按时间顺序重新排列",
+    "all_results_displayed": "✅ 所有命令结果都已正确显示",
+    "recovery_error": "恢复过程中出现错误: {{error}}",
+    "refreshing_page_state": "🔄 正在刷新页面状态...",
+    "page_refresh_complete": "✅ 页面状态刷新完成",
+    "refresh_failed": "刷新失败: {{error}}"
+  },
+  "messages": {
+    "command_execution_failed": "指令 \"{{command}}\" 执行出错: {{error}}",
+    "command_completed_no_result": "指令 \"{{command}}\" 已完成，但未在结果表中找到记录。可能是处理过程中出现错误。",
+    "command_completed_no_details": "指令 \"{{command}}\" 已完成，但无法获取结果详情。",
+    "command_fetch_unexpected_error": "获取指令 \"{{command}}\" 结果时发生意外错误: {{error}}",
+    "command_processing_timeout": "指令 \"{{command}}\" 处理超时，请稍后重试。",
+    "execution_failed_no_details": "指令执行失败，但未找到详细错误信息"
+  }
+}

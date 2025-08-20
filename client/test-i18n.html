@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client i18n Test - Cursor Remote Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .language-switcher {
+            margin-bottom: 20px;
+        }
+        .language-switcher button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .language-switcher button:hover {
+            background-color: #0056b3;
+        }
+        .language-switcher button.active {
+            background-color: #28a745;
+        }
+        .test-result {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        .status {
+            margin: 10px 0;
+        }
+        .status.success { color: #28a745; }
+        .status.error { color: #dc3545; }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 Client-side i18n System Test</h1>
+    
+    <div class="test-container">
+        <h2>Language Switching</h2>
+        <div class="language-switcher">
+            <button id="btn-en" onclick="switchToEnglish()">English</button>
+            <button id="btn-zh" onclick="switchToChinese()">中文</button>
+        </div>
+        
+        <div id="current-locale" class="status"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>Translation Tests</h2>
+        <div id="translation-tests"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>Console Output Test</h2>
+        <p>Check the browser console (F12) to see the translated console messages.</p>
+        <button onclick="testConsoleMessages()">Test Console Messages</button>
+    </div>
+
+    <!-- i18n System -->
+    <script src="i18n.js"></script>
+    <script src="i18n-init.js"></script>
+    
+    <script>
+        // Wait for i18n system to be ready
+        setTimeout(async () => {
+            await testI18nSystem();
+            updateLanguageButtons();
+        }, 1000);
+
+        function updateLanguageButtons() {
+            const currentLocale = window.i18n.getLocale();
+            document.getElementById('btn-en').classList.toggle('active', currentLocale === 'en');
+            document.getElementById('btn-zh').classList.toggle('active', currentLocale === 'zh');
+            document.getElementById('current-locale').textContent = `Current locale: ${currentLocale}`;
+        }
+
+        function switchToEnglish() {
+            if (window.switchLanguage('en')) {
+                updateLanguageButtons();
+                testI18nSystem();
+            }
+        }
+
+        function switchToChinese() {
+            if (window.switchLanguage('zh')) {
+                updateLanguageButtons();
+                testI18nSystem();
+            }
+        }
+
+        async function testI18nSystem() {
+            const testsDiv = document.getElementById('translation-tests');
+            let html = '';
+
+            // Test basic translations
+            const tests = [
+                {
+                    key: 'app.title',
+                    description: 'App Title'
+                },
+                {
+                    key: 'connection.supabase_test_failed',
+                    params: { error: 'Test Error' },
+                    description: 'Connection Error (with parameter)'
+                },
+                {
+                    key: 'commands.result_exists_skip',
+                    params: { commandId: '12345' },
+                    description: 'Command Skip Message (with parameter)'
+                },
+                {
+                    key: 'ui.page_load_deduplication',
+                    description: 'UI Message'
+                }
+            ];
+
+            html += `<h3>Available Locales: ${window.i18n.getAvailableLocales().join(', ')}</h3>`;
+
+            tests.forEach(test => {
+                try {
+                    const translation = test.params ? 
+                        window.__(test.key, test.params) : 
+                        window.__(test.key);
+                    html += `
+                        <div class="test-result">
+                            <strong>${test.description}:</strong><br>
+                            Key: <code>${test.key}</code><br>
+                            Translation: "${translation}"
+                        </div>
+                    `;
+                } catch (error) {
+                    html += `
+                        <div class="test-result" style="border-left-color: #dc3545;">
+                            <strong>${test.description} (ERROR):</strong><br>
+                            Key: <code>${test.key}</code><br>
+                            Error: ${error.message}
+                        </div>
+                    `;
+                }
+            });
+
+            testsDiv.innerHTML = html;
+        }
+
+        function testConsoleMessages() {
+            console.log('=== Testing Console Messages ===');
+            console.log(__('ui.page_load_deduplication'));
+            console.error(__('connection.supabase_test_failed', { error: 'Test connection error' }));
+            console.error(__('ui.copy_failed', { error: 'Test copy error' }));
+            console.error(__('commands.command_execution_error', { 
+                command: 'test command', 
+                error: 'test error message' 
+            }));
+            console.log('=== End Console Test ===');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+{
+  "app": {
+    "title": "Cursor Remote Control - Client Application", 
+    "description": "This file contains client logic for communicating with Supabase database.",
+    "note_websocket": "Note: For production use, ensure proper WebSocket or API gateway communication,",
+    "note_browser_security": "as browsers cannot directly connect to Redis servers."
+  },
+  "utils": {
+    "generate_uuid_description": "Generate a simple UUID v4 string.",
+    "build_command_description": "Build command object for sending to Supabase 'commands' table.",
+    "command_text_param": "User input command text.",
+    "command_object_return": "Command object conforming to 'commands' table structure."
+  },
+  "commands": {
+    "anonymous_user_id": "Generate temporary UUID as user_id for anonymous users",
+    "process_completed_description": "Process completed commands, fetch and display results from results table.",
+    "command_id_param": "Command UUID from database commands table.",
+    "original_text_param": "User's original input command text for context display.",
+    "loading_element_param": "Reference to loading message element for removal after completion.",
+    "check_existing_result": "First check if result already exists for this command",
+    "result_exists_skip": "⏭️ Result for command {{commandId}} already exists, skipping processing",
+    "remove_loading_animation": "Remove loading animation (if exists)",
+    "max_retries_increased": "Increase retry count",
+    "base_retry_delay": "Base delay 1 second",
+    "exponential_backoff": "Use exponential backoff strategy",
+    "modified_query_method": "Modified query method, not using .single() method",
+    "last_attempt_failed": "Last attempt failed, try getting error info from commands table",
+    "get_result_failed": "Failed to get command result: {{error}}",
+    "command_execution_error": "Command \"{{command}}\" execution error: {{error}}",
+    "get_command_result_failed": "Failed to get result for command \"{{command}}\": {{error}}",
+    "unknown_execution_error": "Command execution encountered unknown error (from results table)",
+    "successfully_got_data": "Successfully retrieved data",
+    "result_record_exists": "Result record exists, taking first one",
+    "retry_wait_message": "Result may not be ready yet, retrying in {{delay}}ms...",
+    "fallback_command_status_failed": "Fallback command status check failed: {{error}}",
+    "unexpected_fetch_error": "Unexpected error fetching result for command {{commandId}} (attempt {{attempt}}): {{error}}",
+    "retry_after_unexpected_error": "Retrying after unexpected error in {{delay}}ms...",
+    "completed_processing": "Completed processing for command {{commandId}}",
+    "cleanup_old_channel_warning": "Warning cleaning up old channel for {{commandId}}: {{error}}"
+  },
+  "subscriptions": {
+    "successfully_subscribed": "Successfully subscribed to command {{commandId}} updates (attempt {{attempt}})",
+    "subscription_error": "Command {{commandId}} subscription {{status}}: {{error}}",
+    "immediate_fallback_completed": "Command {{commandId}} already completed, status: {{status}}",
+    "immediate_fallback_error": "Immediate Fallback Error: {{error}}"
+  },
+  "connection": {
+    "supabase_test_failed": "Supabase connection test failed: {{error}}",
+    "supabase_test_exception": "Supabase connection test exception: {{error}}",
+    "rpc_function_test_failed": "RPC function test failed: {{error}}"
+  },
+  "ui": {
+    "page_load_deduplication": "🧹 Performing history deduplication on page load...",
+    "copy_failed": "Copy failed: {{error}}",
+    "load_history_failed": "Failed to load history: {{error}}"
+  },
+  "errors": {
+    "supabase_init_error": "Error initializing Supabase client with provided credentials: {{error}}",
+    "supabase_not_loaded": "Supabase URL/Anon Key not found on window object, or Supabase SDK not loaded. Supabase client NOT initialized.",
+    "result_fetch_attempting": "Attempting to fetch result for command {{commandId}} (attempt {{attempt}}/{{maxRetries}})",
+    "result_fetch_error": "Error fetching result for command {{commandId}} (attempt {{attempt}}): {{error}}",
+    "result_fetch_retry": "Retrying in {{delay}}ms...",
+    "fallback_error_fetch_failed": "Fallback error fetch failed: {{error}}",
+    "result_fetch_success": "Successfully fetched result for command {{commandId}}",
+    "no_result_found": "No result found for command {{commandId}} (attempt {{attempt}})",
+    "result_not_ready_retry": "Result might not be ready yet, retrying in {{delay}}ms..."
+  },
+  "notifications": {
+    "subscription_interrupted": "Subscription connection interrupted, backup query mechanism activated to ensure no results are lost 🔄",
+    "connection_error": "Error: Unable to connect to service, please check configuration.",
+    "send_command_failed": "Failed to send command: {{error}}",
+    "command_sent_no_confirmation": "Command sent but no confirmation received.",
+    "send_command_unexpected_error": "Unexpected error occurred while sending command: {{error}}",
+    "executing_action": "Executing action: {{action}}...",
+    "cleanup_duplicates": "🧹 Cleaned up {{count}} duplicate results",
+    "query_channel_failed": "Channel query failed: {{error}}",
+    "channel_not_exist": "Channel \"{{channel}}\" does not exist or has been deleted.",
+    "delete_channel_failed": "Failed to delete channel: {{error}}",
+    "channel_deleted_success": "Channel \"{{channel}}\" successfully deleted.",
+    "delete_channel_unexpected_error": "Unexpected error occurred while deleting channel: {{error}}",
+    "process_delete_command_failed": "Failed to process delete channel command: {{error}}",
+    "cleanup_timeout_commands": "Cleaned up commands that timed out without response.",
+    "database_connection_error": "Error: Unable to connect to database",
+    "checking_missing_results": "🔍 Checking for potentially missing command results...",
+    "check_missing_failed": "Check failed: {{error}}",
+    "no_missing_results": "✅ No command results need to be recovered",
+    "recovery_success": "✅ Successfully recovered {{count}} command results, messages have been reordered chronologically",
+    "all_results_displayed": "✅ All command results are correctly displayed",
+    "recovery_error": "Error occurred during recovery process: {{error}}",
+    "refreshing_page_state": "🔄 Refreshing page state...",
+    "page_refresh_complete": "✅ Page state refresh complete",
+    "refresh_failed": "Refresh failed: {{error}}"
+  },
+  "messages": {
+    "command_execution_failed": "Command \"{{command}}\" execution error: {{error}}",
+    "command_completed_no_result": "Command \"{{command}}\" completed but no record found in results table. An error may have occurred during processing.",
+    "command_completed_no_details": "Command \"{{command}}\" completed but unable to get result details.",
+    "command_fetch_unexpected_error": "Unexpected error occurred while fetching result for command \"{{command}}\": {{error}}",
+    "command_processing_timeout": "Command \"{{command}}\" processing timed out, please try again later.",
+    "execution_failed_no_details": "Command execution failed, but no detailed error information found"
+  }
+}

@@ -1,9 +1,9 @@
 /**
- * Cursor远程控制 - 客户端应用
+ * Cursor Remote Control - Client Application
  * 
- * 这个文件包含与Redis服务器通信的客户端逻辑。
- * 注意：实际应用中需要使用WebSocket或HTTP API代理与Redis通信，
- * 因为浏览器不能直接连接Redis服务器。
+ * This file contains client logic for communicating with Supabase database.
+ * Note: For production use, ensure proper WebSocket or API gateway communication,
+ * as browsers cannot directly connect to Redis servers.
  */
 
 let supabaseClient;
@@ -27,7 +27,7 @@ if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
 const activeSubscriptions = new Map(); // To keep track of active subscriptions
 
 /**
- * 生成一个简单的 UUID v4 字符串。
+ * Generate a simple UUID v4 string.
  * @returns {string} UUID v4.
  */
 function generateUUIDv4() {
@@ -43,12 +43,12 @@ function generateUUIDv4() {
 }
 
 /**
- * 构建用于发送到 Supabase 'commands' 表的指令对象。
- * @param {string} commandText - 用户输入的指令文本。
- * @returns {object} - 符合 'commands' 表结构的指令对象。
+ * Build command object for sending to Supabase 'commands' table.
+ * @param {string} commandText - User input command text.
+ * @returns {object} - Command object conforming to 'commands' table structure.
  */
 function buildSupabaseCommandPayload(commandText) {
-    // 为匿名用户生成一个临时的 UUID 作为 user_id
+    // Generate temporary UUID as user_id for anonymous users
     const userId = generateUUIDv4(); 
     return {
         user_id: userId,
@@ -58,29 +58,29 @@ function buildSupabaseCommandPayload(commandText) {
 }
 
 /**
- * 处理已完成的指令，从 results 表获取并显示结果。
- * @param {string} commandDbId - 数据库中 commands 表指令的UUID。
- * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
- * @param {HTMLElement} [loadingMessage] - 加载消息元素的引用，用于完成后移除。
+ * Process completed commands, fetch and display results from results table.
+ * @param {string} commandDbId - Command UUID from database commands table.
+ * @param {string} originalCommandText - User's original input command text for context display.
+ * @param {HTMLElement} [loadingMessage] - Reference to loading message element for removal after completion.
  */
 async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
-    // 首先检查是否已经有这个命令的结果
+    // First check if result already exists for this command
     const existingResult = appState.messageHistory.find(msg => 
         (msg.type === 'cursor' || msg.type === 'error') && 
         msg.commandId === commandDbId
     );
     
     if (existingResult) {
-        console.log(`⏭️ 命令 ${commandDbId} 的结果已存在，跳过处理`);
-        // 移除加载动画（如果存在）
+        console.log(__('commands.result_exists_skip', { commandId: commandDbId }));
+        // Remove loading animation (if exists)
         if (loadingMessage?.classList.contains('loading-message')) {
             loadingMessage.remove();
         }
         return;
     }
     
-    const maxRetries = 5; // 增加重试次数
-    const baseRetryDelay = 1000; // 基础延迟1秒
+    const maxRetries = 5; // Increased retry count
+    const baseRetryDelay = 1000; // Base delay 1 second
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -104,7 +104,7 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     continue;
                 }
                 
-                // 最后一次尝试失败，尝试从commands表获取错误信息
+                // Last attempt failed, try getting error info from commands table
                 try {
                     const { data: commandData, error: cmdError } = await supabaseClient
                         .from('commands')
@@ -113,17 +113,17 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                         .single();
                     
                     if (!cmdError && commandData) {
-                        const errorMsg = commandData.last_error || `获取指令结果失败: ${resultsError.message}`;
+                        const errorMsg = commandData.last_error || __('commands.get_result_failed', { error: resultsError.message });
                         addMessageToHistory({
                             type: 'error',
-                            content: `指令 "${originalCommandText}" 执行出错: ${errorMsg}`,
+                            content: __('commands.command_execution_error', { command: originalCommandText, error: errorMsg }),
                             timestamp: Date.now(),
                             commandId: commandDbId
                         });
                     } else {
                         addMessageToHistory({
                             type: 'error',
-                            content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
+                            content: __('commands.get_command_result_failed', { command: originalCommandText, error: resultsError.message }),
                             timestamp: Date.now(),
                             commandId: commandDbId
                         });
@@ -132,7 +132,7 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     console.error(`[Result Fetch] Fallback error fetch failed:`, fallbackError);
                     addMessageToHistory({
                         type: 'error',
-                        content: `获取指令 "${originalCommandText}" 的结果失败: ${resultsError.message}`,
+                        content: __('commands.get_command_result_failed', { command: originalCommandText, error: resultsError.message }),
                         timestamp: Date.now(),
                         commandId: commandDbId
                     });
@@ -140,16 +140,16 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                 break;
             }
 
-            // 成功获取数据
+            // Successfully retrieved data
             if (resultsData && resultsData.length > 0) {
-                // 存在结果记录，取第一条
+                // Result record exists, taking first one
                 const resultRecord = resultsData[0];
                 console.log(`[Result Fetch] Successfully fetched result for command ${commandDbId}`);
                 
                 if (resultRecord.is_error) {
                     addMessageToHistory({
                         type: 'error',
-                        content: resultRecord.error_message || '指令执行发生未知错误 (来自results表)',
+                        content: resultRecord.error_message || __('commands.unknown_execution_error'),
                         timestamp: Date.now(),
                         commandId: commandDbId
                     });
@@ -161,9 +161,9 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                         commandId: commandDbId
                     });
                 }
-                break; // 成功处理，退出重试循环
+                break; // Successfully processed, exit retry loop
             } else {
-                // 结果表中没有找到记录
+                // No record found in results table
                 console.warn(`[Result Fetch] No result found for command ${commandDbId} (attempt ${attempt})`);
                 
                 if (attempt < maxRetries) {
@@ -172,7 +172,7 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     continue;
                 }
                 
-                // 最后一次尝试仍然没有找到结果，检查命令状态
+                // Last attempt still found no result, check command status
                 try {
                     const { data: commandData, error: cmdError } = await supabaseClient
                         .from('commands')
@@ -365,7 +365,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
                         // 如果命令还未完成，启动fallback查询
                         if (!fallbackInterval && !isCompleted) {
                             console.log(`[Fallback] Starting periodic status check for command ${commandDbId}`);
-                            addNotificationToChat(`订阅连接中断，已启用备用查询机制确保结果不丢失 🔄`);
+                            addNotificationToChat(__('notifications.subscription_interrupted'));
                             
                             fallbackInterval = setInterval(async () => {
                                 if (isCompleted) {
@@ -489,7 +489,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
 async function sendSupabaseCommand(commandPayload) {
     if (!supabaseClient) {
         console.error('Supabase client is not initialized. Cannot send command.');
-        addNotificationToChat('错误：无法连接到服务，请检查配置。');
+        addNotificationToChat(__('notifications.connection_error'));
         return;
     }
 
@@ -510,8 +510,8 @@ async function sendSupabaseCommand(commandPayload) {
 
         if (error) {
             console.error('Error sending command to Supabase:', error);
-            addNotificationToChat(`发送指令失败: ${error.message}`);
-            // 移除加载动画
+            addNotificationToChat(__('notifications.send_command_failed', { error: error.message }));
+            // Remove loading animation
             if (loadingMessage?.classList.contains('loading-message')) {
                 elements.chatContainer.removeChild(loadingMessage);
             }
@@ -531,16 +531,16 @@ async function sendSupabaseCommand(commandPayload) {
             localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
 
         } else {
-            addNotificationToChat('指令已发送，但未收到确认。');
-            // 移除加载动画
+            addNotificationToChat(__('notifications.command_sent_no_confirmation'));
+            // Remove loading animation
             if (loadingMessage?.classList.contains('loading-message')) {
                 elements.chatContainer.removeChild(loadingMessage);
             }
         }
     } catch (err) {
         console.error('Unexpected error sending command:', err);
-        addNotificationToChat(`发送指令时发生意外错误: ${err.message}`);
-        // 移除可能存在的加载动画
+        addNotificationToChat(__('notifications.send_command_unexpected_error', { error: err.message }));
+        // Remove any existing loading animations
         const loadingMessages = document.querySelectorAll('.loading-message');
         for (const el of loadingMessages) {
             el.remove();
@@ -593,7 +593,7 @@ async function testSupabaseConnection() {
             .select('count', { count: 'exact', head: true });
             
         if (healthError) {
-            console.error('Supabase连接测试失败:', healthError);
+            console.error(__('connection.supabase_test_failed', { error: healthError }));
             updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
             showSupabaseConnectionError(healthError);
             return false;
@@ -603,7 +603,7 @@ async function testSupabaseConnection() {
         return true;
         
     } catch (error) {
-        console.error('Supabase连接测试异常:', error);
+        console.error(__('connection.supabase_test_exception', { error }));
         updateConnectionStatus(false, `连接异常: ${error.message}`);
         showSupabaseSetupGuide();
         return false;
@@ -621,7 +621,7 @@ async function testSupabaseConnectionFull() {
             .select('count', { count: 'exact', head: true });
             
         if (healthError) {
-            console.error('Supabase连接测试失败:', healthError);
+            console.error(__('connection.supabase_test_failed', { error: healthError }));
             updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
             showSupabaseConnectionError(healthError);
             return false;
@@ -635,7 +635,7 @@ async function testSupabaseConnectionFull() {
             });
             
         if (rpcError) {
-            console.error('RPC函数测试失败:', rpcError);
+            console.error(__('connection.rpc_function_test_failed', { error: rpcError }));
             updateConnectionStatus(false, `RPC函数错误: ${rpcError.message}`);
             showSupabaseRpcError(rpcError);
             return false;
@@ -645,7 +645,7 @@ async function testSupabaseConnectionFull() {
         return true;
         
     } catch (error) {
-        console.error('Supabase连接测试异常:', error);
+        console.error(__('connection.supabase_test_exception', { error }));
         updateConnectionStatus(false, `连接异常: ${error.message}`);
         showSupabaseSetupGuide();
         return false;
@@ -779,7 +779,7 @@ function initApp() {
     loadThemePreference();
     
     // 页面加载时先进行本地历史记录去重（不显示通知）
-    console.log('🧹 页面加载时执行历史记录去重...');
+    console.log(__('ui.page_load_deduplication'));
     deduplicateMessageHistory(false);
     
     // 显示历史消息
@@ -975,7 +975,7 @@ function copyToClipboard(text) {
         // 显示复制成功提示
         showToast('复制成功');
     }).catch(err => {
-        console.error('复制失败:', err);
+        console.error(__('ui.copy_failed', { error: err }));
     });
 }
 
@@ -1208,7 +1208,7 @@ function performAction(action) {
     };
     
     // 显示正在执行
-    addNotificationToChat(`执行操作: ${getActionName(action)}...`);
+    addNotificationToChat(__('notifications.executing_action', { action: getActionName(action) }));
     
     // 发送命令到服务器
     sendCommand(command);
@@ -1370,7 +1370,7 @@ function renderMessageHistory() {
             // 滚动到底部（使用即时滚动）
             scrollChatToBottom(true);
         } catch (error) {
-            console.error('加载历史记录失败:', error);
+            console.error(__('ui.load_history_failed', { error }));
         }
     }
 }
@@ -1451,7 +1451,7 @@ function deduplicateMessageHistory(showNotification = true) {
         
         // 只有在需要显示通知时才显示
         if (showNotification) {
-            addNotificationToChat(`🧹 已清理 ${removedCount} 条重复结果`);
+            addNotificationToChat(__('notifications.cleanup_duplicates', { count: removedCount }));
         }
         
         // 重新渲染消息历史
@@ -1679,13 +1679,13 @@ async function handleChannelDelete(channelName) {
             
         if (queryError) {
             console.error(`Error querying channel "${channelName}":`, queryError);
-            addNotificationToChat(`查询频道失败: ${queryError.message}`);
+            addNotificationToChat(__('notifications.query_channel_failed', { error: queryError.message }));
             return false;
         }
         
         // 如果没有找到频道
         if (!existingChannels || existingChannels.length === 0) {
-            addNotificationToChat(`频道 "${channelName}" 不存在或已被删除。`);
+            addNotificationToChat(__('notifications.channel_not_exist', { channel: channelName }));
             return true; // 返回成功，因为频道已经不存在了
         }
         
@@ -1697,15 +1697,15 @@ async function handleChannelDelete(channelName) {
             
         if (deleteError) {
             console.error(`Error deleting channel "${channelName}":`, deleteError);
-            addNotificationToChat(`删除频道失败: ${deleteError.message}`);
+            addNotificationToChat(__('notifications.delete_channel_failed', { error: deleteError.message }));
             return false;
         }
         
-        addNotificationToChat(`频道 "${channelName}" 已成功删除。`);
+        addNotificationToChat(__('notifications.channel_deleted_success', { channel: channelName }));
         return true;
     } catch (err) {
         console.error("Unexpected error during channel deletion:", err);
-        addNotificationToChat(`删除频道时发生意外错误: ${err.message}`);
+        addNotificationToChat(__('notifications.delete_channel_unexpected_error', { error: err.message }));
         return false;
     }
 }
@@ -1727,7 +1727,7 @@ async function handleSpecialCommands(commandText) {
             }
         } catch (err) {
             console.error('Error parsing delete channel command:', err);
-            addNotificationToChat(`处理删除频道命令失败: ${err.message}`);
+            addNotificationToChat(__('notifications.process_delete_command_failed', { error: err.message }));
         }
     }
     
@@ -1861,7 +1861,7 @@ function cleanupTimeoutPendingCommands() {
             for (const el of loadingMessages) {
                 el.remove();
             }
-            addNotificationToChat('已清理超时未响应的指令。');
+            addNotificationToChat(__('notifications.cleanup_timeout_commands'));
         }
     }
 }
