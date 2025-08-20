@@ -59,7 +59,7 @@ rl.question(i18n.__('startup.input_prompt'), (answer) => {
   });
   
   child.on('error', (error) => {
-    console.error('❌ 启动失败:', error.message);
+    console.error(i18n.__('startup.startup_failed', { error: error.message }));
     process.exit(1);
   });
   

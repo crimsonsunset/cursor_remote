@@ -43,7 +43,8 @@
     "mode_monitoring": "Monitoring Mode", 
     "mode_basic": "Basic Mode",
     "invalid_choice_default": "❌ Invalid choice, using default Stable Mode",
-    "launching": "🚀 Launching {{description}} ({{script}})..."
+    "launching": "🚀 Launching {{description}} ({{script}})...",
+    "startup_failed": "❌ Startup failed: {{error}}"
   },
   "errors_recovery": {
     "applescript_timeout": "Recommend checking if Cursor is responding, or try restarting Cursor",
@@ -68,7 +69,36 @@
     "restart_cooldown": "⏳ In restart cooldown, skipping restart",
     "executing_restart": "🔄 Executing restart {{count}}/{{max}} ({{type}})...",
     "restart_success": "✅ {{type}} restart successful",
-    "exited_code": "📋 Service exited with code: {{code}}"
+    "exited_code": "📋 Service exited with code: {{code}}",
+    "startup_timeout": "❌ Service startup timeout",
+    "port_already_in_use": "❌ Port already in use, service startup failed",
+    "abnormal_exit": "❌ Service exited abnormally (code: {{code}}, signal: {{signal}})",
+    "exit_code_1": "   Exit code 1: Usually indicates uncaught exception",
+    "exit_code_137": "   Exit code 137: Process terminated by SIGKILL (possibly out of memory)",
+    "exit_code_143": "   Exit code 143: Process terminated by SIGTERM",
+    "startup_failed": "❌ Service startup failed: {{error}}",
+    "permission_error": "   Permission error: Please check file permissions",
+    "file_not_found": "   File not found: Please check if Node.js is correctly installed",
+    "sigterm_failed": "⚠️ Failed to send SIGTERM: {{error}}",
+    "force_kill_failed": "❌ Force kill failed: {{error}}",
+    "graceful_shutdown_timeout": "⚠️ Service did not shut down gracefully within 10 seconds, sending SIGKILL...",
+    "sigkill_failed": "❌ Failed to send SIGKILL: {{error}}",
+    "force_kill_timeout": "❌ Service force kill timeout, cleaning up state",
+    "max_restarts_reached": "⚠️ Maximum restart count reached ({{max}}), entering extended check mode",
+    "max_emergency_restarts_reached": "❌ Maximum emergency restart count reached ({{max}}), waiting for auto reset",
+    "restart_failed": "❌ {{type}} restart failed: {{error}}",
+    "health_check_failed": "❌ Service health check failed ({{failures}}/{{threshold}}): {{reason}}",
+    "restart_disabled_warning": "⚠️ Detected conditions requiring restart, but auto restart is disabled",
+    "restart_disabled_tip": "💡 Please manually restart service or set ENABLE_AUTO_RESTART=true to enable auto restart",
+    "extended_mode_consecutive_failures": "🚨 Extended mode consecutive failures {{failures}} times, executing emergency restart...",
+    "critical_issue_restart": "🚨 Critical issue detected, restarting service immediately...",
+    "failure_threshold_restart": "⚠️ Consecutive failure count reached threshold, preparing to restart service...",
+    "restart_failed_extended_mode": "❌ Restart failed, continuing in extended check mode",
+    "auto_restart_failed": "❌ Auto restart failed, please manually check service status",
+    "initial_startup_failed": "❌ Initial service startup failed: {{error}}",
+    "monitoring_loop_error": "❌ Monitoring loop error: {{error}}",
+    "initial_check_error": "❌ Initial monitoring check error: {{error}}",
+    "monitor_startup_error": "❌ Monitor startup failed: {{error}}"
   },
   "monitoring": {
     "header": "🔄 CursorRemote Auto-Restart Monitor",
@@ -114,7 +144,11 @@
     "monitor_stopped": "✅ Monitoring stopped",
     "starting_monitor": "🚀 Starting Supabase connection monitoring...",
     "url_display": "📡 URL: {{url}}",
-    "service_key_display": "🔑 Using service key: {{key}}..."
+    "service_key_display": "🔑 Using service key: {{key}}...",
+    "cleanup_connection_error": "Error cleaning up connections: {{message}}",
+    "env_not_configured": "❌ Environment variables not configured",
+    "env_config_instructions": "Please ensure .env file contains SUPABASE_URL and SUPABASE_SERVICE_KEY",
+    "monitor_startup_failed": "❌ Monitor startup failed: {{error}}"
   },
   "control": {
     "stopping_monitor": "🛑 Stopping monitor...",

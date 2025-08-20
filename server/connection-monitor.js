@@ -205,7 +205,7 @@ const gracefulExit = () => {
     try {
       currentClient.removeAllChannels();
     } catch (error) {
-      console.warn('清理连接时出错:', error.message);
+      console.warn(i18n.__('connection.cleanup_connection_error', { message: error.message }));
     }
   }
   
@@ -216,8 +216,8 @@ const gracefulExit = () => {
 // 主监控循环
 const startMonitoring = async () => {
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ 环境变量未配置');
-    console.error('请确保 .env 文件中包含 SUPABASE_URL 和 SUPABASE_SERVICE_KEY');
+    console.error(i18n.__('connection.env_not_configured'));
+    console.error(i18n.__('connection.env_config_instructions'));
     process.exit(1);
   }
   
@@ -248,6 +248,6 @@ process.on('SIGTERM', gracefulExit);
 
 // 启动监控
 startMonitoring().catch(error => {
-  console.error('❌ 监控启动失败:', error);
+  console.error(i18n.__('connection.monitor_startup_failed', { error }));
   process.exit(1);
 }); 

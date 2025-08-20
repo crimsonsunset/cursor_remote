@@ -387,7 +387,7 @@ const startService = () => {
     });
     
     const startupTimeout = setTimeout(() => {
-      console.error('❌ Service startup timeout');
+      console.error(i18n.__('service.startup_timeout'));
       serviceProcess.kill('SIGKILL'); // 使用SIGKILL确保进程被终止
       reject(new Error('Service startup timeout'));
     }, 45000); // 增加到45秒启动超时
@@ -436,7 +436,7 @@ const startService = () => {
       if (output.includes('EADDRINUSE') || 
           output.includes('port already in use') ||
           output.includes('listen EADDRINUSE')) {
-        console.error('❌ Port already in use, service startup failed');
+        console.error(i18n.__('service.port_already_in_use'));
         clearTimeout(startupTimeout);
         serviceProcess.kill();
         reject(new Error('Port already in use'));
@@ -451,30 +451,30 @@ const startService = () => {
       if (code === 0) {
         console.log(i18n.__('service.normal_exit'));
       } else {
-        console.error(`❌ Service exited abnormally (code: ${code}, signal: ${signal})`);
+        console.error(i18n.__('service.abnormal_exit', { code, signal }));
         state.consecutiveFailures++;
         
         // 记录异常退出的详细信息
         if (code === 1) {
-          console.error('   退出代码1: 通常表示未捕获的异常');
+          console.error(i18n.__('service.exit_code_1'));
         } else if (code === 137) {
-          console.error('   退出代码137: 进程被SIGKILL终止（可能是内存不足）');
+          console.error(i18n.__('service.exit_code_137'));
         } else if (code === 143) {
-          console.error('   退出代码143: 进程被SIGTERM终止');
+          console.error(i18n.__('service.exit_code_143'));
         }
       }
     });
     
     serviceProcess.on('error', (error) => {
       clearTimeout(startupTimeout);
-      console.error('❌ 服务启动失败:', error.message);
+      console.error(i18n.__('service.startup_failed', { error: error.message }));
       state.consecutiveFailures++;
       
       // 检查是否是权限问题
       if (error.code === 'EACCES') {
-        console.error('   权限错误: 请检查文件权限');
+        console.error(i18n.__('service.permission_error'));
       } else if (error.code === 'ENOENT') {
-        console.error('   文件不存在: 请检查Node.js是否正确安装');
+        console.error(i18n.__('service.file_not_found'));
       }
       
       reject(error);
@@ -530,13 +530,13 @@ const stopService = () => {
       state.serviceProcess.kill('SIGTERM');
       console.log(i18n.__('service.sigterm_sent'));
     } catch (error) {
-      console.warn('⚠️ 发送SIGTERM失败:', error.message);
+      console.warn(i18n.__('service.sigterm_failed', { error: error.message }));
       // 如果SIGTERM失败，直接尝试SIGKILL
       try {
         state.serviceProcess.kill('SIGKILL');
         console.log(i18n.__('service.sigkill_sent'));
       } catch (killError) {
-        console.error('❌ 强制终止失败:', killError.message);
+        console.error(i18n.__('service.force_kill_failed', { error: killError.message }));
         // 即使失败也要清理状态
         processExited = true;
         state.isServiceRunning = false;
@@ -549,11 +549,11 @@ const stopService = () => {
     // 等待服务优雅关闭
     const gracefulTimeout = setTimeout(() => {
       if (!processExited) {
-        console.warn('⚠️ 服务未在10秒内优雅关闭，发送SIGKILL信号...');
+        console.warn(i18n.__('service.graceful_shutdown_timeout'));
         try {
           state.serviceProcess.kill('SIGKILL');
         } catch (error) {
-          console.error('❌ 发送SIGKILL失败:', error.message);
+          console.error(i18n.__('service.sigkill_failed', { error: error.message }));
         }
       }
     }, 10000); // 10秒优雅关闭时间
@@ -561,7 +561,7 @@ const stopService = () => {
     // 最终超时保护
     const forceTimeout = setTimeout(() => {
       if (!processExited) {
-        console.error('❌ 服务强制终止超时，清理状态');
+        console.error(i18n.__('service.force_kill_timeout'));
         processExited = true;
         clearTimeout(gracefulTimeout);
         state.isServiceRunning = false;
@@ -584,14 +584,14 @@ const restartService = async (isEmergencyRestart = false) => {
   
   // 检查重启次数限制
   if (!isEmergencyRestart && state.restartCount >= config.maxRestarts) {
-    console.warn(`⚠️ 已达到最大重启次数 (${config.maxRestarts})，进入延长检查模式`);
+    console.warn(i18n.__('service.max_restarts_reached', { max: config.maxRestarts }));
     state.isInExtendedMode = true;
     return false;
   }
   
   // 检查紧急重启次数限制
   if (isEmergencyRestart && state.emergencyRestartCount >= config.maxEmergencyRestarts) {
-    console.error(`❌ 已达到最大紧急重启次数 (${config.maxEmergencyRestarts})，等待自动重置`);
+    console.error(i18n.__('service.max_emergency_restarts_reached', { max: config.maxEmergencyRestarts }));
     return false;
   }
   
@@ -626,7 +626,7 @@ const restartService = async (isEmergencyRestart = false) => {
     return true;
     
   } catch (error) {
-    console.error(`❌ ${isEmergencyRestart ? '紧急' : '常规'}重启失败:`, error.message);
+    console.error(i18n.__('service.restart_failed', { type: isEmergencyRestart ? 'Emergency' : 'Normal', error: error.message }));
     return false;
   }
 };
@@ -783,7 +783,7 @@ const monitorLoop = async () => {
   } else {
     state.consecutiveFailures++;
     state.totalFailuresSinceLastSuccess++;
-    console.error(`❌ 服务健康检查失败 (${state.consecutiveFailures}/${config.failureThreshold}): ${healthResult.reason}`);
+    console.error(i18n.__('service.health_check_failed', { failures: state.consecutiveFailures, threshold: config.failureThreshold, reason: healthResult.reason }));
     
     // 检查是否应该立即重启（基于错误类型）
     const shouldImmediateRestart = healthResult.details?.shouldRestart && (
@@ -800,29 +800,29 @@ const monitorLoop = async () => {
     // 达到失败阈值或需要立即重启时重启服务
     if (state.consecutiveFailures >= config.failureThreshold || shouldImmediateRestart || needEmergencyRestart) {
       if (!config.enableAutoRestart) {
-        console.warn('⚠️ 检测到需要重启的条件，但自动重启已禁用');
-        console.warn('💡 请手动重启服务或设置 ENABLE_AUTO_RESTART=true 启用自动重启');
+        console.warn(i18n.__('service.restart_disabled_warning'));
+        console.warn(i18n.__('service.restart_disabled_tip'));
         return;
       }
       
       let restartSuccess = false;
       
       if (needEmergencyRestart) {
-        console.warn(`🚨 延长模式下连续失败 ${state.totalFailuresSinceLastSuccess} 次，执行紧急重启...`);
+        console.warn(i18n.__('service.extended_mode_consecutive_failures', { failures: state.totalFailuresSinceLastSuccess }));
         restartSuccess = await restartService(true); // 紧急重启
       } else if (shouldImmediateRestart) {
-        console.warn('🚨 检测到严重问题，立即重启服务...');
+        console.warn(i18n.__('service.critical_issue_restart'));
         restartSuccess = await restartService(false); // 常规重启
       } else {
-        console.warn('⚠️ 连续失败次数达到阈值，准备重启服务...');
+        console.warn(i18n.__('service.failure_threshold_restart'));
         restartSuccess = await restartService(false); // 常规重启
       }
       
       if (!restartSuccess) {
         if (state.isInExtendedMode) {
-          console.error('❌ 重启失败，继续延长检查模式');
+          console.error(i18n.__('service.restart_failed_extended_mode'));
         } else {
-          console.error('❌ 自动重启失败，请手动检查服务状态');
+          console.error(i18n.__('service.auto_restart_failed'));
         }
       }
     }
@@ -854,8 +854,8 @@ const gracefulExit = async () => {
 // 主函数
 const main = async () => {
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ 环境变量未配置');
-    console.error('请确保 .env 文件中包含 SUPABASE_URL 和 SUPABASE_SERVICE_KEY');
+    console.error(i18n.__('connection.env_not_configured'));
+    console.error(i18n.__('connection.env_config_instructions'));
     process.exit(1);
   }
   
@@ -893,7 +893,7 @@ const main = async () => {
     await startService();
     state.lastForceResetTime = new Date(); // 初始化强制重置时间
   } catch (error) {
-    console.error('❌ 初始服务启动失败:', error.message);
+    console.error(i18n.__('service.initial_startup_failed', { error: error.message }));
     process.exit(1);
   }
   
@@ -906,7 +906,7 @@ const main = async () => {
         const nextInterval = await monitorLoop();
         currentInterval = nextInterval || currentInterval;
       } catch (error) {
-        console.error('❌ 监控循环出错:', error.message);
+        console.error(i18n.__('service.monitoring_loop_error', { error: error.message }));
         currentInterval = config.checkInterval; // 出错时回到默认间隔
       }
       scheduleNextCheck(); // 递归调度下次检查
@@ -919,7 +919,7 @@ const main = async () => {
       const nextInterval = await monitorLoop();
       currentInterval = nextInterval || currentInterval;
     } catch (error) {
-      console.error('❌ 首次监控检查出错:', error.message);
+      console.error(i18n.__('service.initial_check_error', { error: error.message }));
     }
     scheduleNextCheck();
   }, 5000); // 5秒后开始第一次检查
@@ -927,6 +927,6 @@ const main = async () => {
 
 // 启动监控器
 main().catch(error => {
-  console.error('❌ 监控器启动失败:', error);
+  console.error(i18n.__('service.monitor_startup_error', { error }));
   process.exit(1);
 }); 
