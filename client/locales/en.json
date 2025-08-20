@@ -98,5 +98,90 @@
     "command_fetch_unexpected_error": "Unexpected error occurred while fetching result for command \"{{command}}\": {{error}}",
     "command_processing_timeout": "Command \"{{command}}\" processing timed out, please try again later.",
     "execution_failed_no_details": "Command execution failed, but no detailed error information found"
+  },
+  "systemMonitor": {
+    "title": "System Status Monitor",
+    "system_uptime": "System Uptime",
+    "command_processing_count": "Command Processing Count", 
+    "success_rate": "Success Rate",
+    "average_response_time": "Average Response Time",
+    "service_health_status": "Service Health Status",
+    "recent_activity": "Recent Activity",
+    "loading": "Loading...",
+    "checking": "Checking...",
+    "no_activity_records": "No activity records",
+    "hours": "hours",
+    "minutes": "minutes", 
+    "seconds": "seconds",
+    "supabase_connection": "Supabase Connection",
+    "network_connection": "Network Connection",
+    "local_storage": "Local Storage",
+    "update_every_30_seconds": "Update system status every 30 seconds",
+    "health_check_every_5_minutes": "Check system health every 5 minutes",
+    "get_command_statistics": "Get command statistics",
+    "update_runtime": "Update runtime",
+    "broadcast_update_event": "Broadcast update event",
+    "check_supabase_connection": "Check Supabase connection",
+    "check_network_connection": "Check network connection",
+    "check_local_storage": "Check local storage",
+    "update_ui_status_indicators": "Update UI status indicators",
+    "send_custom_event_notify_ui": "Send custom event to notify UI updates",
+    "generate_status_report": "Generate status report",
+    "create_status_page_html": "Create status page HTML",
+    "instantiate_monitoring_service": "Instantiate monitoring service",
+    "expose_simplified_interface": "For ease of use, also expose a simplified interface",
+    "browser_always_normal": "Client always considers browser normal"
+  },
+  "enhancement": {
+    "client_enhancement_module": "Client Enhancement Module - Using Supabase", 
+    "initialize_data": "Initialize data",
+    "load_all_data": "Load all data",
+    "command_history_management": "Command History Management - Get from Supabase",
+    "process_database_json_format": "Process database returned JSON format",
+    "convert_data_format": "Convert data format to match client expectations",
+    "local_storage_fallback": "Local storage fallback",
+    "smart_command_suggestions": "Smart Command Suggestions",
+    "suggestions_based_on_history": "Suggestions based on history",
+    "history_commands": "History Commands",
+    "smart_completion_suggestions": "Smart completion suggestions",
+    "smart_suggestions": "Smart Suggestions",
+    "export_import_functionality": "Export/Import functionality",
+    "getter_methods_backward_compatibility": "Getter methods - for backward compatibility",
+    "add_to_history_method": "Add to history method",
+    "limit_history_count": "Limit history record count",
+    "save_to_local_storage": "Save to local storage", 
+    "clear_history": "Clear history",
+    "remove_specific_command": "Remove specific command from history",
+    "update_local_storage": "Update local storage",
+    "instantiate_global_service": "Instantiate global service - need to wait for supabaseClient to be ready",
+    "expose_functions_separately": "For backward compatibility and ease of use, also expose each function separately",
+    "expose_initialization_function": "Expose initialization function",
+    "suggestions": {
+      "create": {
+        "react_component": "Create a React component",
+        "database_table": "Create database table", 
+        "api_interface": "Create API interface"
+      },
+      "fix": {
+        "this_bug": "Fix this bug",
+        "code_error": "Fix code error",
+        "performance_issue": "Fix performance issue"
+      },
+      "optimize": {
+        "code_performance": "Optimize code performance",
+        "database_query": "Optimize database query",
+        "user_experience": "Optimize user experience"
+      },
+      "explain": {
+        "this_code": "Explain this code",
+        "algorithm_principle": "Explain algorithm principle", 
+        "design_pattern": "Explain design pattern"
+      },
+      "refactor": {
+        "this_function": "Refactor this function",
+        "code_structure": "Refactor code structure",
+        "data_model": "Refactor data model"
+      }
+    }
   }
 }

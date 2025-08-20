@@ -1,4 +1,4 @@
-// 系统监控和状态页面
+// System monitoring and status page
 class SystemMonitorService {
   constructor() {
     this.metrics = {
@@ -15,12 +15,12 @@ class SystemMonitorService {
   }
 
   startMonitoring() {
-    // 每30秒更新一次系统状态
+    // Update system status every 30 seconds
     setInterval(() => {
       this.updateSystemMetrics();
     }, 30000);
 
-    // 每5分钟检查系统健康状态
+    // Check system health every 5 minutes
     setInterval(() => {
       this.performHealthCheck();
     }, 5 * 60 * 1000);
@@ -28,7 +28,7 @@ class SystemMonitorService {
 
   async updateSystemMetrics() {
     try {
-      // 获取命令统计
+      // Get command statistics
       const stats = await this.fetchCommandStats();
       if (stats) {
         this.metrics.commandsProcessed = stats.total;
@@ -36,10 +36,10 @@ class SystemMonitorService {
         this.metrics.averageResponseTime = stats.avgDuration;
       }
 
-      // 更新运行时间
+      // Update runtime
       this.metrics.systemUptime = Date.now() - this.metrics.systemUptime;
 
-      // 广播更新事件
+      // Broadcast update event
       this.broadcastMetricsUpdate();
     } catch (error) {
       console.error('[SystemMonitor] Failed to update metrics:', error);

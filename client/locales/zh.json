@@ -98,5 +98,90 @@
     "command_fetch_unexpected_error": "获取指令 \"{{command}}\" 结果时发生意外错误: {{error}}",
     "command_processing_timeout": "指令 \"{{command}}\" 处理超时，请稍后重试。",
     "execution_failed_no_details": "指令执行失败，但未找到详细错误信息"
+  },
+  "systemMonitor": {
+    "title": "系统状态监控",
+    "system_uptime": "系统运行时间",
+    "command_processing_count": "命令处理数量", 
+    "success_rate": "成功率",
+    "average_response_time": "平均响应时间",
+    "service_health_status": "服务健康状态",
+    "recent_activity": "最近活动",
+    "loading": "加载中...",
+    "checking": "检查中...",
+    "no_activity_records": "暂无活动记录",
+    "hours": "小时",
+    "minutes": "分钟", 
+    "seconds": "秒",
+    "supabase_connection": "Supabase连接",
+    "network_connection": "网络连接",
+    "local_storage": "本地存储",
+    "update_every_30_seconds": "每30秒更新一次系统状态",
+    "health_check_every_5_minutes": "每5分钟检查系统健康状态",
+    "get_command_statistics": "获取命令统计",
+    "update_runtime": "更新运行时间",
+    "broadcast_update_event": "广播更新事件",
+    "check_supabase_connection": "检查 Supabase 连接",
+    "check_network_connection": "检查网络连接",
+    "check_local_storage": "检查本地存储",
+    "update_ui_status_indicators": "更新UI状态指示器",
+    "send_custom_event_notify_ui": "发送自定义事件通知UI更新",
+    "generate_status_report": "生成状态报告",
+    "create_status_page_html": "创建状态页面HTML",
+    "instantiate_monitoring_service": "实例化监控服务",
+    "expose_simplified_interface": "为了便于使用，也暴露一个简化的接口",
+    "browser_always_normal": "客户端始终认为浏览器正常"
+  },
+  "enhancement": {
+    "client_enhancement_module": "客户端功能增强模块 - 使用Supabase", 
+    "initialize_data": "初始化数据",
+    "load_all_data": "加载所有数据",
+    "command_history_management": "命令历史管理 - 从Supabase获取",
+    "process_database_json_format": "处理数据库返回的JSON格式",
+    "convert_data_format": "转换数据格式以匹配客户端期望的格式",
+    "local_storage_fallback": "本地存储fallback",
+    "smart_command_suggestions": "智能命令建议",
+    "suggestions_based_on_history": "基于历史记录的建议",
+    "history_commands": "历史命令",
+    "smart_completion_suggestions": "智能补全建议",
+    "smart_suggestions": "智能建议",
+    "export_import_functionality": "导出/导入功能",
+    "getter_methods_backward_compatibility": "Getter方法 - 为了向后兼容",
+    "add_to_history_method": "添加到历史记录的方法",
+    "limit_history_count": "限制历史记录数量",
+    "save_to_local_storage": "保存到本地存储", 
+    "clear_history": "清除历史记录",
+    "remove_specific_command": "从历史记录中移除特定命令",
+    "update_local_storage": "更新本地存储",
+    "instantiate_global_service": "实例化全局服务 - 需要等待supabaseClient准备好",
+    "expose_functions_separately": "为了向后兼容和便于使用，也将各个功能单独暴露",
+    "expose_initialization_function": "暴露初始化函数",
+    "suggestions": {
+      "create": {
+        "react_component": "创建一个React组件",
+        "database_table": "创建数据库表", 
+        "api_interface": "创建API接口"
+      },
+      "fix": {
+        "this_bug": "修复这个bug",
+        "code_error": "修复代码错误",
+        "performance_issue": "修复性能问题"
+      },
+      "optimize": {
+        "code_performance": "优化代码性能",
+        "database_query": "优化数据库查询",
+        "user_experience": "优化用户体验"
+      },
+      "explain": {
+        "this_code": "解释这段代码",
+        "algorithm_principle": "解释算法原理", 
+        "design_pattern": "解释设计模式"
+      },
+      "refactor": {
+        "this_function": "重构这个函数",
+        "code_structure": "重构代码结构",
+        "data_model": "重构数据模型"
+      }
+    }
   }
 }
