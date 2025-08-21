@@ -7,8 +7,9 @@ If the client encounters 404 errors when accessing, this usually means the Supab
 
 ### 1. Login to Supabase Console
 Visit [https://supabase.com/dashboard](https://supabase.com/dashboard) and login to your project:
-- Project ID: `rzsupavqzxhyrgcexrpx`
-- Project URL: `https://rzsupavqzxhyrgcexrpx.supabase.co`
+- Project ID: `nsiwmzgenkrmgllwqizd` (your actual project)
+- Project URL: `https://nsiwmzgenkrmgllwqizd.supabase.co`
+- **Note**: Replace with your actual project details if different
 
 ### 2. Create Data Tables ⚠️ **Must Execute First**
 1. Go to `Database` → `SQL Editor`
@@ -26,7 +27,9 @@ Visit [https://supabase.com/dashboard](https://supabase.com/dashboard) and login
 1. Create another new query in SQL Editor
 2. Copy the **complete content** from `database/functions.sql` and paste
 3. Click `Run` to execute SQL
-4. Confirm the following functions have been created:
+4. **If you encounter SQL errors**, see **Critical Function Fixes** section below
+5. Confirm the following functions have been created:
+   - `submit_command(p_command_text, p_user_id)` - **CRITICAL**
    - `get_command_analytics(timeframe_hours)`
    - `get_system_status()`
    - `get_queue_status()`
@@ -35,6 +38,91 @@ Visit [https://supabase.com/dashboard](https://supabase.com/dashboard) and login
    - `add_favorite_command(command_text, description)`
    - `get_command_templates_with_usage()`
    - `increment_template_usage(template_id)`
+
+### 3.1. Critical Function Fixes 🚨 **Use If Original SQL Has Errors**
+
+If the original `database/functions.sql` fails, manually create these corrected functions:
+
+#### Fixed submit_command Function:
+```sql
+CREATE OR REPLACE FUNCTION submit_command(
+  p_command_text TEXT,
+  p_user_id TEXT DEFAULT 'anonymous'
+)
+RETURNS JSON AS $$
+DECLARE
+  new_command_id UUID;
+  result JSON;
+BEGIN
+  -- Insert new command (user_id as NULL since it's UUID type)
+  INSERT INTO commands (command_text, status)
+  VALUES (p_command_text, 'pending')
+  RETURNING id INTO new_command_id;
+  
+  -- Create metrics record
+  INSERT INTO command_metrics (command_id, command_length, success, created_at)
+  VALUES (new_command_id, LENGTH(p_command_text), false, NOW());
+  
+  SELECT json_build_object(
+    'success', true,
+    'command_id', new_command_id,
+    'message', 'Command submitted successfully',
+    'timestamp', NOW()
+  ) INTO result;
+  
+  RETURN result;
+  
+EXCEPTION
+  WHEN others THEN
+    SELECT json_build_object(
+      'success', false,
+      'error', SQLERRM,
+      'message', 'Failed to submit command'
+    ) INTO result;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+#### Fixed get_system_status Function:
+```sql
+CREATE OR REPLACE FUNCTION get_system_status()
+RETURNS JSON AS $$
+DECLARE
+  result JSON;
+  total_commands INTEGER;
+  pending_commands INTEGER;
+BEGIN
+  -- Get counts separately to avoid GROUP BY issues
+  SELECT COUNT(*) INTO total_commands FROM commands;
+  SELECT COUNT(*) INTO pending_commands FROM commands WHERE status = 'pending';
+  
+  SELECT json_build_object(
+    'status', 'active',
+    'total_commands', total_commands,
+    'pending_commands', pending_commands,
+    'active_connections', 1,
+    'last_command_time', (
+      SELECT COALESCE(MAX(created_at), NOW() - INTERVAL '1 hour')
+      FROM commands
+    ),
+    'system_health', 'good',
+    'uptime_seconds', EXTRACT(EPOCH FROM (NOW() - '2025-01-01'::timestamp))
+  ) INTO result;
+  
+  RETURN result;
+  
+EXCEPTION
+  WHEN others THEN
+    SELECT json_build_object(
+      'status', 'error',
+      'error', SQLERRM,
+      'message', 'Failed to get system status'
+    ) INTO result;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+```
 
 ### 4. Verify Table Creation
 Run the following query in SQL Editor to verify tables exist:
@@ -82,12 +170,39 @@ SELECT get_queue_status();
 4. Check the output results, ensure all items show ✅
 5. Pay special attention to check the `submit_command` function, this is key for client connection testing
 
-### 9. Client Configuration Check
+### 9. Environment Variables Setup ⚙️ **CRITICAL STEP**
+
+#### Server Environment (.env file):
+Create a `.env` file in the **root directory** with:
+```env
+# Supabase Configuration
+SUPABASE_URL=https://nsiwmzgenkrmgllwqizd.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key-here
+SUPABASE_PROJECT_ID=nsiwmzgenkrmgllwqizd
+
+# Default Editor
+DEFAULT_EDITOR=Cursor
+
+# Optional settings
+ENABLE_HEARTBEAT_CHECK=false
+```
+
+**To get your SUPABASE_SERVICE_KEY:**
+1. Go to Supabase Dashboard → Settings → API
+2. Copy the `service_role` key (NOT the anon key)
+3. **⚠️ Keep this secret!** Never commit to git
+
+#### Client Configuration (client/env-config.js):
 Ensure the `client/env-config.js` file format is correct:
 ```javascript
-window.SUPABASE_URL = "https://rzsupavqzxhyrgcexrpx.supabase.co";
+window.SUPABASE_URL = "https://nsiwmzgenkrmgllwqizd.supabase.co";
 window.SUPABASE_ANON_KEY = "your-anon-key-here";
 ```
+
+**To get your SUPABASE_ANON_KEY:**
+1. Go to Supabase Dashboard → Settings → API
+2. Copy the `anon` public key
+3. This key is safe to include in client code
 
 ### 10. Permission Check
 Ensure RLS (Row Level Security) policies allow anonymous users to call these functions:
@@ -106,7 +221,30 @@ Ensure RLS (Row Level Security) policies allow anonymous users to call these fun
    SELECT routine_name FROM information_schema.routines 
    WHERE routine_schema = 'public' AND routine_name = 'submit_command';
    ```
-3. Check function permissions and RLS settings
+3. If function missing, use the **Fixed Functions** from section 3.1 above
+4. Check function permissions and RLS settings
+
+### SQL Syntax Errors During Function Creation
+**Symptoms**: "syntax error", "column does not exist", "function already exists"
+**Common Errors & Fixes**:
+
+**Error**: `column "user_id" is of type uuid but expression is of type text`
+**Fix**: Use NULL for user_id or cast properly:
+```sql
+INSERT INTO commands (command_text, status) VALUES (p_command_text, 'pending')
+-- Instead of: INSERT INTO commands (user_id, command_text, status) VALUES (p_user_id, p_command_text, 'pending')
+```
+
+**Error**: `must appear in the GROUP BY clause`
+**Fix**: Use separate SELECT statements instead of GROUP BY:
+```sql
+SELECT COUNT(*) INTO total_commands FROM commands;
+SELECT COUNT(*) INTO pending_commands FROM commands WHERE status = 'pending';
+-- Instead of complex GROUP BY queries
+```
+
+**Error**: `function submit_command already exists`
+**Fix**: Use `CREATE OR REPLACE FUNCTION` instead of `CREATE FUNCTION`
 
 ### Connection Timeout or Network Error
 **Symptoms**: Connection timeout, CORS errors
@@ -149,8 +287,7 @@ console.log('Supabase Client:', supabaseClient);
 
 // Test core function
 supabaseClient.rpc('submit_command', {
-  p_command_text: 'test',
-  p_user_id: 'test_user'
+  p_command_text: 'test command from browser console'
 }).then(result => {
   console.log('✅ submit_command success:', result);
 }).catch(error => {
@@ -168,12 +305,21 @@ supabaseClient.rpc('get_system_status').then(result => {
 ### 3. Direct SQL Testing
 Test directly in Supabase SQL Editor:
 ```sql
--- Test submit command
-SELECT submit_command('test_command', 'test_user');
+-- Test submit command (note: only command_text parameter needed)
+SELECT submit_command('test_command_from_sql');
 
 -- Test get status
 SELECT get_system_status();
 
+-- Test queue status
+SELECT get_queue_status();
+
 -- View created test data
-SELECT * FROM commands WHERE command_text = 'test_command';
+SELECT * FROM commands WHERE command_text = 'test_command_from_sql' ORDER BY created_at DESC LIMIT 5;
+
+-- Check system health
+SELECT 
+  (SELECT COUNT(*) FROM commands) as total_commands,
+  (SELECT COUNT(*) FROM commands WHERE status = 'pending') as pending_commands,
+  (SELECT COUNT(*) FROM results) as total_results;
 ```

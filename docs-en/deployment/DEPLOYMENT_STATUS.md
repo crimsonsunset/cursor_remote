@@ -25,7 +25,7 @@
 - ✅ Troubleshooting steps
 - ✅ Testing tools and methods
 
-## 🎯 Current Status: Fixes Complete!
+## 🎯 Current Status: Fully Operational! 
 
 ### ✅ All Issues Resolved
 - ✅ 404 errors fixed (all RPC functions working)
@@ -33,6 +33,58 @@
 - ✅ Client interface functionality fully operational
 - ✅ All database functions deployed and tested successfully
 - ✅ Connection testing functionality enhanced
+- ✅ Environment variable setup documented and tested
+- ✅ Complete mobile-to-Cursor-to-mobile pipeline working
+
+## 🚀 Quick Start Guide
+
+### Prerequisites Check
+1. **Node.js**: Version 14+ installed
+2. **Python 3**: For HTTP server
+3. **Supabase Account**: With project created
+
+### 5-Minute Setup
+
+**Step 1: Environment Setup**
+```bash
+# Create .env file in project root
+cat > .env << 'EOF'
+SUPABASE_URL=https://nsiwmzgenkrmgllwqizd.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key-here
+SUPABASE_PROJECT_ID=nsiwmzgenkrmgllwqizd
+DEFAULT_EDITOR=Cursor
+EOF
+
+# Update client configuration
+# Edit client/env-config.js with your anon key
+```
+
+**Step 2: Database Setup**
+1. Go to [Supabase Dashboard → SQL Editor](https://supabase.com/dashboard)
+2. Run `database/tables.sql` (creates tables)
+3. Run the corrected functions from [Database Setup Guide](SETUP_DATABASE.md) section 3.1
+
+**Step 3: Start Services**
+```bash
+# Terminal 1: Start client
+python3 -m http.server 8080 --directory client
+
+# Terminal 2: Start server
+cd server && npm install && node src/services/supabaseService.js
+```
+
+**Step 4: Test Complete Flow**
+1. Open http://localhost:8080 in browser
+2. Type test command and click Send
+3. Command should appear in Cursor via AppleScript
+4. AI response gets logged back to database
+5. Response appears in mobile interface
+
+### ✅ Success Indicators
+- 🟢 Green "connected" status in client
+- 🟢 Commands reach Cursor
+- 🟢 Responses logged to database
+- 🟢 Server logs show "Subscription established"
 
 ### 🔧 This Fix Content
 1. **Fixed RPC Functions** - Recreated and fixed all functions with SQL syntax issues

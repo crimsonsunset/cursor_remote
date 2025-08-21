@@ -18,10 +18,12 @@ Currently, your Cursor Remote system works like this:
 ### Step 1: Get Your Supabase Access Token
 
 1. **Visit**: [Supabase Dashboard → Account → Access Tokens](https://supabase.com/dashboard/account/tokens)
-2. **Click**: "Generate new token"
+2. **Click**: "Generate new token"  
 3. **Name**: "Cursor Remote MCP"
 4. **Scopes**: Leave defaults (or select all)
 5. **Copy the token** (looks like: `sbp_abc123...`)
+
+**⚠️ Important**: This is different from the API keys you use for client/server setup! This is a personal access token for MCP.
 
 ### Step 2: Find Cursor MCP Settings
 
@@ -57,11 +59,34 @@ Add this to your Cursor settings:
 
 **Replace `your-token-here`** with your actual Supabase token!
 
-### Step 4: Test the Setup
+### Step 4: Verify Prerequisites
+
+**Before testing, ensure your environment is set up:**
+
+1. **Server Environment** (`.env` file in project root):
+   ```env
+   SUPABASE_URL=https://nsiwmzgenkrmgllwqizd.supabase.co
+   SUPABASE_SERVICE_KEY=your-service-key-here
+   SUPABASE_PROJECT_ID=nsiwmzgenkrmgllwqizd
+   DEFAULT_EDITOR=Cursor
+   ```
+
+2. **Client Environment** (`client/env-config.js`):
+   ```javascript
+   window.SUPABASE_URL = "https://nsiwmzgenkrmgllwqizd.supabase.co";
+   window.SUPABASE_ANON_KEY = "your-anon-key-here";
+   ```
+
+3. **Database Setup**: Ensure tables and functions are created (see [Database Setup Guide](../deployment/SETUP_DATABASE.md))
+
+### Step 5: Test the Setup
 
 1. **Restart Cursor** completely
-2. **Send test command** from your phone: "hello mcp test"
-3. **Check results**: 
+2. **Start services**:
+   - Client: `python3 -m http.server 8080 --directory client`
+   - Server: `cd server && node src/services/supabaseService.js`
+3. **Send test command** from your phone: "hello mcp test"
+4. **Check results**: 
    - In Supabase: Go to `results` table → should see AI response
    - On phone: Should see the AI response appear
 
@@ -83,6 +108,21 @@ Add this to your Cursor settings:
 - **Install Node.js**: [nodejs.org](https://nodejs.org/)
 - **Restart Cursor**: After Node.js installation
 - **Alternative**: Use full path to npx in config
+
+### "Environment Variables Not Working"
+**Symptoms**: Server won't start, "SUPABASE_URL is not defined" errors
+**Solutions**:
+- **Check .env location**: Must be in project root directory, not in `server/` folder
+- **Check .env format**: No spaces around `=`, no quotes needed for values
+- **Restart services**: After creating/modifying .env file
+- **Verify .gitignore**: Ensure `.env` is ignored and not committed to git
+
+### "Client Can't Connect to Database"
+**Symptoms**: Red "disconnected" status, function not found errors
+**Solutions**:
+- **Check client config**: Verify `client/env-config.js` has correct URL and anon key
+- **Test manually**: Open browser console and test `supabaseClient.rpc('get_system_status')`
+- **Database setup**: Run through [Database Setup Guide](../deployment/SETUP_DATABASE.md) completely
 
 ---
 
