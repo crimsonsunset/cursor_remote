@@ -71,7 +71,7 @@ class ClientEnhancementService {
       .map(item => ({
         type: 'history',
         text: item.command,
-        title: __('enhancement.history_commands'),
+        title: '历史命令',
         icon: '🕒'
       }));
 
@@ -83,11 +83,11 @@ class ClientEnhancementService {
 
   getSmartSuggestions(input) {
     const smartPatterns = {
-      '创建': [__('enhancement.suggestions.create.react_component'), __('enhancement.suggestions.create.database_table'), __('enhancement.suggestions.create.api_interface')],
-      '修复': [__('enhancement.suggestions.fix.this_bug'), __('enhancement.suggestions.fix.code_error'), __('enhancement.suggestions.fix.performance_issue')],
-      '优化': [__('enhancement.suggestions.optimize.code_performance'), __('enhancement.suggestions.optimize.database_query'), __('enhancement.suggestions.optimize.user_experience')],
-      '解释': [__('enhancement.suggestions.explain.this_code'), __('enhancement.suggestions.explain.algorithm_principle'), __('enhancement.suggestions.explain.design_pattern')],
-      '重构': [__('enhancement.suggestions.refactor.this_function'), __('enhancement.suggestions.refactor.code_structure'), __('enhancement.suggestions.refactor.data_model')]
+      '创建': ['创建React组件', '创建数据库表', '创建API接口'],
+      '修复': ['修复这个bug', '修复代码错误', '修复性能问题'],
+      '优化': ['优化代码性能', '优化数据库查询', '优化用户体验'],
+      '解释': ['解释这段代码', '解释算法原理', '解释设计模式'],
+      '重构': ['重构这个函数', '重构代码结构', '重构数据模型']
     };
 
     const suggestions = [];
@@ -99,7 +99,7 @@ class ClientEnhancementService {
           suggestions.push({
             type: 'smart',
             text: pattern,
-            title: __('enhancement.smart_suggestions'),
+            title: '智能建议',
             icon: '💡'
           });
         });
