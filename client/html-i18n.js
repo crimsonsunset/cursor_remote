@@ -12,16 +12,45 @@ function initializeHTMLI18n() {
   }
 
   try {
-    // Update page title
-    document.title = __('html.page_title');
+    console.log('🌐 Starting HTML i18n initialization...');
+    
+    // Generic data-i18n attribute handler
+    document.querySelectorAll('[data-i18n]').forEach(element => {
+      const translationKey = element.getAttribute('data-i18n');
+      const translatedText = __(translationKey);
+      
+      if (translatedText && translatedText !== translationKey) {
+        element.textContent = translatedText;
+        console.log(`✅ Translated ${translationKey}: ${translatedText}`);
+      }
+    });
 
-    // Update main app title
-    const appTitle = document.querySelector('.app-title');
-    if (appTitle) {
-      appTitle.textContent = __('html.app_title');
-    }
+    // Handle data-i18n-placeholder attributes
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+      const translationKey = element.getAttribute('data-i18n-placeholder');
+      const translatedPlaceholder = __(translationKey);
+      
+      if (translatedPlaceholder && translatedPlaceholder !== translationKey) {
+        element.placeholder = translatedPlaceholder;
+        console.log(`✅ Translated placeholder ${translationKey}: ${translatedPlaceholder}`);
+      }
+    });
 
-    // Update button titles (tooltips)
+    // Fix specific remaining template tags that don't have data-i18n attributes
+    document.querySelectorAll('*').forEach(element => {
+      if (element.children.length === 0) { // Only text nodes
+        const text = element.textContent?.trim();
+        if (text && text.startsWith('html.') && !text.includes(' ')) {
+          const translatedText = __(text);
+          if (translatedText && translatedText !== text) {
+            element.textContent = translatedText;
+            console.log(`✅ Fixed template tag ${text}: ${translatedText}`);
+          }
+        }
+      }
+    });
+
+    // Update button titles (tooltips) - keep existing logic for buttons without data-i18n
     const buttonMappings = {
       'historyButton': 'html.buttons.command_history',
       'statusButton': 'html.buttons.system_status',
@@ -53,27 +82,6 @@ function initializeHTMLI18n() {
     if (uploadButton) {
       uploadButton.title = __('html.buttons.upload_file');
     }
-
-    // Update status text
-    const statusText = document.getElementById('statusText');
-    if (statusText && statusText.textContent.includes('未连接')) {
-      statusText.textContent = __('html.status.disconnected');
-    }
-
-    // Update welcome message
-    const welcomeMessage = document.querySelector('.welcome-message p');
-    if (welcomeMessage) {
-      welcomeMessage.textContent = __('html.welcome.text');
-    }
-
-    // Update input placeholder
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-      messageInput.placeholder = __('html.input.placeholder');
-    }
-
-    // Update comments
-    updateHTMLComments();
 
     console.log('✅ HTML i18n initialization complete');
   } catch (error) {
@@ -108,14 +116,28 @@ function updateConnectionStatus(isConnected) {
  */
 function startHTMLI18n() {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeHTMLI18n);
+    document.addEventListener('DOMContentLoaded', () => {
+      // Add a small delay to ensure all scripts are loaded
+      setTimeout(initializeHTMLI18n, 200);
+    });
   } else {
-    initializeHTMLI18n();
+    // Add a small delay to ensure all scripts are loaded
+    setTimeout(initializeHTMLI18n, 200);
   }
+}
+
+/**
+ * Force re-run HTML i18n (for testing/debugging)
+ */
+function forceHTMLI18nUpdate() {
+  initializeHTMLI18n();
 }
 
 // Auto-start HTML i18n initialization
 startHTMLI18n();
+
+// Expose utility functions globally
+window.forceHTMLI18nUpdate = forceHTMLI18nUpdate;
 
 // Expose utility functions globally
 window.updateConnectionStatus = updateConnectionStatus;

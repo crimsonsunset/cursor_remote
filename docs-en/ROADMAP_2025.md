@@ -23,6 +23,13 @@
   - Implemented graceful shutdown mechanism ensuring safe command queue processing
   - Added connection status tracking and degraded mode handling
 
+### 🔄 **Current Priority: Web App Architecture Upgrade (January 2025)**
+- 🎯 **Issue Identified**: Static HTML + Python server causing UI template placeholders and connection issues
+- ⚡ **Immediate Fix**: Applied source code patches to resolve i18n display and Supabase initialization
+- 🚀 **Strategic Decision**: Upgrading from static file serving to proper web application framework
+- 🏗️ **Next Phase**: Framework selection (React/Next.js, Vue/Nuxt, Svelte/SvelteKit, or Vite) and migration planning
+- 🎯 **Goal**: Professional UX, proper build process, modern development workflow, and scalable architecture
+
 ### 📊 Technical Debt Status
 - ✅ **Fixed**: Server connection stability
 - ⚠️ **Needs attention**: Client-side error handling mechanisms
