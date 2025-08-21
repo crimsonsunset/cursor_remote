@@ -182,7 +182,7 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
                     
                     if (!cmdError && commandData) {
                         if (commandData.status === 'error') {
-                            const errorMsg = commandData.last_error || '__('messages.execution_failed_no_details')';
+                            const errorMsg = commandData.last_error || __('messages.execution_failed_no_details');
                             addMessageToHistory({
                                 type: 'error',
                                 content: __('messages.command_execution_failed', { command: originalCommandText, error: errorMsg }),
@@ -1551,7 +1551,7 @@ async function processPendingCommandsOnLoad() {
                         
                         // 如果命令状态是error但没有结果记录，直接从commands表获取错误信息
                         if (commandData.status === 'error') {
-                            const errorMsg = commandData.last_error || '__('messages.execution_failed_no_details')';
+                            const errorMsg = commandData.last_error || __('messages.execution_failed_no_details');
                             addMessageToHistory({
                                 type: 'error',
                                 content: __('messages.command_execution_failed', { command: command.text, error: errorMsg }),
