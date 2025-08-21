@@ -8,6 +8,15 @@
     "supportedLocales": ["en", "zh"]
   },
   "scripts": {
+    "dev": "node scripts/dev-start.js",
+    "start": "node scripts/dev-start.js",
+    "stop": "node scripts/dev-stop.js",
     "build": "mkdir -p public && cp -R client/* public/ && echo \"window.SUPABASE_URL = \\\"$SUPABASE_URL\\\"; window.SUPABASE_ANON_KEY = \\\"$SUPABASE_ANON_KEY\\\";\" > public/env-config.js && echo \"Build complete. Output in ./public directory.\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.2",
+    "kill-port": "^2.0.1",
+    "chokidar": "^3.5.3"
   }
 } 
