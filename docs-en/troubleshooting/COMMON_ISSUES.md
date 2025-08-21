@@ -31,8 +31,9 @@ supabaseClient.rpc('get_system_status')
 - Client shows "disconnected" status (red dot)
 - Browser console: "function get_system_status does not exist"
 - Error: "Could not find the function public.submit_command"
+- Error: "column \"commands.created_at\" must appear in the GROUP BY clause"
 
-**Root Cause:** Database functions weren't created or have SQL syntax errors
+**Root Cause:** Database functions weren't created or have SQL syntax errors (including GROUP BY aggregation issues)
 
 **Solution:**
 1. **Use the corrected SQL** from [Database Setup Guide](../deployment/SETUP_DATABASE.md) section 3.1
@@ -76,9 +77,19 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-3. **Test the function**:
+3. **Test the functions**:
 ```sql
+-- Test command submission
 SELECT submit_command('test setup verification');
+
+-- Test system status (should not have GROUP BY errors)
+SELECT get_system_status();
+
+-- Test queue status  
+SELECT get_queue_status();
+
+-- Verify all functions work
+SELECT 'All functions verified' as status;
 ```
 
 ### ❌ Environment Variables Not Configured

@@ -97,6 +97,7 @@ BEGIN
   SELECT COUNT(*) INTO total_commands FROM commands;
   SELECT COUNT(*) INTO pending_commands FROM commands WHERE status = 'pending';
   
+  -- Build simple status object without complex aggregations
   SELECT json_build_object(
     'status', 'active',
     'total_commands', total_commands,
@@ -107,6 +108,7 @@ BEGIN
       FROM commands
     ),
     'system_health', 'good',
+    'timestamp', NOW(),
     'uptime_seconds', EXTRACT(EPOCH FROM (NOW() - '2025-01-01'::timestamp))
   ) INTO result;
   
@@ -245,6 +247,9 @@ SELECT COUNT(*) INTO pending_commands FROM commands WHERE status = 'pending';
 
 **Error**: `function submit_command already exists`
 **Fix**: Use `CREATE OR REPLACE FUNCTION` instead of `CREATE FUNCTION`
+
+**Error**: `column "commands.created_at" must appear in the GROUP BY clause`
+**Fix**: Use simplified aggregations without GROUP BY. This error occurs in complex JSON aggregation queries. Use the corrected functions from section 3.1 above.
 
 ### Connection Timeout or Network Error
 **Symptoms**: Connection timeout, CORS errors

@@ -35,6 +35,7 @@
 - ✅ Connection testing functionality enhanced
 - ✅ Environment variable setup documented and tested
 - ✅ Complete mobile-to-Cursor-to-mobile pipeline working
+- ✅ SQL GROUP BY clause issues resolved (get_system_status function fixed)
 
 ## 🚀 Quick Start Guide
 
@@ -63,6 +64,12 @@ EOF
 1. Go to [Supabase Dashboard → SQL Editor](https://supabase.com/dashboard)
 2. Run `database/tables.sql` (creates tables)
 3. Run the corrected functions from [Database Setup Guide](SETUP_DATABASE.md) section 3.1
+4. **Verify functions work**: Run these tests in SQL Editor:
+   ```sql
+   SELECT submit_command('setup test');
+   SELECT get_system_status();
+   SELECT get_queue_status();
+   ```
 
 **Step 3: Start Services**
 ```bash
