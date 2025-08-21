@@ -137,10 +137,10 @@ class SystemMonitorService {
     const uptimeMinutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
 
     return {
-      uptime: `${uptimeHours}${__('systemMonitor.hours')}${uptimeMinutes}${__('systemMonitor.minutes')}`,
+      uptime: `${uptimeHours}小时${uptimeMinutes}分钟`,
       commandsProcessed: this.metrics.commandsProcessed,
       successRate: `${(this.metrics.successRate * 100).toFixed(1)}%`,
-      averageResponseTime: `${this.metrics.averageResponseTime.toFixed(1)}${__('systemMonitor.seconds')}`,
+      averageResponseTime: `${this.metrics.averageResponseTime.toFixed(1)}秒`,
       errorCount: this.metrics.errorCount,
       lastError: this.metrics.lastError,
       timestamp: new Date().toISOString()
@@ -153,53 +153,53 @@ function createStatusPage() {
   const statusPageHTML = `
     <div id="statusPage" class="status-page" style="display: none;">
       <div class="status-header">
-        <h2>${__('systemMonitor.title')}</h2>
+        <h2>系统监控</h2>
         <button id="closeStatusPage" class="close-btn">×</button>
       </div>
       
       <div class="status-grid">
         <div class="status-card">
-          <h3>${__('systemMonitor.system_uptime')}</h3>
-          <div id="systemUptime" class="metric-value">${__('systemMonitor.loading')}</div>
+          <h3>系统运行时间</h3>
+          <div id="systemUptime" class="metric-value">加载中...</div>
         </div>
         
         <div class="status-card">
-          <h3>${__('systemMonitor.command_processing_count')}</h3>
+          <h3>命令处理次数</h3>
           <div id="commandsProcessed" class="metric-value">0</div>
         </div>
         
         <div class="status-card">
-          <h3>${__('systemMonitor.success_rate')}</h3>
+          <h3>成功率</h3>
           <div id="successRate" class="metric-value">0%</div>
         </div>
         
         <div class="status-card">
-          <h3>${__('systemMonitor.average_response_time')}</h3>
-          <div id="averageResponseTime" class="metric-value">0${__('systemMonitor.seconds')}</div>
+          <h3>平均响应时间</h3>
+          <div id="averageResponseTime" class="metric-value">0秒</div>
         </div>
       </div>
       
       <div class="health-indicators">
-        <h3>${__('systemMonitor.service_health_status')}</h3>
+        <h3>服务健康状态</h3>
         <div class="health-grid">
           <div class="health-item">
-            <span class="health-label">${__('systemMonitor.supabase_connection')}</span>
-            <span id="supabaseHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
+            <span class="health-label">Supabase连接</span>
+            <span id="supabaseHealth" class="health-indicator">检查中...</span>
           </div>
           <div class="health-item">
-            <span class="health-label">${__('systemMonitor.network_connection')}</span>
-            <span id="networkHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
+            <span class="health-label">网络连接</span>
+            <span id="networkHealth" class="health-indicator">检查中...</span>
           </div>
           <div class="health-item">
-            <span class="health-label">${__('systemMonitor.local_storage')}</span>
-            <span id="storageHealth" class="health-indicator">${__('systemMonitor.checking')}</span>
+            <span class="health-label">本地存储</span>
+            <span id="storageHealth" class="health-indicator">检查中...</span>
           </div>
         </div>
       </div>
       
       <div class="recent-activity">
-        <h3>${__('systemMonitor.recent_activity')}</h3>
-        <div id="recentActivity" class="activity-list">${__('systemMonitor.no_activity_records')}</div>
+        <h3>最近活动</h3>
+        <div id="recentActivity" class="activity-list">暂无活动记录</div>
       </div>
     </div>
   `;
