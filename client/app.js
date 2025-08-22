@@ -67,21 +67,7 @@ function buildSupabaseCommandPayload(commandText) {
     };
 }
 
-/**
- * DEPRECATED: Command completion logic moved to RealtimeManagerService
- * This function is kept for backward compatibility but should not be used directly.
- * @param {string} commandDbId - Database UUID of the command
- * @param {string} originalCommandText - Original command text for context
- * @param {HTMLElement} [loadingMessage] - Loading message element reference
- */
-async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
-    console.warn('[handleCompletedCommand] DEPRECATED: Command completion logic moved to RealtimeManagerService');
-    console.log(`[handleCompletedCommand] Legacy call for command ${commandDbId}: ${originalCommandText}`);
-    
-    // All completion logic has been moved to RealtimeManagerService._handleCommandCompletion()
-    // This includes special handling for CLEAR_ALL_QUEUES commands and regular result processing
-    // This function should not be called directly - subscriptions use the service instead
-}
+// handleCompletedCommand logic moved to RealtimeManagerService
 
 /**
  * 异步发送指令到 Supabase 'commands' 表。
@@ -1156,8 +1142,7 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
-// 全局状态：防止重复处理
-let isProcessingPendingCommands = false;
+// Global state variables removed - now handled by services
 
 /**
  * 对本地历史记录进行去重处理
@@ -1222,152 +1207,7 @@ function deduplicateMessageHistory(showNotification = true) {
     }
 }
 
-// DEPRECATED: Use queueProcessorService.processPendingCommandsOnLoad() instead
-// 新增函数：在应用加载时处理之前待处理的指令
-async function processPendingCommandsOnLoad() {
-    console.warn('[processPendingCommandsOnLoad] DEPRECATED: Use queueProcessorService.processPendingCommandsOnLoad() instead');
-    // 防止重复处理
-    if (isProcessingPendingCommands) {
-        console.log('⏸️ 正在处理待处理命令，跳过重复调用');
-        return;
-    }
-    
-    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-    if (pendingCommands.length === 0) {
-        return;
-    }
-
-    isProcessingPendingCommands = true;
-    console.log(`🔄 页面加载时发现 ${pendingCommands.length} 个待处理命令，开始恢复状态...`);
-
-    for (const command of pendingCommands) {
-        if (!command.id || !command.text) {
-            continue; 
-        }
-
-        try {
-            console.log(`📋 检查命令 ${command.id} 状态...`);
-            
-            // 增加重试机制
-            let commandData = null;
-            let cmdError = null;
-            const maxRetries = 3;
-            
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const result = await supabaseClient
-                    .from('commands')
-                    .select('status, last_error')
-                    .eq('id', command.id)
-                    .single();
-                
-                commandData = result.data;
-                cmdError = result.error;
-                
-                if (!cmdError) {
-                    break; // 成功获取，退出重试循环
-                }
-                
-                if (attempt < maxRetries) {
-                    console.log(`[Recovery] Retrying command status fetch for ${command.id} (attempt ${attempt + 1}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-                }
-            }
-
-            if (cmdError) {
-                console.error(`Error fetching status for pending command ${command.id} on load:`, cmdError.message || 'No message property');
-                // 如果获取状态失败，可能命令已被删除，从待处理列表中移除
-                cleanupPendingCommand(command.id);
-                continue;
-            }
-
-            if (commandData) {
-                console.log(`📋 命令 ${command.id} 状态: ${commandData.status}`);
-                
-                // 检查用户消息是否已经在历史中存在，避免重复添加
-                const existingUserMessage = appState.messageHistory.find(msg => 
-                    msg.type === 'user' && 
-                    msg.content === command.text && 
-                    Math.abs((msg.timestamp || 0) - (command.timestamp || 0)) < 5000 // 5秒内的消息认为是同一条
-                );
-                
-                if (!existingUserMessage) {
-                    // 只有当用户消息不存在时才添加
-                    addMessageToHistory({
-                        type: 'user',
-                        content: command.text,
-                        timestamp: command.timestamp || Date.now()
-                    });
-                }
-                
-                if (commandData.status === 'completed' || commandData.status === 'error') {
-                    // 检查是否已经有结果消息存在
-                    const existingResult = appState.messageHistory.find(msg => 
-                        (msg.type === 'cursor' || msg.type === 'error') && 
-                        (msg.commandId === command.id || 
-                         (msg.timestamp > (command.timestamp || 0) && 
-                          Math.abs(msg.timestamp - (command.timestamp || 0)) < 300000)) // 5分钟内
-                    );
-                    
-                    if (!existingResult) {
-                        // 只有当结果不存在时才处理
-                        console.log(`✅ 恢复已完成命令的结果: ${command.text}`);
-                        
-                        // 如果命令状态是error但没有结果记录，直接从commands表获取错误信息
-                        if (commandData.status === 'error') {
-                            const errorMsg = commandData.last_error || '指令执行失败，但未找到详细错误信息';
-                            addMessageToHistory({
-                                type: 'error',
-                                content: `指令 "${command.text}" 执行出错: ${errorMsg}`,
-                                timestamp: (command.timestamp || Date.now()) + 1000,
-                                commandId: command.id
-                            });
-                        } else {
-                            // 对于completed状态，尝试获取结果
-                            await handleCompletedCommand(command.id, command.text, null);
-                        }
-                    } else {
-                        console.log(`⏭️ 命令 ${command.id} 的结果已存在，跳过恢复`);
-                    }
-                    
-                    // 无论是否恢复结果，都要清理待处理命令
-                    cleanupPendingCommand(command.id);
-                } else if (commandData.status === 'pending' || commandData.status === 'processing') {
-                    // 添加加载动画，表示正在处理中
-                    const loadingTemplate = document.getElementById('loadingTemplate');
-                    const loadingElement = document.importNode(loadingTemplate.content, true);
-                    elements.chatContainer.appendChild(loadingElement);
-                    scrollChatToBottom();
-                    
-                    // 保存加载元素的引用
-                    const loadingMessage = elements.chatContainer.lastElementChild;
-                    
-                    // 重新订阅命令更新
-                    subscribeToCommandUpdates(command.id, command.text, loadingMessage);
-                    console.log(`🔄 已恢复处理中命令的订阅: ${command.text}`);
-                } else {
-                    // Unknown status, remove it to prevent clutter
-                    console.log(`⚠️ 未知状态 ${commandData.status}，移除命令: ${command.text}`);
-                    cleanupPendingCommand(command.id);
-                }
-            } else {
-                // Command not found in DB, might have been deleted or an issue. Remove from pending.
-                console.log(`❌ 数据库中未找到命令，移除: ${command.text}`);
-                cleanupPendingCommand(command.id);
-            }
-        } catch (error) {
-            console.error(`Unexpected error processing pending command ${command.id} on load:`, error);
-            // 发生异常时也清理该命令
-            cleanupPendingCommand(command.id);
-        }
-    }
-    
-    console.log(`✅ 待处理命令状态恢复完成`);
-    
-    // 恢复完成后进行去重处理（不显示通知）
-    deduplicateMessageHistory(false);
-    
-    isProcessingPendingCommands = false;
-}
+// processPendingCommandsOnLoad logic moved to QueueProcessorService
 
 // 新增：处理发送消息并清空输入框的辅助函数
 async function handleAndClearInput() {
@@ -1571,7 +1411,8 @@ function handleCommandSubscriptionTimeout(commandDbId, originalCommandText, load
             
             if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
                 console.log(`[Timeout Recovery] Found completed command ${commandDbId}, status: ${commandData.status}`);
-                await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
+                // Command completion now handled by RealtimeManagerService
+                console.log(`[Timeout Recovery] Command completion handling moved to RealtimeManagerService`);
                 return; // 成功获取结果，不执行后续超时处理
             }
         } catch (recoveryError) {
@@ -1610,87 +1451,17 @@ function handleCommandSubscriptionTimeout(commandDbId, originalCommandText, load
         }
         
         // 从待处理列表中移除
-        cleanupPendingCommand(commandDbId);
-    }
-}
-
-/**
- * DEPRECATED: Use queueProcessorService.removeCommand() instead
- * 从pendingCommandsClientSide中移除指定的命令
- * @param {string} commandId - 要移除的命令ID
- */
-function cleanupPendingCommand(commandId) {
-    console.warn('[cleanupPendingCommand] DEPRECATED: Use queueProcessorService.removeCommand() instead');
-    if (queueProcessorService) {
-        queueProcessorService.removeCommand(commandId);
-    } else {
-        // Fallback to old logic if service not available
-        const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-        const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandId);
-        localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
-    }
-}
-
-/**
- * DEPRECATED: Use queueProcessorService.startCleanupTask() instead
- * 启动定期清理超时的pendingCommandsClientSide命令的任务
- */
-function startPendingCommandsCleanupTask() {
-    console.warn('[startPendingCommandsCleanupTask] DEPRECATED: Use queueProcessorService.startCleanupTask() instead');
-    // 每分钟检查一次超时命令
-    setInterval(() => {
-        cleanupTimeoutPendingCommands();
-    }, 60000); // 每分钟执行一次
-    
-    // 初始执行一次
-    cleanupTimeoutPendingCommands();
-}
-
-/**
- * 清理超时的pendingCommandsClientSide命令
- */
-function cleanupTimeoutPendingCommands() {
-    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-    if (pendingCommands.length === 0) {
-        return;
-    }
-    
-    const now = Date.now();
-    const timeoutThreshold = PENDING_COMMAND_TIMEOUT;
-    let hasTimeoutCommands = false;
-    
-    const updatedCommands = pendingCommands.filter(command => {
-        const commandAge = now - command.timestamp;
-        const isTimeout = commandAge > timeoutThreshold;
-        
-        if (isTimeout) {
-            hasTimeoutCommands = true;
-            
-            // 移除该命令的订阅（如果存在）
-            const channelName = `command-${command.id}`;
-            if (activeSubscriptions.has(channelName)) {
-                const channel = activeSubscriptions.get(channelName);
-                supabaseClient.removeChannel(channel);
-                activeSubscriptions.delete(channelName);
-            }
-        }
-        
-        return !isTimeout; // 保留未超时的命令
-    });
-    
-    if (hasTimeoutCommands) {
-        localStorage.setItem('pendingCommandsClientSide', JSON.stringify(updatedCommands));
-        
-        // 如果有超时命令，检查并移除可能残留的加载动画
-        const loadingMessages = document.querySelectorAll('.loading-message');
-        if (loadingMessages.length > 0 && updatedCommands.length === 0) {
-            for (const el of loadingMessages) {
-                el.remove();
-            }
-            addNotificationToChat('已清理超时未响应的指令。');
+        if (queueProcessorService) {
+            queueProcessorService.removeCommand(commandDbId);
         }
     }
 }
+
+// cleanupPendingCommand logic moved to QueueProcessorService
+
+// startPendingCommandsCleanupTask logic moved to QueueProcessorService
+
+// cleanupTimeoutPendingCommands logic moved to QueueProcessorService
 
 // ===== 新功能模态窗口管理 =====
 
@@ -3167,7 +2938,9 @@ async function forceRefreshPageState() {
         activeSubscriptions.clear();
         
         // 重新处理待处理的命令
-        await processPendingCommandsOnLoad();
+        if (queueProcessorService) {
+            await queueProcessorService.processPendingCommandsOnLoad();
+        }
         
         // 检查并恢复丢失的结果
         await checkAndRecoverMissingResults();
