@@ -25,7 +25,7 @@
 
 ### 🔄 **Current Priority: Frontend Architecture Refactoring (August 2025)**
 - ✅ **Issue Resolved**: Fixed HEAD version with proper script loading order and i18n system removal
-- 🏗️ **Phase 1 In Progress**: Services Layer Extraction (Fora-Frontend Inspired Architecture)
+- 🏗️ **Phase 1 In Progress**: Services Layer Extraction (JSG-Frontend Inspired Architecture)
   - ✅ **1.1 Completed**: Supabase Service Extraction (`supabase-client.service.js`)
   - ⏳ **1.2 Pending**: Realtime Manager Service 
   - ⏳ **1.3 Pending**: Queue Processor Service

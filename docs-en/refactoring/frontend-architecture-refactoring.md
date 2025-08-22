@@ -1,12 +1,12 @@
 # Frontend Architecture Refactoring Plan
 
-*Complete refactoring guide for cursor_remote client-side architecture inspired by fora-frontend patterns*
+*Complete refactoring guide for cursor_remote client-side architecture inspired by JSG-Frontend patterns*
 
 ## 🚨 **PROJECT STATUS - PHASE 1 IN PROGRESS**
 
 **Current State**: Monolithic vanilla JavaScript architecture (130KB app.js)  
 **Phase 1 Status**: ✅ **1/3 Services Extracted** - Supabase Client Service completed  
-**Target State**: Feature-based, modular architecture aligned with fora-frontend patterns  
+**Target State**: Feature-based, modular architecture aligned with JSG-Frontend patterns  
 **Priority**: High - Foundation for SvelteKit migration  
 **Next Milestone**: Complete Phase 1 (Realtime Manager & Queue Processor services)  
 **Current Progress**: ~25% complete (Services layer: 33% done)  
@@ -21,14 +21,14 @@
 - **Team collaboration issues**: Large files create merge conflicts
 
 ### **Strategic Solution**
-Implement **fora-frontend inspired architecture** with feature-based organization, enabling:
+Implement **JSG-Frontend inspired architecture** with feature-based organization, enabling:
 - ✅ Clean separation of concerns
 - ✅ Improved maintainability and debugging
 - ✅ Team collaboration efficiency
 - ✅ Direct migration path to SvelteKit
 - ✅ Scalable architecture for future features
 
-## 🏗️ **Target Architecture (Fora-Frontend Inspired)**
+## 🏗️ **Target Architecture (JSG-Frontend Inspired)**
 
 ### 📁 **Complete File Structure**
 
@@ -130,13 +130,13 @@ client/
 └── 🏠 index.html                     # Entry point (minimal changes)
 ```
 
-## 🎯 **File Naming Conventions (Fora-Frontend Style)**
+## 🎯 **File Naming Conventions (JSG-Frontend Style)**
 
 ### **📁 Directory Naming**
 - **kebab-case**: `command-execution/`, `realtime-connection/`, `system-monitoring/`
-- **Feature-based**: Business domain grouping following fora-frontend patterns
+- **Feature-based**: Business domain grouping following JSG-Frontend patterns
 
-### **📄 File Naming (Exact Fora-Frontend Pattern)**
+### **📄 File Naming (Exact JSG-Frontend Pattern)**
 - **`.component.js`** → UI components: `command-input.component.js`
 - **`.service.js`** → External integrations: `supabase-client.service.js`
 - **`.store.js`** → State management: `command-queue.store.js`
@@ -263,7 +263,7 @@ export class QueueProcessorService {
 
 #### **2.1: Global App Store**
 ```javascript
-// store/app.store.js (Following fora-frontend app.store.js pattern)
+// store/app.store.js (Following JSG-Frontend app.store.js pattern)
 export class AppStore {
   constructor() {
     this.state = {
@@ -382,7 +382,7 @@ export class MainAppLayout {
 ### **🎯 Phase 5: Clean Integration & Testing** (Days 10-11)
 **Goal**: Wire everything together with minimal App.jsx orchestrator
 
-#### **5.1: Minimal App.jsx (Following fora-frontend App.jsx pattern)**
+#### **5.1: Minimal App.jsx (Following JSG-Frontend App.jsx pattern)**
 ```javascript
 // App.jsx - Light orchestrator (50-100 lines)
 import { SupabaseClientService } from './services/supabase-client.service.js';
@@ -614,6 +614,6 @@ export class CommandInputComponent {
 
 ---
 
-**📝 Notes**: This refactoring follows proven fora-frontend patterns, ensuring a familiar structure for the team while preparing for modern framework migration.
+**📝 Notes**: This refactoring follows proven JSG-Frontend patterns, ensuring a familiar structure for the team while preparing for modern framework migration.
 
 **🎯 Vision**: Transform cursor_remote into a maintainable, scalable, modern web application with clear separation of concerns and optimal developer experience.
