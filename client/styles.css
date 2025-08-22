@@ -127,6 +127,34 @@ body {
   background-color: var(--button-hover);
 }
 
+.clear-queues-button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.clear-queues-button:hover {
+  background-color: var(--button-hover);
+  color: var(--text-color);
+}
+
+.clear-queues-button:active {
+  transform: scale(0.98);
+}
+
+.clear-queues-button .button-text {
+  font-weight: 500;
+}
+
 .github-link {
   color: var(--text-secondary);
   text-decoration: none;
