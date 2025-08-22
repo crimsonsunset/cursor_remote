@@ -312,6 +312,11 @@ export class CommandController {
     const targetEditor = commandData.raw_command?.target_editor || process.env.DEFAULT_EDITOR || this.defaultEditor;
     let resultSubscription = null;
 
+    // Handle special system commands
+    if (originalCommandText.trim().toUpperCase() === 'CLEAR_ALL_QUEUES') {
+      return this.handleClearAllQueues(commandId, startTime);
+    }
+
     if (!this.supabaseProjectId) {
       const errorMsg = 'Server configuration error: SUPABASE_PROJECT_ID missing.';
       this.logger.error('[CommandController] CRITICAL: SUPABASE_PROJECT_ID is not defined. Cannot construct augmented command.');
@@ -426,6 +431,81 @@ export class CommandController {
       
       // 尝试错误恢复
       await this.errorRecoveryService.handleErrorWithRecovery(commandId, error);
+    }
+  }
+
+  /**
+   * 处理清空所有队列的特殊命令
+   */
+  async handleClearAllQueues(commandId, startTime = Date.now()) {
+    this.logger.log(`[CommandController] Handling CLEAR_ALL_QUEUES command ${commandId}`);
+    
+    try {
+      // 更新命令状态为处理中
+      await this.updateCommandStatus(commandId, 'processing');
+      
+      // 清空内存中的队列
+      const queueResult = this.queueManager.clearAllQueues();
+      
+      // 调用数据库RPC函数清空数据库中的队列
+      const client = this.connectionManager?.getClient() || await this.getSupabaseClient();
+      if (!client) {
+        throw new Error('Unable to get Supabase client for queue clearing');
+      }
+      
+      const { data: dbResult, error: dbError } = await client.rpc('clear_all_queues');
+      
+      if (dbError) {
+        throw new Error(`Database queue clear failed: ${dbError.message}`);
+      }
+      
+      // 构建成功响应
+      const resultMessage = `All queues cleared successfully!\n\nIn-Memory Queues Cleared:\n- High Priority: ${queueResult.counts.highPriority}\n- Normal Priority: ${queueResult.counts.normal}\n- Low Priority: ${queueResult.counts.lowPriority}\n- Total In-Memory: ${queueResult.totalCleared}\n\nDatabase Commands Cancelled:\n- Total Database Commands: ${dbResult.totalCancelled}\n- Pending Commands: ${dbResult.pendingCancelled}\n- Processing Commands: ${dbResult.processingCancelled}\n\nAll systems cleared and ready for new commands.`;
+      
+      // 更新命令状态为完成
+      await this.updateCommandStatus(commandId, 'completed');
+      
+      // 直接写入结果到数据库，绕过 AppleScript 流程
+      const insertResult = await client
+        .from('results')
+        .insert([{
+          command_id: commandId,
+          result_text: resultMessage,
+          is_error: false
+        }]);
+      
+      if (insertResult.error) {
+        this.logger.warn(`[CommandController] Failed to insert result for ${commandId}:`, insertResult.error);
+      }
+      
+      // 记录分析数据
+      await this.analyticsService.recordCommandEnd(commandId, true, Date.now() - startTime);
+      
+      this.logger.log(`[CommandController] CLEAR_ALL_QUEUES completed successfully for command ${commandId}`);
+      
+      return {
+        success: true,
+        message: 'All queues cleared successfully',
+        queueResult,
+        dbResult
+      };
+      
+    } catch (error) {
+      this.logger.error(`[CommandController] Error handling CLEAR_ALL_QUEUES for command ${commandId}:`, error);
+      
+      const errorMessage = `Failed to clear queues: ${error.message}`;
+      
+      try {
+        await this.updateCommandStatus(commandId, 'error', errorMessage);
+        await this.analyticsService.recordCommandEnd(commandId, false, Date.now() - startTime, errorMessage);
+      } catch (updateError) {
+        this.logger.error(`[CommandController] Failed to update error status for ${commandId}:`, updateError);
+      }
+      
+      return {
+        success: false,
+        error: errorMessage
+      };
     }
   }
 

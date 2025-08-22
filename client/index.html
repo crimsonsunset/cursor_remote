@@ -51,6 +51,10 @@
                 <button id="themeToggle" class="theme-toggle-button" title="切换主题">
                     <i class="ri-moon-line"></i>
                 </button>
+                <button id="clearQueuesButton" class="clear-queues-button" title="清空所有队列">
+                    <i class="ri-delete-bin-line"></i>
+                    <span class="button-text">清空队列</span>
+                </button>
                 <div class="status-indicator">
                     <span class="status-dot" id="connectionStatus"></span>
                     <span id="statusText">未连接</span>
@@ -254,7 +258,7 @@
     <script src="env-config.js"></script>
     <!-- i18n System removed for debugging -->
     <script src="enhancement.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
     <script src="systemMonitor.js"></script>
 </body>
 </html>

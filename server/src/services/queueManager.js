@@ -361,6 +361,31 @@ export class CommandQueueManager {
            this.normalPriorityQueue.some(cmd => cmd.id === commandId) ||
            this.lowPriorityQueue.some(cmd => cmd.id === commandId);
   }
+
+  /**
+   * 清空所有队列
+   */
+  clearAllQueues() {
+    const clearedCounts = {
+      highPriority: this.highPriorityQueue.length,
+      normal: this.normalPriorityQueue.length,
+      lowPriority: this.lowPriorityQueue.length
+    };
+    
+    this.highPriorityQueue.length = 0;
+    this.normalPriorityQueue.length = 0;
+    this.lowPriorityQueue.length = 0;
+    
+    const totalCleared = clearedCounts.highPriority + clearedCounts.normal + clearedCounts.lowPriority;
+    
+    this.logger.log(`[QueueManager] All queues cleared: H:${clearedCounts.highPriority}, N:${clearedCounts.normal}, L:${clearedCounts.lowPriority} (${totalCleared} total)`);
+    
+    return {
+      cleared: true,
+      counts: clearedCounts,
+      totalCleared
+    };
+  }
 }
 
 // 创建默认实例（在非测试环境中）

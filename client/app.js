@@ -6,22 +6,19 @@
  * 因为浏览器不能直接连接Redis服务器。
  */
 
-let supabaseClient;
+// Import the Supabase client service
+import { supabaseClientService } from './services/supabase-client.service.js';
 
-// Supabase SDK and config are expected to be loaded via CDN and env-config.js respectively
-if (typeof window.SUPABASE_URL === 'string' && window.SUPABASE_URL &&
-    typeof window.SUPABASE_ANON_KEY === 'string' && window.SUPABASE_ANON_KEY &&
-    typeof supabase !== 'undefined' && supabase.createClient) {
-    try {
-        supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-    } catch (error) {
-        console.error('Error initializing Supabase client with provided credentials:', error);
-        supabaseClient = null; // Ensure client is null if initialization fails
+// Get client reference for backward compatibility
+let supabaseClient = supabaseClientService.getClient();
+
+// Register service connection callback to update UI
+supabaseClientService.onConnectionChange((isConnected, message) => {
+    updateConnectionStatus(isConnected, message);
+    if (!isConnected) {
+        showSupabaseConnectionError({ message });
     }
-} else {
-    console.error('Supabase URL/Anon Key not found on window object, or Supabase SDK not loaded. Supabase client NOT initialized.');
-    // UI update for this error is handled in initApp
-}
+});
 
 // At the top of the file, or with other app-level state variables
 const activeSubscriptions = new Map(); // To keep track of active subscriptions
@@ -487,7 +484,7 @@ function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMess
  * @param {object} commandPayload - 要发送的指令对象。
  */
 async function sendSupabaseCommand(commandPayload) {
-    if (!supabaseClient) {
+    if (!supabaseClientService.isInitialized()) {
         console.error('Supabase client is not initialized. Cannot send command.');
         addNotificationToChat('错误：无法连接到服务，请检查配置。');
         return;
@@ -503,21 +500,10 @@ async function sendSupabaseCommand(commandPayload) {
         // 保存加载元素的引用，以便稍后移除
         const loadingMessage = elements.chatContainer.lastElementChild;
 
-        const { data, error } = await supabaseClient
-            .from('commands')
-            .insert([commandPayload])
-            .select(); // .select() will return an array
+        // Use service method to submit command
+        const insertedCommand = await supabaseClientService.submitCommand(commandPayload);
 
-        if (error) {
-            console.error('Error sending command to Supabase:', error);
-            addNotificationToChat(`发送指令失败: ${error.message}`);
-            // 移除加载动画
-            if (loadingMessage?.classList.contains('loading-message')) {
-                elements.chatContainer.removeChild(loadingMessage);
-            }
-        } else if (data && data.length > 0) { // Check if data is an array and has items
-            const insertedCommand = data[0];
-            
+        if (insertedCommand) {
             // 订阅更新 - 保持加载动画直到收到响应
             subscribeToCommandUpdates(insertedCommand.id, commandPayload.command_text, loadingMessage);
 
@@ -529,7 +515,6 @@ async function sendSupabaseCommand(commandPayload) {
                 timestamp: Date.now() 
             });
             localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
-
         } else {
             addNotificationToChat('指令已发送，但未收到确认。');
             // 移除加载动画
@@ -538,9 +523,9 @@ async function sendSupabaseCommand(commandPayload) {
             }
         }
     } catch (err) {
-        console.error('Unexpected error sending command:', err);
-        addNotificationToChat(`发送指令时发生意外错误: ${err.message}`);
-        // 移除可能存在的加载动画
+        console.error('Error sending command to Supabase:', err);
+        addNotificationToChat(`发送指令失败: ${err.message}`);
+        // 移除加载动画
         const loadingMessages = document.querySelectorAll('.loading-message');
         for (const el of loadingMessages) {
             el.remove();
@@ -587,21 +572,7 @@ const elements = {
  */
 async function testSupabaseConnection() {
     try {
-        // 只测试基本连接，不发送实际命令
-        const { data: healthCheck, error: healthError } = await supabaseClient
-            .from('commands')
-            .select('count', { count: 'exact', head: true });
-            
-        if (healthError) {
-            console.error('Supabase连接测试失败:', healthError);
-            updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
-            showSupabaseConnectionError(healthError);
-            return false;
-        }
-        
-        updateConnectionStatus(true, 'Supabase连接正常');
-        return true;
-        
+        return await supabaseClientService.testConnection();
     } catch (error) {
         console.error('Supabase连接测试异常:', error);
         updateConnectionStatus(false, `连接异常: ${error.message}`);
@@ -615,37 +586,9 @@ async function testSupabaseConnection() {
  */
 async function testSupabaseConnectionFull() {
     try {
-        // 测试基本连接
-        const { data: healthCheck, error: healthError } = await supabaseClient
-            .from('commands')
-            .select('count', { count: 'exact', head: true });
-            
-        if (healthError) {
-            console.error('Supabase连接测试失败:', healthError);
-            updateConnectionStatus(false, `数据库连接失败: ${healthError.message}`);
-            showSupabaseConnectionError(healthError);
-            return false;
-        }
-        
-        // 测试RPC函数
-        const { data: rpcTest, error: rpcError } = await supabaseClient
-            .rpc('submit_command', { 
-                p_command_text: 'connection_test',
-                p_user_id: 'test_user'
-            });
-            
-        if (rpcError) {
-            console.error('RPC函数测试失败:', rpcError);
-            updateConnectionStatus(false, `RPC函数错误: ${rpcError.message}`);
-            showSupabaseRpcError(rpcError);
-            return false;
-        }
-        
-        updateConnectionStatus(true, 'Supabase连接和RPC函数正常');
-        return true;
-        
+        return await supabaseClientService.testConnectionFull();
     } catch (error) {
-        console.error('Supabase连接测试异常:', error);
+        console.error('Supabase完整连接测试异常:', error);
         updateConnectionStatus(false, `连接异常: ${error.message}`);
         showSupabaseSetupGuide();
         return false;
@@ -804,6 +747,12 @@ function setupEventListeners() {
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
+    }
+    
+    // 清空队列按钮
+    const clearQueuesButton = document.getElementById('clearQueuesButton');
+    if (clearQueuesButton) {
+        clearQueuesButton.addEventListener('click', handleClearAllQueues);
     }
     
     // 新功能按钮事件监听器
@@ -1707,6 +1656,47 @@ async function handleChannelDelete(channelName) {
         console.error("Unexpected error during channel deletion:", err);
         addNotificationToChat(`删除频道时发生意外错误: ${err.message}`);
         return false;
+    }
+}
+
+/**
+ * 处理清空所有队列的操作
+ */
+async function handleClearAllQueues() {
+    try {
+        // 确认对话框
+        if (!confirm('确定要清空所有队列吗？这将取消所有待处理和正在处理的命令。')) {
+            return;
+        }
+
+        // 禁用按钮，防止重复点击
+        const clearButton = document.getElementById('clearQueuesButton');
+        if (clearButton) {
+            clearButton.disabled = true;
+            clearButton.innerHTML = '<i class="ri-loader-4-line"></i><span class="button-text">清空中...</span>';
+        }
+
+        // 提交清空队列命令
+        await supabaseClientService.submitCommand('CLEAR_ALL_QUEUES');
+        
+        // 显示通知
+        addNotificationToChat('清空队列命令已提交，正在处理中...');
+        
+        // 滚动到底部显示通知
+        scrollChatToBottom();
+
+    } catch (error) {
+        console.error('Error clearing queues:', error);
+        addNotificationToChat(`清空队列失败: ${error.message}`);
+    } finally {
+        // 重新启用按钮
+        const clearButton = document.getElementById('clearQueuesButton');
+        if (clearButton) {
+            setTimeout(() => {
+                clearButton.disabled = false;
+                clearButton.innerHTML = '<i class="ri-delete-bin-line"></i><span class="button-text">清空队列</span>';
+            }, 2000); // 2秒后重新启用
+        }
     }
 }
 

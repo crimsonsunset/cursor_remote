@@ -251,3 +251,47 @@ BEGIN
   RETURN result;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 8. 清空所有队列
+CREATE OR REPLACE FUNCTION clear_all_queues()
+RETURNS JSON AS $$
+DECLARE
+  pending_count INTEGER;
+  processing_count INTEGER;
+  total_cancelled INTEGER;
+  result JSON;
+BEGIN
+  -- 获取当前待处理和正在处理的命令数量
+  SELECT COUNT(*) INTO pending_count FROM commands WHERE status = 'pending';
+  SELECT COUNT(*) INTO processing_count FROM commands WHERE status = 'processing';
+  
+  -- 取消所有待处理和正在处理的命令
+  UPDATE commands 
+  SET status = 'cancelled', 
+      updated_at = NOW(),
+      error_message = 'Cancelled by clear queues operation'
+  WHERE status IN ('pending', 'processing');
+  
+  GET DIAGNOSTICS total_cancelled = ROW_COUNT;
+  
+  -- 返回结果
+  SELECT json_build_object(
+    'success', true,
+    'cleared', true,
+    'totalCancelled', total_cancelled,
+    'pendingCancelled', pending_count,
+    'processingCancelled', processing_count,
+    'message', 'All queues cleared successfully',
+    'timestamp', NOW()
+  ) INTO result;
+  
+  RETURN result;
+EXCEPTION WHEN OTHERS THEN
+  RETURN json_build_object(
+    'success', false,
+    'cleared', false,
+    'error', SQLERRM,
+    'timestamp', NOW()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
