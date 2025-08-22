@@ -1,5 +1,5 @@
 // Client Enhancement Module - Using Supabase
-class ClientEnhancementService {
+export class ClientEnhancementService {
   constructor(supabaseClient) {
     this.supabase = supabaseClient;
     this.commandHistory = [];
@@ -197,5 +197,8 @@ function initGlobalEnhancementService(supabaseClient) {
   return globalEnhancementService;
 }
 
-// Expose initialization function
+// Export initialization function 
+export { initGlobalEnhancementService };
+
+// Also expose on window for backward compatibility
 window.initGlobalEnhancementService = initGlobalEnhancementService;

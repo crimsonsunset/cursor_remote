@@ -10,6 +10,7 @@
 import { supabaseClientService } from './services/supabase-client.service.js';
 import { RealtimeManagerService } from './services/realtime-manager.service.js';
 import { QueueProcessorService } from './services/queue-processor.service.js';
+import { ClientEnhancementService, initGlobalEnhancementService } from './enhancement.js';
 
 // Get client reference for backward compatibility
 let supabaseClient = supabaseClientService.getClient();
@@ -69,38 +70,10 @@ function buildSupabaseCommandPayload(commandText) {
 
 // handleCompletedCommand logic moved to RealtimeManagerService
 
-/**
- * 异步发送指令到 Supabase 'commands' 表。
- * @param {object} commandPayload - 要发送的指令对象。
- */
-async function sendSupabaseCommand(commandPayload) {
-    if (!supabaseClientService.isInitialized()) {
-        console.error('Supabase client is not initialized. Cannot send command.');
-        addNotificationToChat('错误：无法连接到服务，请检查配置。');
-        return;
-    }
+// sendSupabaseCommand function is defined below - JSG-Frontend refactored
+// Cleaned up orphaned code - all functions organized below
 
-    // 首先检查是否已经有这个命令的结果
-    const existingResult = appState.messageHistory.find(msg => 
-        (msg.type === 'cursor' || msg.type === 'error') && 
-        msg.commandId === commandDbId
-    );
-    
-    if (existingResult) {
-        console.log(`⏭️ 命令 ${commandDbId} 的结果已存在，跳过处理`);
-        // 移除加载动画（如果存在）
-        if (loadingMessage?.classList.contains('loading-message')) {
-            loadingMessage.remove();
-        }
-        return;
-    }
-    
-    const maxRetries = 5; // 增加重试次数
-    const baseRetryDelay = 1000; // 基础延迟1秒
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`[Result Fetch] Attempting to fetch result for command ${commandDbId} (attempt ${attempt}/${maxRetries})`);
+/**
             
             // 使用指数退避策略
             const retryDelay = baseRetryDelay * Math.pow(1.5, attempt - 1);
