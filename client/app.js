@@ -6,22 +6,35 @@
  * 因为浏览器不能直接连接Redis服务器。
  */
 
-// Import the Supabase client service
+// Import JSG-Frontend services
 import { supabaseClientService } from './services/supabase-client.service.js';
+import { RealtimeManagerService } from './services/realtime-manager.service.js';
+import { QueueProcessorService } from './services/queue-processor.service.js';
 
 // Get client reference for backward compatibility
 let supabaseClient = supabaseClientService.getClient();
+
+// Initialize JSG-Frontend Services
+let realtimeManagerService = null;
+let queueProcessorService = null;
 
 // Register service connection callback to update UI
 supabaseClientService.onConnectionChange((isConnected, message) => {
     updateConnectionStatus(isConnected, message);
     if (!isConnected) {
         showSupabaseConnectionError({ message });
+    } else {
+        // Initialize JSG-Frontend Services when connection is established
+        if (!realtimeManagerService) {
+            realtimeManagerService = new RealtimeManagerService(supabaseClient);
+        }
+        if (!queueProcessorService) {
+            queueProcessorService = new QueueProcessorService(supabaseClient, realtimeManagerService);
+        }
     }
 });
 
-// At the top of the file, or with other app-level state variables
-const activeSubscriptions = new Map(); // To keep track of active subscriptions
+// activeSubscriptions now handled by RealtimeManagerService
 
 /**
  * 生成一个简单的 UUID v4 字符串。
@@ -55,39 +68,29 @@ function buildSupabaseCommandPayload(commandText) {
 }
 
 /**
- * 处理已完成的指令，从 results 表获取并显示结果。
- * @param {string} commandDbId - 数据库中 commands 表指令的UUID。
- * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
- * @param {HTMLElement} [loadingMessage] - 加载消息元素的引用，用于完成后移除。
+ * DEPRECATED: Command completion logic moved to RealtimeManagerService
+ * This function is kept for backward compatibility but should not be used directly.
+ * @param {string} commandDbId - Database UUID of the command
+ * @param {string} originalCommandText - Original command text for context
+ * @param {HTMLElement} [loadingMessage] - Loading message element reference
  */
 async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
-    // Special handling for CLEAR_ALL_QUEUES commands
-    if (originalCommandText === 'CLEAR_ALL_QUEUES') {
-        console.log(`[Clear Queues] Command ${commandDbId} completed, resetting button`);
-        
-        // Reset the Clear Queues button
-        const clearButton = document.getElementById('clearQueuesButton');
-        if (clearButton) {
-            clearButton.disabled = false;
-            clearButton.innerHTML = '<i class="ri-delete-bin-line"></i><span class="button-text">Clear Queues</span>';
-        }
-        
-        // Remove loading message if it exists  
-        if (loadingMessage?.classList.contains('loading-message')) {
-            loadingMessage.remove();
-        }
-        
-        // Show success notification by replacing the processing message
-        if (loadingMessage) {
-            loadingMessage.textContent = 'All queues cleared successfully!';
-            loadingMessage.classList.remove('loading-message');
-            loadingMessage.classList.add('success-message');
-        } else {
-            addNotificationToChat('All queues cleared successfully!');
-        }
-        
-        // Cleanup pending command from localStorage
-        cleanupPendingCommand(commandDbId);
+    console.warn('[handleCompletedCommand] DEPRECATED: Command completion logic moved to RealtimeManagerService');
+    console.log(`[handleCompletedCommand] Legacy call for command ${commandDbId}: ${originalCommandText}`);
+    
+    // All completion logic has been moved to RealtimeManagerService._handleCommandCompletion()
+    // This includes special handling for CLEAR_ALL_QUEUES commands and regular result processing
+    // This function should not be called directly - subscriptions use the service instead
+}
+
+/**
+ * 异步发送指令到 Supabase 'commands' 表。
+ * @param {object} commandPayload - 要发送的指令对象。
+ */
+async function sendSupabaseCommand(commandPayload) {
+    if (!supabaseClientService.isInitialized()) {
+        console.error('Supabase client is not initialized. Cannot send command.');
+        addNotificationToChat('错误：无法连接到服务，请检查配置。');
         return;
     }
 
@@ -261,24 +264,6 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
             });
         }
     }
-
-    // 移除加载动画（如果存在）
-    if (loadingMessage?.classList.contains('loading-message')) {
-        loadingMessage.remove();
-    } else {
-        // 查找可能存在的加载动画
-        const loadingMessages = document.querySelectorAll('.loading-message');
-        for (const el of loadingMessages) {
-            el.remove();
-        }
-    }
-
-    // Remove from pendingCommandsClientSide after processing
-    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-    const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandDbId);
-    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
-    
-    console.log(`[Result Fetch] Completed processing for command ${commandDbId}`);
 }
 
 /**
@@ -286,227 +271,20 @@ async function handleCompletedCommand(commandDbId, originalCommandText, loadingM
  * @param {string} commandDbId - 数据库中指令的UUID。
  * @param {string} originalCommandText - 用户原始输入的指令文本，用于上下文显示。
  */
+/**
+ * Subscribe to command updates using the Realtime Manager Service
+ * @param {string} commandDbId - Database UUID of the command
+ * @param {string} originalCommandText - Original command text for context  
+ * @param {HTMLElement} loadingMessage - Loading UI element reference
+ */
 function subscribeToCommandUpdates(commandDbId, originalCommandText, loadingMessage) {
-    const channelName = `command-${commandDbId}`;
-    if (activeSubscriptions.has(channelName)) {
-        const oldChannel = activeSubscriptions.get(channelName);
-        supabaseClient.removeChannel(oldChannel);
-        activeSubscriptions.delete(channelName);
+    if (!realtimeManagerService) {
+        console.error('[SubscribeToCommand] Realtime Manager Service not initialized');
+        return;
     }
-
-    let channel = null;
-    let subscriptionTimeout = null;
-    let fallbackInterval = null;
-    let retryAttempts = 0;
-    const maxRetryAttempts = 3;
-    const retryDelay = 2000; // 2秒重试延迟
-    let isCompleted = false; // 防止重复处理
-
-    // 创建订阅的函数
-    const createSubscription = () => {
-        if (channel) {
-            try {
-                supabaseClient.removeChannel(channel);
-            } catch (e) {
-                console.warn(`Warning cleaning up old channel for ${commandDbId}:`, e);
-            }
-        }
-
-        channel = supabaseClient.channel(channelName);
-        activeSubscriptions.set(channelName, channel);
-        
-        return channel
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'commands',
-                    filter: `id=eq.${commandDbId}`
-                },
-                async (payload) => {
-                    if (isCompleted) return; // 防止重复处理
-                    
-                    const updatedCommand = payload.new;
-                    
-                    // 收到更新，清除所有计时器
-                    if (subscriptionTimeout) {
-                        clearTimeout(subscriptionTimeout);
-                        subscriptionTimeout = null;
-                    }
-                    if (fallbackInterval) {
-                        clearInterval(fallbackInterval);
-                        fallbackInterval = null;
-                    }
-
-                    if (updatedCommand.status === 'completed' || updatedCommand.status === 'error') {
-                        isCompleted = true;
-                        await handleCompletedCommand(updatedCommand.id, originalCommandText, loadingMessage); 
-                        supabaseClient.removeChannel(channel);
-                        activeSubscriptions.delete(channelName);
-                    }
-                }
-            )
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log(`[Subscription] Successfully subscribed to command ${commandDbId} updates (attempt ${retryAttempts + 1})`);
-                    retryAttempts = 0; // 重置重试计数
-                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-                    console.error(`[Subscription Error] Command ${commandDbId} subscription ${status}:`, err?.message || 'No error details');
-                    
-                    // 清理当前订阅
-                    activeSubscriptions.delete(channelName);
-                    
-                    // 立即执行一次状态检查
-                    setTimeout(async () => {
-                        if (isCompleted) return; // 如果已经完成，不再处理
-                        
-                        try {
-                            const { data: commandData, error } = await supabaseClient
-                                .from('commands')
-                                .select('status')
-                                .eq('id', commandDbId)
-                                .single();
-                            
-                            if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
-                                console.log(`[Immediate Fallback] Command ${commandDbId} already completed, status: ${commandData.status}`);
-                                isCompleted = true;
-                                
-                                // 清理所有计时器
-                                if (fallbackInterval) {
-                                    clearInterval(fallbackInterval);
-                                    fallbackInterval = null;
-                                }
-                                if (subscriptionTimeout) {
-                                    clearTimeout(subscriptionTimeout);
-                                    subscriptionTimeout = null;
-                                }
-                                
-                                await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
-                                return;
-                            }
-                        } catch (immediateError) {
-                            console.warn(`[Immediate Fallback] Error:`, immediateError);
-                        }
-                        
-                        // 如果命令还未完成，启动fallback查询
-                        if (!fallbackInterval && !isCompleted) {
-                            console.log(`[Fallback] Starting periodic status check for command ${commandDbId}`);
-                            addNotificationToChat(`订阅连接中断，已启用备用查询机制确保结果不丢失 🔄`);
-                            
-                            fallbackInterval = setInterval(async () => {
-                                if (isCompleted) {
-                                    clearInterval(fallbackInterval);
-                                    fallbackInterval = null;
-                                    return;
-                                }
-                                
-                                try {
-                                    const { data: commandData, error } = await supabaseClient
-                                        .from('commands')
-                                        .select('status')
-                                        .eq('id', commandDbId)
-                                        .single();
-                                    
-                                    if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
-                                        console.log(`[Fallback] Command ${commandDbId} completed via fallback, status: ${commandData.status}`);
-                                        isCompleted = true;
-                                        
-                                        // 清理所有计时器
-                                        if (fallbackInterval) {
-                                            clearInterval(fallbackInterval);
-                                            fallbackInterval = null;
-                                        }
-                                        if (subscriptionTimeout) {
-                                            clearTimeout(subscriptionTimeout);
-                                            subscriptionTimeout = null;
-                                        }
-                                        
-                                        // 清理订阅
-                                        if (activeSubscriptions.has(channelName)) {
-                                            supabaseClient.removeChannel(channel);
-                                            activeSubscriptions.delete(channelName);
-                                        }
-                                        
-                                        // 处理完成的命令
-                                        await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
-                                    }
-                                } catch (fallbackError) {
-                                    console.warn(`[Fallback] Error checking command ${commandDbId} status:`, fallbackError);
-                                }
-                            }, 5000); // 每5秒检查一次
-                        }
-                    }, 1000);
-                    
-                    // 如果还有重试机会，尝试重新订阅
-                    if (retryAttempts < maxRetryAttempts) {
-                        retryAttempts++;
-                        console.log(`[Subscription Retry] Attempting to resubscribe to command ${commandDbId} (attempt ${retryAttempts}/${maxRetryAttempts})`);
-                        
-                        setTimeout(() => {
-                            if (!isCompleted) {
-                                createSubscription();
-                            }
-                        }, retryDelay * retryAttempts); // 递增延迟
-                    } else {
-                        console.warn(`[Subscription Failed] Max retry attempts reached for command ${commandDbId}, relying on fallback mechanism`);
-                    }
-                }
-            });
-    };
-
-    // 初始创建订阅
-    createSubscription();
     
-    // 添加超时处理
-    subscriptionTimeout = setTimeout(() => {
-        if (!isCompleted) {
-            handleCommandSubscriptionTimeout(commandDbId, originalCommandText, loadingMessage);
-        }
-    }, PENDING_COMMAND_TIMEOUT);
-
-    // 启动定期fallback查询机制 - 作为保险措施
-    fallbackInterval = setInterval(async () => {
-        if (isCompleted) {
-            clearInterval(fallbackInterval);
-            fallbackInterval = null;
-            return;
-        }
-        
-        try {
-            const { data: commandData, error } = await supabaseClient
-                .from('commands')
-                .select('status')
-                .eq('id', commandDbId)
-                .single();
-            
-            if (!error && commandData && (commandData.status === 'completed' || commandData.status === 'error')) {
-                console.log(`[Fallback] Command ${commandDbId} completed, status: ${commandData.status}`);
-                isCompleted = true;
-                
-                // 清理所有计时器
-                if (fallbackInterval) {
-                    clearInterval(fallbackInterval);
-                    fallbackInterval = null;
-                }
-                if (subscriptionTimeout) {
-                    clearTimeout(subscriptionTimeout);
-                    subscriptionTimeout = null;
-                }
-                
-                // 清理订阅
-                if (activeSubscriptions.has(channelName)) {
-                    supabaseClient.removeChannel(channel);
-                    activeSubscriptions.delete(channelName);
-                }
-                
-                // 处理完成的命令
-                await handleCompletedCommand(commandDbId, originalCommandText, loadingMessage);
-            }
-        } catch (fallbackError) {
-            console.warn(`[Fallback] Error checking command ${commandDbId} status:`, fallbackError);
-        }
-    }, 8000); // 每8秒检查一次，作为保险措施
+    // Use the new service to handle subscriptions
+    realtimeManagerService.subscribeToCommand(commandDbId, originalCommandText, loadingMessage);
 }
 
 /**
@@ -537,14 +315,14 @@ async function sendSupabaseCommand(commandPayload) {
             // 订阅更新 - 保持加载动画直到收到响应
             subscribeToCommandUpdates(insertedCommand.id, commandPayload.command_text, loadingMessage);
 
-            // Store command in localStorage as pending client-side processing
-            const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-            pendingCommands.push({
-                id: insertedCommand.id,
-                text: commandPayload.command_text,
-                timestamp: Date.now() 
-            });
-            localStorage.setItem('pendingCommandsClientSide', JSON.stringify(pendingCommands));
+            // Store command in queue using Queue Processor Service
+            if (queueProcessorService) {
+                queueProcessorService.addCommand({
+                    id: insertedCommand.id,
+                    text: commandPayload.command_text,
+                    timestamp: Date.now()
+                });
+            }
         } else {
             addNotificationToChat('指令已发送，但未收到确认。');
             // 移除加载动画
@@ -759,13 +537,17 @@ function initApp() {
     renderMessageHistory();
     
     // 应用启动时检查并处理待处理的指令
-    processPendingCommandsOnLoad();
+    if (queueProcessorService) {
+        queueProcessorService.processPendingCommandsOnLoad();
+    }
     
     // 自动调整文本区域高度
     setupTextareaAutoResize();
     
     // 启动定期清理超时命令的任务
-    startPendingCommandsCleanupTask();
+    if (queueProcessorService) {
+        queueProcessorService.startCleanupTask();
+    }
 }
 
 // 设置事件监听器
@@ -1440,8 +1222,10 @@ function deduplicateMessageHistory(showNotification = true) {
     }
 }
 
+// DEPRECATED: Use queueProcessorService.processPendingCommandsOnLoad() instead
 // 新增函数：在应用加载时处理之前待处理的指令
 async function processPendingCommandsOnLoad() {
+    console.warn('[processPendingCommandsOnLoad] DEPRECATED: Use queueProcessorService.processPendingCommandsOnLoad() instead');
     // 防止重复处理
     if (isProcessingPendingCommands) {
         console.log('⏸️ 正在处理待处理命令，跳过重复调用');
@@ -1831,19 +1615,28 @@ function handleCommandSubscriptionTimeout(commandDbId, originalCommandText, load
 }
 
 /**
+ * DEPRECATED: Use queueProcessorService.removeCommand() instead
  * 从pendingCommandsClientSide中移除指定的命令
  * @param {string} commandId - 要移除的命令ID
  */
 function cleanupPendingCommand(commandId) {
-    const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
-    const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandId);
-    localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
+    console.warn('[cleanupPendingCommand] DEPRECATED: Use queueProcessorService.removeCommand() instead');
+    if (queueProcessorService) {
+        queueProcessorService.removeCommand(commandId);
+    } else {
+        // Fallback to old logic if service not available
+        const pendingCommands = JSON.parse(localStorage.getItem('pendingCommandsClientSide')) || [];
+        const filteredCommands = pendingCommands.filter(cmd => cmd.id !== commandId);
+        localStorage.setItem('pendingCommandsClientSide', JSON.stringify(filteredCommands));
+    }
 }
 
 /**
+ * DEPRECATED: Use queueProcessorService.startCleanupTask() instead
  * 启动定期清理超时的pendingCommandsClientSide命令的任务
  */
 function startPendingCommandsCleanupTask() {
+    console.warn('[startPendingCommandsCleanupTask] DEPRECATED: Use queueProcessorService.startCleanupTask() instead');
     // 每分钟检查一次超时命令
     setInterval(() => {
         cleanupTimeoutPendingCommands();
