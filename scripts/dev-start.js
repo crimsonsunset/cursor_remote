@@ -71,17 +71,45 @@ async function killByName(pattern) {
   }
 }
 
+// Build client files to public directory
+async function buildClient() {
+  log('Building client files to public directory...', 'blue');
+  
+  try {
+    // Create public directory
+    await execAsync('mkdir -p public');
+    log('✅ Created public directory', 'green');
+    
+    // Copy all client files to public
+    await execAsync('cp -R client/* public/');
+    log('✅ Copied client files to public directory', 'green');
+    
+    // Ensure environment configuration is properly set
+    if (await fileExists('client/env-config.js')) {
+      await execAsync('cp client/env-config.js public/env-config.js');
+      log('✅ Copied environment configuration to public directory', 'green');
+    } else {
+      log('⚠️  Warning: client/env-config.js not found', 'yellow');
+    }
+  } catch (error) {
+    log(`❌ Build error: ${error.message}`, 'red');
+    throw error;
+  }
+}
+
+// Check if file exists
+async function fileExists(filePath) {
+  try {
+    await execAsync(`test -f "${filePath}"`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Start client HTTP server
 function startClient() {
   log('Starting client HTTP server on port 8080...', 'green');
-  
-  // Ensure public directory has proper env config
-  try {
-    execAsync('cp client/env-config.js public/env-config.js');
-    log('✅ Copied environment configuration to public directory', 'green');
-  } catch (error) {
-    log(`⚠️  Warning: Could not copy env-config.js: ${error.message}`, 'yellow');
-  }
   
   clientProcess = spawn('python3', ['-m', 'http.server', '8080', '--directory', 'public'], {
     cwd: rootDir,
@@ -184,12 +212,15 @@ function restartServer() {
 }
 
 // Restart client only (for client file changes)
-function restartClient() {
+async function restartClient() {
   log('Restarting client due to file changes...', 'yellow');
   if (clientProcess) {
     clientProcess.kill('SIGTERM');
   }
-  setTimeout(startClient, 1000);
+  setTimeout(async () => {
+    await buildClient();
+    startClient();
+  }, 1000);
 }
 
 // Main startup function
@@ -204,6 +235,9 @@ async function main() {
   
   // Wait a moment for cleanup
   await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Build client files first
+  await buildClient();
   
   // Start services
   startClient();
