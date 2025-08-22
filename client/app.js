@@ -61,6 +61,36 @@ function buildSupabaseCommandPayload(commandText) {
  * @param {HTMLElement} [loadingMessage] - 加载消息元素的引用，用于完成后移除。
  */
 async function handleCompletedCommand(commandDbId, originalCommandText, loadingMessage) {
+    // Special handling for CLEAR_ALL_QUEUES commands
+    if (originalCommandText === 'CLEAR_ALL_QUEUES') {
+        console.log(`[Clear Queues] Command ${commandDbId} completed, resetting button`);
+        
+        // Reset the Clear Queues button
+        const clearButton = document.getElementById('clearQueuesButton');
+        if (clearButton) {
+            clearButton.disabled = false;
+            clearButton.innerHTML = '<i class="ri-delete-bin-line"></i><span class="button-text">Clear Queues</span>';
+        }
+        
+        // Remove loading message if it exists  
+        if (loadingMessage?.classList.contains('loading-message')) {
+            loadingMessage.remove();
+        }
+        
+        // Show success notification by replacing the processing message
+        if (loadingMessage) {
+            loadingMessage.textContent = 'All queues cleared successfully!';
+            loadingMessage.classList.remove('loading-message');
+            loadingMessage.classList.add('success-message');
+        } else {
+            addNotificationToChat('All queues cleared successfully!');
+        }
+        
+        // Cleanup pending command from localStorage
+        cleanupPendingCommand(commandDbId);
+        return;
+    }
+
     // 首先检查是否已经有这个命令的结果
     const existingResult = appState.messageHistory.find(msg => 
         (msg.type === 'cursor' || msg.type === 'error') && 
@@ -1660,42 +1690,55 @@ async function handleChannelDelete(channelName) {
 }
 
 /**
- * 处理清空所有队列的操作
+ * Handle clear all queues operation
  */
 async function handleClearAllQueues() {
+    let insertedCommand = null; // Declare at function scope
+    
     try {
-        // 确认对话框
-        if (!confirm('确定要清空所有队列吗？这将取消所有待处理和正在处理的命令。')) {
+        // Confirmation dialog
+        if (!confirm('Are you sure you want to clear all queues? This will cancel all pending and processing commands.')) {
             return;
         }
 
-        // 禁用按钮，防止重复点击
+        // Disable button to prevent double-clicking
         const clearButton = document.getElementById('clearQueuesButton');
         if (clearButton) {
             clearButton.disabled = true;
-            clearButton.innerHTML = '<i class="ri-loader-4-line"></i><span class="button-text">清空中...</span>';
+            clearButton.innerHTML = '<i class="ri-loader-4-line"></i><span class="button-text">Clearing...</span>';
         }
 
-        // 提交清空队列命令
-        await supabaseClientService.submitCommand('CLEAR_ALL_QUEUES');
+        // Submit clear queues command (submitted as regular command, handled specially by backend)
+        const commandPayload = {
+            user_id: generateUUIDv4(),
+            command_text: 'CLEAR_ALL_QUEUES',
+            status: 'pending'
+        };
+        insertedCommand = await supabaseClientService.submitCommand(commandPayload);
         
-        // 显示通知
-        addNotificationToChat('清空队列命令已提交，正在处理中...');
+        // Show notification
+        const notificationMessage = addNotificationToChat('Clear queues command submitted, processing...');
         
-        // 滚动到底部显示通知
+        // Scroll to bottom to show notification
         scrollChatToBottom();
+
+        // Subscribe to command updates to detect completion
+        if (insertedCommand) {
+            subscribeToCommandUpdates(insertedCommand.id, 'CLEAR_ALL_QUEUES', notificationMessage);
+        }
 
     } catch (error) {
         console.error('Error clearing queues:', error);
-        addNotificationToChat(`清空队列失败: ${error.message}`);
+        addNotificationToChat(`Clear queues failed: ${error.message}`);
     } finally {
-        // 重新启用按钮
-        const clearButton = document.getElementById('clearQueuesButton');
-        if (clearButton) {
-            setTimeout(() => {
+        // Button reset will be handled by subscribeToCommandUpdates when command completes
+        // If there was an error during submission, reset the button immediately
+        if (!insertedCommand) {
+            const clearButton = document.getElementById('clearQueuesButton');
+            if (clearButton) {
                 clearButton.disabled = false;
-                clearButton.innerHTML = '<i class="ri-delete-bin-line"></i><span class="button-text">清空队列</span>';
-            }, 2000); // 2秒后重新启用
+                clearButton.innerHTML = '<i class="ri-delete-bin-line"></i><span class="button-text">Clear Queues</span>';
+            }
         }
     }
 }
