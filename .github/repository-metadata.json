@@ -1,0 +1,22 @@
+{
+  "name": "cursor_remote",
+  "description": "通过 Supabase 实现手机远程控制 Cursor 的解决方案 (Supabase-based remote control for Cursor)",
+  "topics": [
+    "cursor",
+    "remote-control",
+    "supabase",
+    "serverless",
+    "mobile",
+    "websocket",
+    "real-time",
+    "chinese"
+  ],
+  "website": "https://cursor-remote.vercel.app",
+  "visibility": "public",
+  "has_issues": true,
+  "has_wiki": false,
+  "has_projects": false,
+  "is_fork": true,
+  "upstream": "terryso/cursor_remote"
+}
+
