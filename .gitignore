@@ -141,3 +141,6 @@ public/*
 
 server/.env
 client/env-config.js
+
+# Cursor rules — symlinked from ~/.cursor/rules/projects/
+.cursor/rules/
